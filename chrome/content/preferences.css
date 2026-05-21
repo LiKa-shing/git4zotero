@@ -1,0 +1,97 @@
+.git4zotero-preferences {
+  max-width: 720px;
+  padding: 10px 0 18px;
+}
+
+.git4zotero-pref-section {
+  border: 0;
+  border-bottom: 1px solid var(--color-border, #d0d7de);
+  margin: 0 0 22px;
+  padding: 0 0 20px;
+}
+
+.git4zotero-pref-section h2 {
+  font-size: 1.08em;
+  margin: 0 0 8px;
+}
+
+.git4zotero-pref-section label {
+  display: block;
+  font-weight: 600;
+  margin: 12px 0 6px;
+}
+
+.git4zotero-pref-section input[type="text"] {
+  box-sizing: border-box;
+  font: inherit;
+  min-height: 30px;
+  width: 100%;
+}
+
+.git4zotero-pref-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.git4zotero-pref-row button {
+  font: inherit;
+  min-height: 30px;
+}
+
+.git4zotero-pref-checkbox {
+  align-items: center;
+  display: flex !important;
+  gap: 8px;
+  font-weight: 400 !important;
+}
+
+.git4zotero-pref-help,
+.git4zotero-pref-description,
+.git4zotero-pref-status {
+  color: var(--fill-secondary, #5f6368);
+  margin: 6px 0 0;
+}
+
+.git4zotero-pref-description {
+  line-height: 1.45;
+  margin-bottom: 14px;
+}
+
+.git4zotero-pref-status[data-tone="success"] {
+  color: #167c3c;
+}
+
+.git4zotero-pref-status[data-tone="error"] {
+  color: #b3261e;
+}
+
+.git4zotero-pref-status {
+  white-space: pre-line;
+}
+
+.git4zotero-pref-facts {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.git4zotero-pref-facts > div {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 120px minmax(0, 1fr);
+}
+
+.git4zotero-pref-facts dt {
+  color: var(--fill-secondary, #5f6368);
+}
+
+.git4zotero-pref-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.git4zotero-pref-help code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}

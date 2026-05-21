@@ -1,0 +1,20 @@
+{
+  "manifest_version": 2,
+  "name": "git4zotero",
+  "version": "0.1.30",
+  "description": "为 Zotero 论文附件提供基于 Git 的本地版本管理。",
+  "author": "Li Ka-shing",
+  "homepage_url": "https://github.com/LiKa-shing/git4zotero",
+  "icons": {
+    "48": "chrome/content/icons/paper-version-48.png",
+    "96": "chrome/content/icons/paper-version-96.png"
+  },
+  "applications": {
+    "zotero": {
+      "id": "git4zotero@paper-version.local",
+      "update_url": "https://github.com/LiKa-shing/git4zotero/releases/latest/download/updates.json",
+      "strict_min_version": "8.0",
+      "strict_max_version": "9.0.*"
+    }
+  }
+}

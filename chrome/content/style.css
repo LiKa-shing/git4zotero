@@ -1,0 +1,294 @@
+[data-git4zotero-body="true"] {
+  display: block;
+  min-height: 72px;
+  min-width: 0;
+  overflow: visible;
+}
+
+.git4zotero-panel-root {
+  background: var(--material-background, Canvas);
+  box-sizing: border-box;
+  color: var(--fill-primary, CanvasText);
+  display: block;
+  min-height: 72px;
+  min-width: 0;
+  width: 100%;
+}
+
+.git4zotero-panel {
+  box-sizing: border-box;
+  color: var(--fill-primary, CanvasText);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 72px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px 4px 12px;
+  width: 100%;
+}
+
+.git4zotero-status {
+  background: var(--material-background, Canvas);
+  border: 1px solid var(--color-border, ButtonBorder);
+  border-radius: 4px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+}
+
+.git4zotero-status-warning {
+  background: #fff4df;
+  background: color-mix(in srgb, #f2b84b 18%, Canvas);
+}
+
+.git4zotero-status-success {
+  background: #edf7ed;
+  background: color-mix(in srgb, #2e7d32 12%, Canvas);
+}
+
+.git4zotero-file {
+  color: var(--fill-secondary, GrayText);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.git4zotero-file strong,
+.git4zotero-section-title {
+  color: var(--fill-primary, CanvasText);
+}
+
+.git4zotero-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.git4zotero-section-title {
+  font-size: 12px;
+}
+
+.git4zotero-workflow {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.git4zotero-workflow-step {
+  border-left: 3px solid var(--color-border, ButtonBorder);
+  color: var(--fill-secondary, GrayText);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  padding: 2px 0 2px 8px;
+}
+
+.git4zotero-workflow-step strong {
+  color: var(--fill-primary, CanvasText);
+}
+
+.git4zotero-workflow-current {
+  border-left-color: #1565c0;
+}
+
+.git4zotero-workflow-available,
+.git4zotero-workflow-done {
+  border-left-color: #2e7d32;
+}
+
+.git4zotero-workflow-warning {
+  border-left-color: #b26a00;
+}
+
+.git4zotero-change-summary {
+  border: 1px solid var(--color-border, ButtonBorder);
+  border-radius: 4px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  padding: 8px;
+}
+
+.git4zotero-change-list {
+  display: grid;
+  gap: 6px;
+}
+
+.git4zotero-change {
+  border: 1px solid var(--color-border, ButtonBorder);
+  border-radius: 4px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  padding: 8px;
+}
+
+.git4zotero-change-kind {
+  color: var(--fill-primary, CanvasText);
+  font-size: 12px;
+}
+
+.git4zotero-change-location {
+  color: var(--fill-secondary, GrayText);
+  font-size: 11px;
+}
+
+.git4zotero-change-text {
+  font-size: 12px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.git4zotero-timeline {
+  display: grid;
+  overflow: visible;
+  padding: 2px 0;
+}
+
+.git4zotero-timeline-item {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  min-width: 0;
+  padding: 0 0 12px;
+  position: relative;
+}
+
+.git4zotero-timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.git4zotero-timeline-line {
+  background: var(--color-border, ButtonBorder);
+  bottom: -2px;
+  left: 8px;
+  position: absolute;
+  top: 0;
+  width: 2px;
+}
+
+.git4zotero-timeline-item:last-child .git4zotero-timeline-line {
+  bottom: calc(100% - 12px);
+}
+
+.git4zotero-timeline-node {
+  align-self: start;
+  background: var(--material-background, Canvas);
+  border: 2px solid #1565c0;
+  border-radius: 50%;
+  box-sizing: border-box;
+  height: 12px;
+  justify-self: center;
+  margin-top: 4px;
+  width: 12px;
+  z-index: 1;
+}
+
+.git4zotero-timeline-node-safety {
+  border-color: #b26a00;
+}
+
+.git4zotero-timeline-node-git {
+  border-color: #6a5acd;
+}
+
+.git4zotero-timeline-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.git4zotero-timeline-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.git4zotero-timeline-note {
+  color: var(--fill-primary, CanvasText);
+  font-weight: 600;
+  line-height: 1.45;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.git4zotero-timeline-meta {
+  color: var(--fill-secondary, GrayText);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.git4zotero-version-badge {
+  background: var(--material-background, Canvas);
+  border: 1px solid var(--color-border, ButtonBorder);
+  border-radius: 999px;
+  color: var(--fill-secondary, GrayText);
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.git4zotero-version-badge-safety {
+  background: #fff4df;
+  background: color-mix(in srgb, #f2b84b 18%, Canvas);
+  border-color: #b26a00;
+}
+
+.git4zotero-version-badge-git {
+  background: #f0eeff;
+  background: color-mix(in srgb, #6a5acd 14%, Canvas);
+}
+
+.git4zotero-version {
+  border: 1px solid var(--color-border, ButtonBorder);
+  border-radius: 4px;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+}
+
+.git4zotero-version-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.git4zotero-version-note {
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.git4zotero-version-meta {
+  color: var(--fill-secondary, GrayText);
+  font-size: 12px;
+}
+
+.git4zotero-hint {
+  color: var(--fill-secondary, GrayText);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.git4zotero-working-tree {
+  background: var(--material-background, Canvas);
+  border: 1px solid var(--color-border, ButtonBorder);
+  border-radius: 4px;
+  font-size: 11px;
+  margin: 0;
+  max-height: 120px;
+  overflow: auto;
+  padding: 8px;
+  white-space: pre-wrap;
+}
+
+item-pane-sidenav .btn[data-pane$="git4zotero-paper-versions"] {
+  min-height: 28px;
+  min-width: 28px;
+}

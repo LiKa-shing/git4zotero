@@ -1,0 +1,60 @@
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      xmlns:html="http://www.w3.org/1999/xhtml"
+      id="git4zotero-preferences"
+      class="git4zotero-preferences"
+      onload="Git4ZoteroPreferences.init(event)">
+  <groupbox class="git4zotero-pref-section">
+    <label><html:h2>Git 设置</html:h2></label>
+    <html:p class="git4zotero-pref-description">git4zotero 使用本机 Git 在 Zotero 配置目录中保存论文附件版本。</html:p>
+    <html:label for="git4zotero-git-path">Git 可执行文件路径</html:label>
+    <html:div class="git4zotero-pref-row">
+      <html:input id="git4zotero-git-path"
+                  type="text"
+                  placeholder="git" />
+      <html:button id="git4zotero-test-git"
+                   type="button"
+                   onclick="Git4ZoteroPreferences.testGit(event)">测试 Git</html:button>
+    </html:div>
+    <html:p class="git4zotero-pref-help">留空表示使用系统 PATH 中的 git。Windows 可填写 C:\Program Files\Git\cmd\git.exe。</html:p>
+    <html:p class="git4zotero-pref-help">当前输入：<html:code id="git4zotero-current-git">git</html:code></html:p>
+    <html:p class="git4zotero-pref-help">已保存路径：<html:code id="git4zotero-saved-git">尚未保存</html:code></html:p>
+    <html:p id="git4zotero-git-status" class="git4zotero-pref-status" role="status">尚未测试 Git。</html:p>
+  </groupbox>
+
+  <groupbox class="git4zotero-pref-section">
+    <label><html:h2>版本行为</html:h2></label>
+    <html:label for="git4zotero-default-note">默认版本说明</html:label>
+    <html:input id="git4zotero-default-note"
+                type="text"
+                preference="extensions.git4zotero.defaultVersionNote"
+                placeholder="论文版本" />
+    <html:p class="git4zotero-pref-help">创建版本时说明为空，将使用该默认文本。</html:p>
+
+    <html:label class="git4zotero-pref-checkbox">
+      <html:input id="git4zotero-auto-safety"
+                  type="checkbox"
+                  preference="extensions.git4zotero.autoSafetyVersion" />
+      恢复旧版本前自动创建安全版本
+    </html:label>
+    <html:p class="git4zotero-pref-help">建议保持开启，恢复前会先保存当前文件，降低误覆盖风险。</html:p>
+  </groupbox>
+
+  <groupbox class="git4zotero-pref-section">
+    <label><html:h2>状态与排错</html:h2></label>
+    <html:dl class="git4zotero-pref-facts">
+      <html:div>
+        <html:dt>插件版本</html:dt>
+        <html:dd>0.1.30</html:dd>
+      </html:div>
+      <html:div>
+        <html:dt>支持格式</html:dt>
+        <html:dd>.docx 正文级识别；.doc 和 .odt 文件级识别</html:dd>
+      </html:div>
+      <html:div>
+        <html:dt>数据目录</html:dt>
+        <html:dd id="git4zotero-data-dir">Zotero 配置目录中的 git4zotero 文件夹</html:dd>
+      </html:div>
+    </html:dl>
+    <html:p class="git4zotero-pref-help">是否跟踪某个条目由条目列表右键菜单中的“论文版本”操作控制；右侧面板仅显示状态。</html:p>
+  </groupbox>
+</vbox>
