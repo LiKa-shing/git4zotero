@@ -135,8 +135,13 @@ assert(updateManifestScript.includes("releases/download/${tagName}/${xpiName}"),
 assert(!/git4zotero-\$\{version\}\.xpi/.test(updateManifestScript), "update manifest must not link to a versioned XPI filename");
 assert(inspectXpiScript.includes("path.join(root, \"dist\", \"git4zotero.xpi\")"), "inspect script must default to the fixed XPI filename");
 assert(inspectXpiScript.includes("Install dist/git4zotero.xpi"), "inspect diagnostics must point to the fixed XPI filename");
+assert(ciWorkflow.includes("uses: actions/checkout@v6"), "CI workflow must use actions/checkout@v6");
+assert(ciWorkflow.includes("uses: actions/setup-node@v6"), "CI workflow must use actions/setup-node@v6");
+assert(ciWorkflow.includes("uses: actions/upload-artifact@v6"), "CI workflow must use actions/upload-artifact@v6");
 assert(ciWorkflow.includes("path: dist/git4zotero.xpi"), "CI artifact upload must use the fixed XPI filename");
 assert(!/dist\/git4zotero-\*\.xpi/.test(ciWorkflow), "CI artifact upload must not use versioned XPI globs");
+assert(releaseWorkflow.includes("uses: actions/checkout@v6"), "release workflow must use actions/checkout@v6");
+assert(releaseWorkflow.includes("uses: actions/setup-node@v6"), "release workflow must use actions/setup-node@v6");
 assert(releaseWorkflow.includes("XPI=\"dist/git4zotero.xpi\""), "release workflow must upload the fixed XPI filename");
 assert(!/git4zotero-\$VERSION\.xpi/.test(releaseWorkflow), "release workflow must not expect a versioned XPI filename");
 
