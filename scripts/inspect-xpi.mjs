@@ -3,10 +3,9 @@ import path from "node:path";
 import { inflateRawSync } from "node:zlib";
 
 const root = process.cwd();
-const sourceManifest = JSON.parse(await fs.readFile(path.join(root, "manifest.json"), "utf8"));
 const xpiPath = process.argv[2]
   ? path.resolve(process.argv[2])
-  : path.join(root, "dist", `git4zotero-${sourceManifest.version}.xpi`);
+  : path.join(root, "dist", "git4zotero.xpi");
 
 const xpiBytes = await fs.readFile(xpiPath);
 const entries = listZipEntries(xpiBytes);
@@ -48,7 +47,7 @@ console.log("\nDiagnostics:");
 console.log("- applications.zotero.update_url not provided means Zotero rejected the manifest before startup.");
 console.log("- Invalid XPI / loadManifest usually points to archive structure or manifest metadata.");
 console.log("- startup / loadSubScript / registerChrome usually points to bootstrap runtime loading.");
-console.log("- Install dist/git4zotero-0.1.30.xpi, not older 0.1.0-0.1.29 files.");
+console.log("- Install dist/git4zotero.xpi, not older package files.");
 
 function listZipEntries(zipBytes) {
   const bytes = zipBytes instanceof Uint8Array ? zipBytes : new Uint8Array(zipBytes);

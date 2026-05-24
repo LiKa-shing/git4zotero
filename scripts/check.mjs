@@ -13,6 +13,8 @@ const requiredFiles = [
   ".editorconfig",
   ".gitattributes",
   ".gitignore",
+  ".github/workflows/ci.yml",
+  ".github/workflows/release.yml",
   "CHANGELOG.md",
   "CONTRIBUTING.md",
   "LICENSE",
@@ -41,6 +43,7 @@ const requiredFiles = [
   "chrome/content/src/version-service.mjs",
   "chrome/content/src/ui.mjs",
   "chrome/content/src/vendor/zip-reader.mjs",
+  "scripts/create-update-manifest.mjs",
   "scripts/runtime-builder.mjs",
   "scripts/inspect-xpi.mjs"
 ];
@@ -75,7 +78,6 @@ const manifestText = await fs.readFile(path.join(root, "manifest.json"), "utf8")
 assert.notEqual(manifestText.charCodeAt(0), 0xfeff, "manifest.json must not contain a UTF-8 BOM");
 const manifest = JSON.parse(manifestText);
 assert.equal(manifest.manifest_version, 2);
-assert.equal(manifest.version, "0.1.30");
 assert.equal(manifest.author, "Li Ka-shing");
 assert.equal(manifest.applications.zotero.id, "git4zotero@paper-version.local");
 assert.equal(manifest.applications.zotero.update_url, "https://github.com/LiKa-shing/git4zotero/releases/latest/download/updates.json");
@@ -95,6 +97,7 @@ assert.equal(packageJson.author, "Li Ka-shing");
 assert.equal(packageJson.devDependencies["zotero-types"], "^4.1.2");
 assert(packageJson.devDependencies.typescript);
 assert.equal(packageJson.scripts.typecheck, "tsc --noEmit");
+assert.equal(packageJson.scripts["create:update-manifest"], "node scripts/create-update-manifest.mjs");
 assert.equal(packageJson.scripts["inspect:xpi"], "node scripts/inspect-xpi.mjs");
 assert(packageJson.scripts.verify.includes("tsc --noEmit"));
 assert(packageJson.scripts.verify.includes("scripts/inspect-xpi.mjs"));
@@ -103,8 +106,14 @@ const tsconfig = JSON.parse(await fs.readFile(path.join(root, "tsconfig.json"), 
 assert.equal(tsconfig.extends, "zotero-types/entries/sandbox");
 
 const packageScript = await fs.readFile(path.join(root, "scripts/package.mjs"), "utf8");
+const updateManifestScript = await fs.readFile(path.join(root, "scripts/create-update-manifest.mjs"), "utf8");
+const inspectXpiScript = await fs.readFile(path.join(root, "scripts/inspect-xpi.mjs"), "utf8");
+const ciWorkflow = await fs.readFile(path.join(root, ".github/workflows/ci.yml"), "utf8");
+const releaseWorkflow = await fs.readFile(path.join(root, ".github/workflows/release.yml"), "utf8");
 assert(!packageScript.includes("Compress-Archive"), "package script must not use Windows Compress-Archive packaging");
 assert(packageScript.includes("distDir, \".package\""), "package script must stage package contents under dist/.package");
+assert(packageScript.includes("const packageName = \"git4zotero.xpi\";"), "package script must emit the fixed XPI filename");
+assert(!/git4zotero-\$\{manifest\.version\}\.xpi/.test(packageScript), "package script must not emit versioned XPI filenames");
 assert(packageScript.includes("zipPath = path.join(packageRootDir"), "temporary ZIP must be created under dist/.package");
 assert(packageScript.includes("writeZipFromDirectory"), "package script must write the XPI with the Node ZIP writer");
 assert(packageScript.includes("writeLocalHeader"), "package script must write ZIP local headers in-process");
@@ -115,11 +124,21 @@ assert(!packageScript.includes("normalizeZipName"), "package script must not nor
 assert(packageScript.includes("buildRuntimeScript"), "package script must generate the classic runtime");
 assert(packageScript.includes("writeRuntimeToStaging"), "package script must write the generated runtime into staging");
 assert(packageScript.includes("new Function(runtimeText)"), "package script must syntax-check the generated runtime");
+assert(packageScript.includes("manifest.json version must match package.json version"), "package script must validate manifest/package version consistency");
 assert(packageScript.includes("update_url"), "package script must validate applications.zotero.update_url");
 assert(packageScript.includes("chrome/content/preferences.xhtml"), "package script must include the preferences pane");
 assert(packageScript.includes("runtimeEntry"), "package script must validate the runtime entry");
 assert(packageScript.includes("assertPngEntry"), "package script must validate manifest PNG icons");
 assert(packageScript.includes("assertZip32"), "package script must guard classic ZIP size limits");
+assert(updateManifestScript.includes("const xpiName = \"git4zotero.xpi\";"), "update manifest must use the fixed release asset filename");
+assert(updateManifestScript.includes("releases/download/${tagName}/${xpiName}"), "update manifest must link to the tag-scoped release asset");
+assert(!/git4zotero-\$\{version\}\.xpi/.test(updateManifestScript), "update manifest must not link to a versioned XPI filename");
+assert(inspectXpiScript.includes("path.join(root, \"dist\", \"git4zotero.xpi\")"), "inspect script must default to the fixed XPI filename");
+assert(inspectXpiScript.includes("Install dist/git4zotero.xpi"), "inspect diagnostics must point to the fixed XPI filename");
+assert(ciWorkflow.includes("path: dist/git4zotero.xpi"), "CI artifact upload must use the fixed XPI filename");
+assert(!/dist\/git4zotero-\*\.xpi/.test(ciWorkflow), "CI artifact upload must not use versioned XPI globs");
+assert(releaseWorkflow.includes("XPI=\"dist/git4zotero.xpi\""), "release workflow must upload the fixed XPI filename");
+assert(!/git4zotero-\$VERSION\.xpi/.test(releaseWorkflow), "release workflow must not expect a versioned XPI filename");
 
 const runtimeText = await buildRuntimeScript(root);
 new Function(runtimeText);
@@ -329,7 +348,7 @@ assert(preferencesXhtml.includes("onclick=\"Git4ZoteroPreferences.testGit(event)
 assert(preferencesXhtml.includes("尚未测试 Git。"));
 assert(preferencesXhtml.includes("论文版本管理") || mainModule.includes("preferencePaneLabel"));
 assert(preferencesXhtml.includes("状态与排错"));
-assert(preferencesXhtml.includes("0.1.30"));
+assert(preferencesXhtml.includes(manifest.version));
 assert(!preferencesXhtml.includes("preference=\"extensions.git4zotero.gitPath\""));
 const preferencesScript = await fs.readFile(path.join(root, "chrome/content/preferences.mjs"), "utf8");
 assert(preferencesScript.includes("window.Git4ZoteroPreferences"));

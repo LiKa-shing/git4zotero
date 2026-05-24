@@ -1,0 +1,106 @@
+name: Release plugin
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Mark this GitHub release as a pre-release"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.16.0"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Static checks
+        run: npm run check
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Package XPI
+        run: npm run package
+
+      - name: Inspect XPI
+        run: npm run inspect:xpi
+
+      - name: Prepare release metadata
+        id: meta
+        shell: bash
+        run: |
+          VERSION="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json', 'utf8')).version")"
+          PACKAGE_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+          if [ "$VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "manifest.json version ($VERSION) does not match package.json version ($PACKAGE_VERSION)." >&2
+            exit 1
+          fi
+          TAG="v$VERSION"
+          XPI="dist/git4zotero.xpi"
+          if [ ! -f "$XPI" ]; then
+            echo "Expected package not found: $XPI" >&2
+            exit 1
+          fi
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag already exists: $TAG. Bump manifest.json and package.json before publishing." >&2
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already exists: $TAG. Bump manifest.json and package.json before publishing." >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "xpi=$XPI" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create Zotero update manifest
+        run: node scripts/create-update-manifest.mjs "${{ steps.meta.outputs.xpi }}" dist/updates.json
+
+      - name: Publish pre-release
+        if: ${{ inputs.prerelease }}
+        run: >
+          gh release create "${{ steps.meta.outputs.tag }}"
+          "${{ steps.meta.outputs.xpi }}"
+          "dist/updates.json"
+          --target "${{ github.sha }}"
+          --title "${{ steps.meta.outputs.tag }}"
+          --generate-notes
+          --prerelease
+          --latest=false
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Publish release
+        if: ${{ !inputs.prerelease }}
+        run: >
+          gh release create "${{ steps.meta.outputs.tag }}"
+          "${{ steps.meta.outputs.xpi }}"
+          "dist/updates.json"
+          --target "${{ github.sha }}"
+          --title "${{ steps.meta.outputs.tag }}"
+          --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

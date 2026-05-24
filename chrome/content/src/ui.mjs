@@ -278,7 +278,9 @@ export class PaperVersionPane {
     const source = options.source ?? "direct";
     this.capturePaneContext(renderContext, "async-render");
     const paneID = options.paneID ?? this.getActualPaneID(renderContext);
-    this.rememberCurrentItem(paneID, item);
+    if (this.isConnected(body)) {
+      this.rememberCurrentItem(paneID, item);
+    }
     this.debug(`item pane async render start source=${source}, actualPaneID=${paneID}`);
     this.expandContainingSection(body);
     this.markBody(body);
@@ -344,10 +346,7 @@ export class PaperVersionPane {
       this.cacheState({ paneID, item, state, source });
       if (this.isStale(body, token)) {
         this.debug("item pane async render stale");
-        if (this.isConnected(body)) {
-          this.requestRefresh({ body, item, paneID, reason: "stale-async-state", source });
-        }
-        else {
+        if (!this.requestRefresh({ body, item, paneID, reason: "stale-async-state", source })) {
           this.debug(`item pane refresh deferred for stale detached body actualPaneID=${paneID}, item=${this.itemIdentity(item)}, source=${source}`);
         }
         return;
@@ -356,10 +355,7 @@ export class PaperVersionPane {
       const target = this.resolveWritableTarget({ body, item, setSectionSummary, panel, token, paneID, source });
       if (!target) {
         this.debug(`item pane pending cached state actualPaneID=${paneID}, item=${this.itemIdentity(item)}, source=${source}`);
-        if (this.isConnected(body)) {
-          this.requestRefresh({ body, item, paneID, reason: "detached-async-target", source });
-        }
-        else {
+        if (!this.requestRefresh({ body, item, paneID, reason: "detached-async-target", source })) {
           this.debug(`item pane refresh deferred for detached body actualPaneID=${paneID}, item=${this.itemIdentity(item)}, source=${source}`);
         }
         return;
@@ -414,8 +410,9 @@ export class PaperVersionPane {
 
     if (!state.git?.available) {
       this.setPanelDiagnostics(panel, { status: "git-unavailable", versionCount, renderPhase: "state" });
+      panel.append(this.history(doc, state.versions));
+      this.appendOptional(panel, this.repositoryHealth(doc, state.health));
       panel.append(
-        this.history(doc, state.versions),
         this.status(doc, UI_TEXT.gitUnavailable, "warning", state.git?.detail || UI_TEXT.gitUnavailableDetail),
         this.lastCheck(doc, state.lastCheck),
         this.workflow(doc, state)
@@ -427,8 +424,9 @@ export class PaperVersionPane {
     }
 
     this.setPanelDiagnostics(panel, { status: "ready", versionCount, renderPhase: "state" });
+    panel.append(this.history(doc, state.versions));
+    this.appendOptional(panel, this.repositoryHealth(doc, state.health));
     panel.append(
-      this.history(doc, state.versions),
       this.status(doc, state.git.detail || UI_TEXT.actionCompleted),
       this.lastCheck(doc, state.lastCheck),
       this.workingTree(doc, state.workingTree ?? state.lastCheck?.workingTree ?? null),
@@ -610,6 +608,27 @@ export class PaperVersionPane {
     return section;
   }
 
+  repositoryHealth(doc, health) {
+    if (!health) {
+      return null;
+    }
+
+    const section = this.section(doc, UI_TEXT.repositoryHealth);
+    const tone = health.errorCount > 0
+      ? "warning"
+      : (health.warningCount > 0 ? "warning" : "success");
+    section.append(this.status(doc, health.summary, tone));
+
+    const issues = (health.checks ?? []).filter((check) => check.status !== "ok");
+    for (const issue of issues.slice(0, 4)) {
+      section.append(this.meta(doc, `${issue.label}：${issue.detail}`));
+    }
+    if (issues.length > 4) {
+      section.append(this.meta(doc, `另有 ${issues.length - 4} 个问题未展开。`));
+    }
+    return section;
+  }
+
   history(doc, versions) {
     const section = this.section(doc, UI_TEXT.versionHistory);
     if (!versions.length) {
@@ -660,6 +679,12 @@ export class PaperVersionPane {
 
     item.append(line, node, body);
     return item;
+  }
+
+  appendOptional(parent, child) {
+    if (child) {
+      parent.append(child);
+    }
   }
 
   versionTone(version) {

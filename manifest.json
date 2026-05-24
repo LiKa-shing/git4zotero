@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "git4zotero",
-  "version": "0.1.30",
+  "version": "0.2.0",
   "description": "为 Zotero 论文附件提供基于 Git 的本地版本管理。",
   "author": "Li Ka-shing",
   "homepage_url": "https://github.com/LiKa-shing/git4zotero",

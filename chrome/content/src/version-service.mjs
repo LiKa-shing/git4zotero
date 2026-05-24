@@ -1,7 +1,12 @@
 import { PREFS, UI_TEXT } from "./constants.mjs";
-import { buildTrackedFileName } from "./attachments.mjs";
+import { buildTrackedFileName, sanitizeForPath } from "./attachments.mjs";
 import { ContentAnalyzer } from "./content-diff.mjs";
-import { createVersionRecord, normalizeVersionNote, sortNewestFirst } from "./metadata.mjs";
+import {
+  createVersionRecord,
+  METADATA_SCHEMA_VERSION,
+  normalizeVersionNote,
+  sortNewestFirst
+} from "./metadata.mjs";
 
 export class VersionService {
   constructor({
@@ -52,12 +57,28 @@ export class VersionService {
         enabled: true,
         versions: this.mergeHistoryWithMetadata([], metadata, attachment),
         lastCheck: metadata.lastCheck ?? null,
-        workingTree: null
+        workingTree: null,
+        health: await this.buildRepositoryHealth({
+          attachment,
+          repoPath,
+          metadata,
+          git,
+          versions: this.mergeHistoryWithMetadata([], metadata, attachment),
+          workingTree: null
+        })
       };
     }
 
     const versions = await this.loadVersionHistory(repoPath, metadata, attachment);
     const workingTree = await this.gitBackend.getWorkingTreeStatus(repoPath);
+    const health = await this.buildRepositoryHealth({
+      attachment,
+      repoPath,
+      metadata,
+      git,
+      versions,
+      workingTree
+    });
     return {
       git,
       attachment,
@@ -65,7 +86,8 @@ export class VersionService {
       enabled: true,
       versions,
       lastCheck: metadata.lastCheck ?? null,
-      workingTree
+      workingTree,
+      health
     };
   }
 
@@ -205,6 +227,8 @@ export class VersionService {
       shortHash: versionRecord.shortHash ?? String(versionRecord.commitHash ?? "").slice(0, 8),
       trackedRelativePath
     };
+    await this.validateAttachmentBeforeRestore(attachment);
+    await this.requireGitAvailable();
     const safetyEnabled = this.platform.getPref(PREFS.autoSafetyVersion, true);
     let safetyVersion = null;
 
@@ -228,7 +252,12 @@ export class VersionService {
     }
 
     const sourcePath = this.pathFromRelative(repoPath, targetVersion.trackedRelativePath);
-    await this.platform.copyFile(sourcePath, attachment.filePath);
+    const restoreResult = await this.restoreFileWithRollback({
+      attachment,
+      repoPath,
+      sourcePath,
+      targetVersion
+    });
 
     const metadata = await this.metadataStore.read(repoPath);
     const workingTree = await this.gitBackend.getWorkingTreeStatus(repoPath);
@@ -241,7 +270,9 @@ export class VersionService {
       lastRestored: {
         commitHash: targetVersion.commitHash,
         restoredAt: new Date().toISOString(),
-        attachmentPath: attachment.filePath
+        attachmentPath: attachment.filePath,
+        restoredFileHash: restoreResult.restoredFileHash,
+        backupPath: restoreResult.backupPath
       }
     });
 
@@ -249,8 +280,22 @@ export class VersionService {
       attachment,
       restoredVersion: targetVersion,
       safetyVersion,
-      workingTree
+      workingTree,
+      backupPath: restoreResult.backupPath,
+      restoredFileHash: restoreResult.restoredFileHash
     };
+  }
+
+  async checkRepositoryHealth(item) {
+    const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
+    const git = await this.gitBackend.checkAvailability();
+    let versions = this.mergeHistoryWithMetadata([], metadata, attachment);
+    let workingTree = null;
+    if (git.available) {
+      versions = await this.loadVersionHistory(repoPath, metadata, attachment);
+      workingTree = await this.gitBackend.getWorkingTreeStatus(repoPath);
+    }
+    return this.buildRepositoryHealth({ attachment, repoPath, metadata, git, versions, workingTree });
   }
 
   async setVersionManagementEnabled(item, enabled) {
@@ -321,6 +366,203 @@ export class VersionService {
     return { trackedRelativePath, trackedFileName };
   }
 
+  async validateAttachmentBeforeRestore(attachment) {
+    if (!(await this.safeExists(attachment.filePath))) {
+      throw new Error(UI_TEXT.restorePreflightMissing);
+    }
+
+    try {
+      await this.platform.hashFile(attachment.filePath);
+      await this.platform.stat(attachment.filePath);
+    }
+    catch (error) {
+      throw new Error(`${UI_TEXT.restorePreflightUnreadable} ${error.message || String(error)}`);
+    }
+
+    const probePath = `${attachment.filePath}.git4zotero-write-test-${Date.now()}.tmp`;
+    try {
+      await this.platform.writeText(probePath, "git4zotero restore preflight");
+    }
+    catch (error) {
+      throw new Error(`${UI_TEXT.restorePreflightUnwritable} ${error.message || String(error)}`);
+    }
+    finally {
+      await this.removeFileQuietly(probePath);
+    }
+  }
+
+  async restoreFileWithRollback({ attachment, repoPath, sourcePath, targetVersion }) {
+    if (!(await this.safeExists(sourcePath))) {
+      throw new Error(`无法恢复所选版本：历史版本文件不存在：${sourcePath}`);
+    }
+
+    const sourceHash = await this.platform.hashFile(sourcePath);
+    const stamp = `${Date.now()}-${sanitizeForPath(targetVersion.shortHash || "version")}`;
+    const safeFileName = sanitizeForPath(attachment.fileName);
+    const restoreDir = this.joinPath(repoPath, ".git4zotero", "restore-backups");
+    const backupPath = this.joinPath(restoreDir, `${stamp}-current-${safeFileName}`);
+    const stagedPath = this.joinPath(restoreDir, `${stamp}-restore-${safeFileName}`);
+
+    await this.platform.copyFile(attachment.filePath, backupPath);
+    await this.platform.copyFile(sourcePath, stagedPath);
+
+    try {
+      const stagedHash = await this.platform.hashFile(stagedPath);
+      if (stagedHash !== sourceHash) {
+        throw new Error("历史版本暂存校验失败，已取消恢复。");
+      }
+      await this.platform.copyFile(stagedPath, attachment.filePath);
+      const restoredHash = await this.platform.hashFile(attachment.filePath);
+      if (restoredHash !== sourceHash) {
+        await this.rollbackRestoredFile(backupPath, attachment.filePath);
+        throw new Error(UI_TEXT.restoreHashMismatch);
+      }
+      return {
+        backupPath,
+        restoredFileHash: restoredHash
+      };
+    }
+    catch (error) {
+      await this.rollbackRestoredFile(backupPath, attachment.filePath);
+      throw new Error(`${UI_TEXT.restoreFailedWithBackup} 备份路径：${backupPath}。${error.message || String(error)}`);
+    }
+    finally {
+      await this.removeFileQuietly(stagedPath);
+    }
+  }
+
+  async rollbackRestoredFile(backupPath, targetPath) {
+    try {
+      if (await this.safeExists(backupPath)) {
+        await this.platform.copyFile(backupPath, targetPath);
+      }
+    }
+    catch (error) {
+      this.platform.Zotero?.debug?.(`git4zotero: restore rollback failed: ${error?.stack || error}`);
+    }
+  }
+
+  async removeFileQuietly(path) {
+    try {
+      if (typeof this.platform.removeFile === "function") {
+        await this.platform.removeFile(path);
+      }
+    }
+    catch (error) {
+      this.platform.Zotero?.debug?.(`git4zotero: temporary file cleanup failed: ${error?.stack || error}`);
+    }
+  }
+
+  async buildRepositoryHealth({ attachment, repoPath, metadata, git, versions, workingTree }) {
+    const checks = [];
+    const add = (id, label, status, detail = "") => {
+      checks.push({ id, label, status, detail });
+    };
+
+    add(
+      "attachment",
+      "当前附件",
+      await this.safeExists(attachment.filePath) ? "ok" : "error",
+      await this.safeExists(attachment.filePath) ? attachment.fileName : "当前论文文件不存在。"
+    );
+
+    const metadataVersions = Array.isArray(metadata.versions) ? metadata.versions : [];
+    add(
+      "metadata",
+      "版本元数据",
+      Array.isArray(metadata.versions) ? "ok" : "error",
+      Array.isArray(metadata.versions)
+        ? `schema ${metadata.schemaVersion ?? "unknown"}，${metadataVersions.length} 条记录。`
+        : "versions.json 中的 versions 不是数组。"
+    );
+
+    if ((metadata.schemaVersion ?? 1) !== METADATA_SCHEMA_VERSION) {
+      add(
+        "metadata-schema",
+        "元数据版本",
+        "warning",
+        `当前 schema ${metadata.schemaVersion ?? "unknown"}，写入后会升级为 ${METADATA_SCHEMA_VERSION}。`
+      );
+    }
+
+    add(
+      "git",
+      "Git",
+      git?.available ? "ok" : "error",
+      git?.detail || git?.error || UI_TEXT.gitUnavailableDetail
+    );
+
+    const gitDirExists = await this.safeExists(this.joinPath(repoPath, ".git"));
+    add(
+      "git-repo",
+      "Git 仓库",
+      gitDirExists ? "ok" : (metadataVersions.length ? "error" : "warning"),
+      gitDirExists ? "已初始化。" : "尚未找到 .git 目录。"
+    );
+
+    const invalidTrackedVersions = metadataVersions.filter((version) => {
+      return version.trackedRelativePath && !this.normalizeTrackedRelativePath(version.trackedRelativePath);
+    });
+    if (invalidTrackedVersions.length) {
+      add(
+        "tracked-paths",
+        "历史文件路径",
+        "error",
+        `${invalidTrackedVersions.length} 条版本缺少可恢复的 tracked 文件路径。`
+      );
+    }
+
+    const trackedRelativePath = this.normalizeTrackedRelativePath(metadata.trackedFile?.trackedRelativePath)
+      || this.fallbackTrackedRelativePath(metadata, attachment);
+    const trackedPath = this.pathFromRelative(repoPath, trackedRelativePath);
+    const trackedExists = await this.safeExists(trackedPath);
+    add(
+      "tracked-file",
+      "当前 tracked 文件",
+      trackedExists || !metadataVersions.length ? "ok" : "warning",
+      trackedExists ? trackedRelativePath : "当前工作树中未找到 tracked 文件；历史版本仍可能可从 Git 恢复。"
+    );
+
+    if (workingTree) {
+      add(
+        "working-tree",
+        "Git 工作树",
+        workingTree.clean ? "ok" : "warning",
+        workingTree.summary || UI_TEXT.workingTreeClean
+      );
+    }
+
+    if ((versions?.length ?? 0) < metadataVersions.length) {
+      add(
+        "history",
+        "版本历史",
+        "warning",
+        `面板可读版本 ${versions?.length ?? 0} 条，元数据记录 ${metadataVersions.length} 条。`
+      );
+    }
+
+    const errorCount = checks.filter((check) => check.status === "error").length;
+    const warningCount = checks.filter((check) => check.status === "warning").length;
+    return {
+      ok: errorCount === 0,
+      errorCount,
+      warningCount,
+      checks,
+      summary: errorCount
+        ? UI_TEXT.repositoryHealthError
+        : (warningCount ? UI_TEXT.repositoryHealthWarning : UI_TEXT.repositoryHealthOk)
+    };
+  }
+
+  async safeExists(path) {
+    try {
+      return !!(path && await this.platform.exists(path));
+    }
+    catch (_error) {
+      return false;
+    }
+  }
+
   createItemMetadata(attachment) {
     return {
       libraryID: attachment.libraryID,
@@ -353,7 +595,14 @@ export class VersionService {
   }
 
   pathFromRelative(basePath, relativePath) {
-    return this.platform.join(basePath, ...relativePath.split("/"));
+    return this.joinPath(basePath, ...relativePath.split("/"));
+  }
+
+  joinPath(basePath, ...parts) {
+    if (typeof this.platform.join === "function") {
+      return this.platform.join(basePath, ...parts);
+    }
+    return [basePath, ...parts].join("/");
   }
 
   mergeHistoryWithMetadata(history, metadata, attachment) {

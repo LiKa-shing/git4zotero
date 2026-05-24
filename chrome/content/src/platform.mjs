@@ -347,6 +347,12 @@ export class ZoteroPlatform {
     await this.requireIOUtils().copy(sourcePath, targetPath);
   }
 
+  async removeFile(path) {
+    if (await this.exists(path)) {
+      await this.requireIOUtils().remove(path);
+    }
+  }
+
   async stat(path) {
     return this.requireIOUtils().stat(path);
   }

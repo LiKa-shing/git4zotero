@@ -12,6 +12,7 @@ const root = process.cwd();
 const distDir = path.join(root, "dist");
 const packageRootDir = path.join(distDir, ".package");
 const manifestPath = path.join(root, "manifest.json");
+const packageJsonPath = path.join(root, "package.json");
 const manifestText = await fs.readFile(manifestPath, "utf8");
 
 if (manifestText.charCodeAt(0) === 0xfeff) {
@@ -19,7 +20,8 @@ if (manifestText.charCodeAt(0) === 0xfeff) {
 }
 
 const manifest = JSON.parse(manifestText);
-const packageName = `git4zotero-${manifest.version}.xpi`;
+const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+const packageName = "git4zotero.xpi";
 const packageStamp = Date.now();
 const outputPath = path.join(distDir, packageName);
 const zipPath = path.join(packageRootDir, `git4zotero-${manifest.version}-${packageStamp}.zip`);
@@ -35,7 +37,7 @@ const packageRoots = [
 let crcTable = null;
 
 assert.equal(manifest.manifest_version, 2);
-assert.equal(manifest.version, "0.1.30");
+assert.equal(manifest.version, packageJson.version, "manifest.json version must match package.json version.");
 assert.equal(manifest.author, "Li Ka-shing");
 assert.equal(manifest.applications.zotero.id, "git4zotero@paper-version.local");
 assert.equal(manifest.applications.zotero.update_url, "https://github.com/LiKa-shing/git4zotero/releases/latest/download/updates.json");
@@ -113,7 +115,7 @@ if (packagedManifestText.charCodeAt(0) === 0xfeff) {
 
 const packagedManifest = JSON.parse(packagedManifestText);
 assert.deepEqual(packagedManifest, manifest, "XPI manifest.json must match source manifest.json.");
-assert.equal(packagedManifest.version, "0.1.30");
+assert.equal(packagedManifest.version, packageJson.version, "packaged manifest.json version must match package.json version.");
 assert.equal(packagedManifest.author, "Li Ka-shing");
 assert.equal(packagedManifest.applications.zotero.update_url, "https://github.com/LiKa-shing/git4zotero/releases/latest/download/updates.json");
 assert.match(packagedManifest.applications.zotero.update_url, /^https:\/\//);

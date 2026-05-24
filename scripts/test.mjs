@@ -655,7 +655,7 @@ const older = createVersionRecord({
   itemKey: "ITEM",
   attachmentID: 3,
   attachmentKey: "ATT",
-  pluginVersion: "0.1.30"
+  pluginVersion: "0.2.0"
 });
 const newer = {
   ...older,
@@ -764,7 +764,7 @@ const disabledService = new VersionService({
       throw new Error("panel state must not write metadata");
     }
   },
-  pluginVersion: "0.1.30",
+  pluginVersion: "0.2.0",
   contentAnalyzer: {
     analyze: async () => {
       throw new Error("disabled item must not analyze content");
@@ -821,7 +821,7 @@ const fullHistoryService = new VersionService({
       throw new Error("history reads must not write metadata");
     }
   },
-  pluginVersion: "0.1.30"
+  pluginVersion: "0.2.0"
 });
 const versionHistory = await fullHistoryService.getVersionHistory({});
 assert.equal(versionHistory.length, 4);
@@ -829,6 +829,59 @@ assert(versionHistory.some((version) => version.source === "git" && version.trac
 assert(versionHistory.some((version) => version.id === "metadata-only"));
 const fullPanelState = await fullHistoryService.getPanelState({});
 assert.equal(fullPanelState.versions.length, 4);
+
+const healthyService = new VersionService({
+  platform: {
+    getRepoPath: () => "repo",
+    join: (...parts) => parts.join("/"),
+    exists: async (target) => [
+      "paper.docx",
+      "repo/.git",
+      "repo/tracked/document.docx"
+    ].includes(target)
+  },
+  attachmentFinder: {
+    findManageableAttachment: async () => managedAttachment
+  },
+  gitBackend: {
+    checkAvailability: async () => ({ available: true, detail: "git version 2.44.0" }),
+    listHistory: async () => [{
+      hash: older.commitHash,
+      shortHash: older.shortHash,
+      createdAt: older.createdAt,
+      subject: "git4zotero: older",
+      trackedRelativePath: older.trackedRelativePath
+    }],
+    getWorkingTreeStatus: async () => ({ clean: true, entries: [], summary: UI_TEXT.workingTreeClean })
+  },
+  metadataStore: {
+    read: async () => ({
+      ...createEmptyMetadata(),
+      enabled: true,
+      trackedFile: { trackedRelativePath: "tracked/document.docx" },
+      versions: [older]
+    })
+  }
+});
+const healthy = await healthyService.checkRepositoryHealth({});
+assert.equal(healthy.errorCount, 0);
+assert.equal(healthy.checks.find((check) => check.id === "tracked-file").status, "ok");
+
+const brokenHealth = await healthyService.buildRepositoryHealth({
+  attachment: managedAttachment,
+  repoPath: "repo",
+  metadata: {
+    ...createEmptyMetadata(),
+    schemaVersion: 1,
+    enabled: true,
+    versions: [{ ...older, trackedRelativePath: "../escape" }]
+  },
+  git: { available: false, detail: "git missing" },
+  versions: [],
+  workingTree: null
+});
+assert(brokenHealth.errorCount >= 2);
+assert(brokenHealth.checks.some((check) => check.id === "tracked-paths" && check.status === "error"));
 
 const disabledPaneText = await renderPaneText({
   attachment: managedAttachment,
@@ -883,11 +936,26 @@ const gitAvailablePaneText = await renderPaneText({
     workingTree: { clean: false, entries: [" M tracked/document.docx"], summary: " M tracked/document.docx" }
   },
   workingTree: { clean: false, entries: [" M tracked/document.docx"], summary: " M tracked/document.docx" },
+  health: {
+    errorCount: 0,
+    warningCount: 1,
+    summary: UI_TEXT.repositoryHealthWarning,
+    checks: [
+      {
+        id: "tracked-file",
+        label: "当前 tracked 文件",
+        status: "warning",
+        detail: "当前工作树中未找到 tracked 文件。"
+      }
+    ]
+  },
   versions: []
 });
 assert(gitAvailablePaneText.includes("最近检查"));
 assert(gitAvailablePaneText.includes("正文内容已修改"));
 assert(gitAvailablePaneText.includes("Git 工作树"));
+assert(gitAvailablePaneText.includes("仓库健康"));
+assert(gitAvailablePaneText.includes("当前 tracked 文件"));
 assert(gitAvailablePaneText.includes("M tracked/document.docx"));
 assert(gitAvailablePaneText.includes("版本历史"));
 assert(gitAvailablePaneText.includes("尚未创建版本"));
@@ -1468,7 +1536,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
-    pluginVersion: "0.1.30",
+    pluginVersion: "0.2.0",
     contentAnalyzer: {
       analyze: async () => ({
         fileHash: "new-file",
@@ -1510,7 +1578,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       read: async () => ({ ...createEmptyMetadata(), enabled: true, versions: [] }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
-    pluginVersion: "0.1.30",
+    pluginVersion: "0.2.0",
     contentAnalyzer: {
       analyze: async () => ({
         fileHash: "new-file",
@@ -1533,11 +1601,29 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   const writes = [];
   const copyCalls = [];
   const checkoutCalls = [];
+  const files = new Map([
+    ["paper.docx", new TextEncoder().encode("current manuscript")],
+    ["repo/.git", new Uint8Array()],
+    ["repo/tracked/document.docx", new TextEncoder().encode("old tracked")]
+  ]);
+  const hashBytes = (bytes) => createHash("sha256").update(bytes).digest("hex");
   const restoreService = new VersionService({
     platform: {
+      Zotero: { debug() {} },
       getRepoPath: () => "repo",
-      exists: async () => true,
-      copyFile: async (source, target) => copyCalls.push([source, target]),
+      exists: async (target) => files.has(target),
+      stat: async (target) => ({ size: files.get(target).byteLength }),
+      hashFile: async (target) => hashBytes(files.get(target)),
+      writeText: async (target, content) => {
+        files.set(target, new TextEncoder().encode(content));
+      },
+      removeFile: async (target) => {
+        files.delete(target);
+      },
+      copyFile: async (source, target) => {
+        copyCalls.push([source, target]);
+        files.set(target, files.get(source));
+      },
       join: (...parts) => parts.join("/"),
       getPref: (key, fallback) => key === PREFS.autoSafetyVersion ? true : fallback
     },
@@ -1551,7 +1637,10 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
         assert.equal(payload.kind, "safety");
         return { hash: "feedface12345678" };
       },
-      checkoutTrackedFile: async (...args) => checkoutCalls.push(args),
+      checkoutTrackedFile: async (...args) => {
+        checkoutCalls.push(args);
+        files.set("repo/tracked/document.docx", new TextEncoder().encode("restored manuscript"));
+      },
       getWorkingTreeStatus: async () => ({ clean: true, entries: [], summary: "工作树无未提交修改。" })
     },
     metadataStore: {
@@ -1563,7 +1652,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
-    pluginVersion: "0.1.30",
+    pluginVersion: "0.2.0",
     contentAnalyzer: {
       analyze: async () => ({
         fileHash: "safety-file",
@@ -1580,9 +1669,72 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(result.restoredVersion.id, older.id);
   assert.equal(result.safetyVersion.kind, "safety");
   assert.deepEqual(checkoutCalls[0], ["repo", older.commitHash, older.trackedRelativePath]);
-  assert.deepEqual(copyCalls.at(-1), ["repo/tracked/document.docx", "paper.docx"]);
+  assert.equal(new TextDecoder().decode(files.get("paper.docx")), "restored manuscript");
+  assert(result.backupPath.includes("repo/.git4zotero/restore-backups"));
+  assert.deepEqual(copyCalls.at(-1)[1], "paper.docx");
   assert.equal(writes.at(-1).lastRestored.commitHash, older.commitHash);
+  assert.equal(writes.at(-1).lastRestored.backupPath, result.backupPath);
   assert.equal(writes.at(-1).lastCheck.workingTree.clean, true);
+}
+
+{
+  const writes = [];
+  const files = new Map([
+    ["paper.docx", new TextEncoder().encode("current manuscript")],
+    ["repo/.git", new Uint8Array()],
+    ["repo/tracked/document.docx", new TextEncoder().encode("old tracked")]
+  ]);
+  const hashBytes = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  const restoreService = new VersionService({
+    platform: {
+      Zotero: { debug() {} },
+      getRepoPath: () => "repo",
+      exists: async (target) => files.has(target),
+      stat: async (target) => ({ size: files.get(target).byteLength }),
+      hashFile: async (target) => hashBytes(files.get(target)),
+      writeText: async (target, content) => {
+        files.set(target, new TextEncoder().encode(content));
+      },
+      removeFile: async (target) => {
+        files.delete(target);
+      },
+      copyFile: async (source, target) => {
+        if (target === "paper.docx" && source.includes("-restore-")) {
+          files.delete(target);
+          throw new Error("target locked");
+        }
+        files.set(target, files.get(source));
+      },
+      join: (...parts) => parts.join("/"),
+      getPref: (key, fallback) => key === PREFS.autoSafetyVersion ? false : fallback
+    },
+    attachmentFinder: {
+      findManageableAttachment: async () => managedAttachment
+    },
+    gitBackend: {
+      checkAvailability: async () => ({ available: true, detail: "git version 2.44.0" }),
+      checkoutTrackedFile: async () => {
+        files.set("repo/tracked/document.docx", new TextEncoder().encode("restored manuscript"));
+      },
+      getWorkingTreeStatus: async () => ({ clean: true, entries: [], summary: "工作树无未提交修改。" })
+    },
+    metadataStore: {
+      read: async () => ({
+        ...createEmptyMetadata(),
+        enabled: true,
+        versions: [older]
+      }),
+      write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
+    },
+    pluginVersion: "0.2.0"
+  });
+
+  await assert.rejects(
+    () => restoreService.restoreVersion({}, older),
+    /恢复失败，当前文件已保留备份/
+  );
+  assert.equal(new TextDecoder().decode(files.get("paper.docx")), "current manuscript");
+  assert.equal(writes.length, 0);
 }
 
 {

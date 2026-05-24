@@ -1,6 +1,6 @@
 {
   "name": "git4zotero",
-  "version": "0.1.30",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "author": "Li Ka-shing",
@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/test.mjs",
     "package": "node scripts/package.mjs",
+    "create:update-manifest": "node scripts/create-update-manifest.mjs",
     "inspect:xpi": "node scripts/inspect-xpi.mjs",
     "verify": "node scripts/check.mjs && tsc --noEmit && node scripts/test.mjs && node scripts/package.mjs && node scripts/inspect-xpi.mjs"
   },

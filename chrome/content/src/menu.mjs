@@ -275,8 +275,11 @@ export class PaperVersionMenu {
 
   createFallbackItem(doc, definition, state = {}) {
     const item = this.createXULElement(doc, "menuitem");
+    const label = state.disabled && state.reason
+      ? `${definition.label} - ${state.reason}`
+      : definition.label;
     item.id = `${definition.id}-fallback`;
-    item.setAttribute("label", definition.label);
+    item.setAttribute("label", label);
     item.setAttribute("data-git4zotero-fallback", "true");
     if (state.disabled) {
       item.disabled = true;
@@ -653,9 +656,12 @@ export class PaperVersionMenu {
     const safetyStatus = result?.safetyVersion
       ? `恢复前已自动备份：${result.safetyVersion.shortHash}`
       : "恢复前自动备份：未创建（设置未启用）";
+    const fileBackupStatus = result?.backupPath
+      ? `\n${UI_TEXT.restoreSafetyBackup}：${result.backupPath}`
+      : "";
     this.platform.alert(
       UI_TEXT.restoreConfirmTitle,
-      `${UI_TEXT.restoreSuccess}\n目标版本：${targetVersion.shortHash}\n文件：${result?.attachment?.fileName ?? targetVersion.fileName}\n${safetyStatus}`
+      `${UI_TEXT.restoreSuccess}\n目标版本：${targetVersion.shortHash}\n文件：${result?.attachment?.fileName ?? targetVersion.fileName}\n${safetyStatus}${fileBackupStatus}`
     );
     this.refresh();
   }
