@@ -1,5 +1,5 @@
 import { PREFS, UI_TEXT } from "./constants.mjs";
-import { buildRepoRelativePath } from "./attachments.mjs";
+import { buildRepoRelativePath, getExtension } from "./attachments.mjs";
 
 const GIT_COMMAND = "git";
 const WINDOWS_GIT_CANDIDATES = [
@@ -277,6 +277,63 @@ export class ZoteroPlatform {
       );
     }
     return accepted ? selected.value : -1;
+  }
+
+  async saveTextFile({ title = "保存文件", defaultFileName = "git4zotero-export.txt", content = "" } = {}) {
+    const fallbackPath = this.join(this.getPluginDataDirectory(), "exports", defaultFileName);
+    try {
+      const targetPath = await this.pickSavePath(title, defaultFileName);
+      if (!targetPath) {
+        return null;
+      }
+      await this.writeText(targetPath, content);
+      return targetPath;
+    }
+    catch (error) {
+      this.Zotero.debug?.(`git4zotero: save dialog unavailable, using fallback export path: ${error?.stack || error}`);
+      await this.writeText(fallbackPath, content);
+      return fallbackPath;
+    }
+  }
+
+  async pickSavePath(title, defaultFileName) {
+    const filePickerInterface = this.Ci?.nsIFilePicker;
+    const picker = this.Cc?.["@mozilla.org/filepicker;1"]?.createInstance?.(filePickerInterface);
+    if (!picker || !filePickerInterface) {
+      throw new Error("当前环境无法打开保存对话框。");
+    }
+    picker.init(null, title, filePickerInterface.modeSave);
+    picker.defaultString = defaultFileName;
+    const extension = getExtension(defaultFileName);
+    if (extension === ".md") {
+      picker.appendFilter?.("Markdown", "*.md");
+    }
+    else if (extension === ".txt") {
+      picker.appendFilter?.("Text", "*.txt");
+    }
+    picker.appendFilters?.(filePickerInterface.filterAll);
+
+    const result = await this.showFilePicker(picker);
+    if (result === filePickerInterface.returnCancel) {
+      return null;
+    }
+    const path = picker.file?.path || "";
+    if (!path) {
+      throw new Error("保存对话框未返回文件路径。");
+    }
+    return path;
+  }
+
+  showFilePicker(picker) {
+    if (typeof picker.open === "function") {
+      return new Promise((resolve) => {
+        picker.open(resolve);
+      });
+    }
+    if (typeof picker.show === "function") {
+      return picker.show();
+    }
+    throw new Error("当前环境不支持文件保存对话框。");
   }
 
   refreshItemPane() {

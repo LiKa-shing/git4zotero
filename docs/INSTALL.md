@@ -19,7 +19,7 @@
 
 ### Git for Windows
 
-安装 [Git for Windows](https://git-scm.com/downloads)，然后重新打开 PowerShell，确认 Git 可用：
+安装 [Git for Windows](https://git-scm.com/downloads)，然后重新打开 PowerShell，确认 Git 可用。普通用户第一次安装 Git，可参考 [Git 安装指南（Windows 小白版）](GIT-INSTALL-zh.md)：
 
 ```powershell
 git --version
@@ -251,7 +251,6 @@ nvm use 24.16.0 64
 
 - 确认 Node 和 npm 可用。
 - 确认当前目录是项目根目录。
-- 删除依赖前先阅读 [CONTRIBUTING.md](../CONTRIBUTING.md) 的 Windows 文件安全规则；不要批量删除目录。
 - 如果是网络问题，先确认代理或网络环境，再重试。
 
 ### Zotero 插件内提示 `Git 不可用`

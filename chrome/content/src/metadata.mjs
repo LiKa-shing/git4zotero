@@ -1,4 +1,4 @@
-export const METADATA_SCHEMA_VERSION = 3;
+export const METADATA_SCHEMA_VERSION = 4;
 
 export function normalizeVersionNote(note, fallback = "论文版本") {
   const normalized = String(note ?? "").trim();

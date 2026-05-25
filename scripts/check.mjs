@@ -44,6 +44,7 @@ const requiredFiles = [
   "chrome/content/src/ui.mjs",
   "chrome/content/src/vendor/zip-reader.mjs",
   "scripts/create-update-manifest.mjs",
+  "scripts/create-release-notes.mjs",
   "scripts/runtime-builder.mjs",
   "scripts/inspect-xpi.mjs"
 ];
@@ -60,7 +61,8 @@ const requiredChineseText = [
   "正文内容已修改",
   "工作流",
   "具体修改",
-  ".doc 仅支持文件级识别",
+  ".doc 仅支持文件级跟踪",
+  "导出版本摘要",
   "启用版本管理",
   "停用版本管理",
   "Git 可执行文件路径",
@@ -107,6 +109,7 @@ assert.equal(tsconfig.extends, "zotero-types/entries/sandbox");
 
 const packageScript = await fs.readFile(path.join(root, "scripts/package.mjs"), "utf8");
 const updateManifestScript = await fs.readFile(path.join(root, "scripts/create-update-manifest.mjs"), "utf8");
+const releaseNotesScript = await fs.readFile(path.join(root, "scripts/create-release-notes.mjs"), "utf8");
 const inspectXpiScript = await fs.readFile(path.join(root, "scripts/inspect-xpi.mjs"), "utf8");
 const ciWorkflow = await fs.readFile(path.join(root, ".github/workflows/ci.yml"), "utf8");
 const releaseWorkflow = await fs.readFile(path.join(root, ".github/workflows/release.yml"), "utf8");
@@ -133,6 +136,11 @@ assert(packageScript.includes("assertZip32"), "package script must guard classic
 assert(updateManifestScript.includes("const xpiName = \"git4zotero.xpi\";"), "update manifest must use the fixed release asset filename");
 assert(updateManifestScript.includes("releases/download/${tagName}/${xpiName}"), "update manifest must link to the tag-scoped release asset");
 assert(!/git4zotero-\$\{version\}\.xpi/.test(updateManifestScript), "update manifest must not link to a versioned XPI filename");
+assert(releaseNotesScript.includes("CHANGELOG.md"), "release notes script must read CHANGELOG.md");
+assert(releaseNotesScript.includes("manifest.json"), "release notes script must read manifest.json");
+assert(releaseNotesScript.includes("dist\", \"release-notes.md"), "release notes script must default to dist/release-notes.md");
+assert(releaseNotesScript.includes("\"### 中文\""), "release notes script must require the Chinese changelog subsection");
+assert(releaseNotesScript.includes("\"### English\""), "release notes script must require the English changelog subsection");
 assert(inspectXpiScript.includes("path.join(root, \"dist\", \"git4zotero.xpi\")"), "inspect script must default to the fixed XPI filename");
 assert(inspectXpiScript.includes("Install dist/git4zotero.xpi"), "inspect diagnostics must point to the fixed XPI filename");
 assert(ciWorkflow.includes("uses: actions/checkout@v6"), "CI workflow must use actions/checkout@v6");
@@ -144,6 +152,9 @@ assert(releaseWorkflow.includes("uses: actions/checkout@v6"), "release workflow 
 assert(releaseWorkflow.includes("uses: actions/setup-node@v6"), "release workflow must use actions/setup-node@v6");
 assert(releaseWorkflow.includes("XPI=\"dist/git4zotero.xpi\""), "release workflow must upload the fixed XPI filename");
 assert(!/git4zotero-\$VERSION\.xpi/.test(releaseWorkflow), "release workflow must not expect a versioned XPI filename");
+assert(releaseWorkflow.includes("node scripts/create-release-notes.mjs dist/release-notes.md"), "release workflow must generate release notes from CHANGELOG.md");
+assert(releaseWorkflow.includes("--notes-file \"dist/release-notes.md\""), "release workflow must publish CHANGELOG-based release notes");
+assert(!releaseWorkflow.includes("--generate-notes"), "release workflow must not rely on generic generated notes");
 
 const runtimeText = await buildRuntimeScript(root);
 new Function(runtimeText);
@@ -204,6 +215,7 @@ assert(mainModule.includes("orderable: false"));
 assert(mainModule.includes("onInit: (renderContext)"));
 assert(mainModule.includes("this.pane.init(this.withPaneID(renderContext))"));
 assert(mainModule.includes("onItemChange: (renderContext)"));
+assert(mainModule.includes("this.pane.handleItemChange(this.withPaneID(renderContext))"));
 assert(mainModule.includes("withPaneID(renderContext)"));
 assert(mainModule.includes("this.pane.setActualPaneID"));
 assert(mainModule.includes("onRender: (renderContext)"));
@@ -229,6 +241,9 @@ assert(uiModule.includes("item pane cached state rendered in shell"));
 assert(uiModule.includes("item pane fallback section target created"));
 assert(uiModule.includes("setActualPaneID"));
 assert(uiModule.includes("capturePaneContext"));
+assert(uiModule.includes("handleItemChange"));
+assert(uiModule.includes("manualRefresh"));
+assert(uiModule.includes("git4zotero-refresh-button"));
 assert(uiModule.includes("requestRefresh"));
 assert(uiModule.includes("resolveWritableTarget"));
 assert(uiModule.includes("item pane live body rebound"));
@@ -272,7 +287,9 @@ assert(uiModule.includes("item pane state rendered status="));
 assert(!uiModule.includes("versions.slice(0, 5)"), "history pane must not cap visible versions at five");
 assert(uiModule.includes("changeList(doc, changeSummary"));
 assert(uiModule.includes("paragraphChanges"));
-assert(!uiModule.includes("this.button("), "item pane must be read-only; write actions live in the context menu");
+assert(!uiModule.includes("this.service.createVersion"), "item pane must not create versions; write actions live in the context menu");
+assert(!uiModule.includes("this.service.restoreVersion"), "item pane must not restore versions; write actions live in the context menu");
+assert(!uiModule.includes("this.service.disableVersionManagement"), "item pane must not disable version management; write actions live in the context menu");
 
 const zipReaderModule = await fs.readFile(path.join(root, "chrome/content/src/vendor/zip-reader.mjs"), "utf8");
 assert(zipReaderModule.includes("export function inflateRaw"));
@@ -374,6 +391,7 @@ for (const id of [
   "git4zotero-menu-check",
   "git4zotero-menu-create",
   "git4zotero-menu-restore",
+  "git4zotero-menu-export",
   "git4zotero-menu-configure-git",
   "git4zotero-menu-disable"
 ]) {

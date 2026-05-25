@@ -108,6 +108,12 @@ export class PaperVersionMenu {
         l10nID: "git4zotero-menu-restore"
       },
       {
+        action: "export",
+        id: "git4zotero-menu-export",
+        label: UI_TEXT.menuExportSummaryLabel,
+        l10nID: "git4zotero-menu-export"
+      },
+      {
         action: "configureGit",
         id: "git4zotero-menu-configure-git",
         label: UI_TEXT.menuConfigureGit,
@@ -135,6 +141,9 @@ export class PaperVersionMenu {
       }
       else if (action === "restore") {
         await this.restore(eventContext);
+      }
+      else if (action === "export") {
+        await this.exportSummary(eventContext);
       }
       else if (action === "configureGit") {
         await this.configureGit();
@@ -552,6 +561,10 @@ export class PaperVersionMenu {
           ? UI_TEXT.notEnabled
           : (!gitAvailable ? reason || UI_TEXT.gitUnavailable : (!hasHistory ? UI_TEXT.menuNoVersions : ""));
       }
+      else if (definition.action === "export") {
+        disabled = !enabled || !gitAvailable;
+        disabledReason = !enabled ? UI_TEXT.notEnabled : (!gitAvailable ? reason || UI_TEXT.gitUnavailable : "");
+      }
       else if (definition.action === "configureGit") {
         hidden = !gitUnavailable;
       }
@@ -666,6 +679,36 @@ export class PaperVersionMenu {
     this.refresh();
   }
 
+  async exportSummary(eventContext) {
+    const item = this.requireSingleItem(eventContext);
+    const scopeOptions = [UI_TEXT.exportScopeHistory, UI_TEXT.exportScopeLastCheck];
+    const scopeIndex = this.platform.selectFromList(
+      UI_TEXT.menuExportSummary,
+      UI_TEXT.menuExportScopeMessage,
+      scopeOptions
+    );
+    if (scopeIndex < 0) {
+      return;
+    }
+    const formatOptions = [UI_TEXT.exportFormatMarkdown, UI_TEXT.exportFormatText];
+    const formatIndex = this.platform.selectFromList(
+      UI_TEXT.menuExportSummary,
+      UI_TEXT.menuExportFormatMessage,
+      formatOptions
+    );
+    if (formatIndex < 0) {
+      return;
+    }
+    const result = await this.service.exportVersionSummary(item, {
+      scope: scopeIndex === 1 ? "last-check" : "history",
+      format: formatIndex === 1 ? "text" : "markdown"
+    });
+    if (!result) {
+      return;
+    }
+    this.platform.alert(UI_TEXT.menuExportSummary, `${UI_TEXT.exportSuccess}\n${result.path}`);
+  }
+
   async configureGit() {
     const result = await this.platform.promptGitPath();
     if (!result) {
@@ -772,6 +815,19 @@ export class PaperVersionMenu {
   }
 
   formatChangeDetails(changeSummary, limit = 3) {
+    if (changeSummary?.changeGroups?.length) {
+      const lines = [];
+      for (const group of changeSummary.changeGroups.slice(0, limit)) {
+        lines.push(`- ${group.summary || group.label}`);
+        for (const change of (group.changes ?? []).slice(0, 2)) {
+          lines.push(`  - ${this.formatParagraphChange(change)}`);
+        }
+      }
+      const omitted = changeSummary.omittedChanges > 0
+        ? `\n- 另有 ${changeSummary.omittedChanges} 处段落变化未在弹窗中展开。`
+        : "";
+      return `\n\n具体修改：\n${lines.join("\n")}${omitted}`;
+    }
     const changes = changeSummary?.displayChanges ?? changeSummary?.paragraphChanges ?? [];
     if (!changes.length) {
       return "";
@@ -784,16 +840,17 @@ export class PaperVersionMenu {
   }
 
   formatParagraphChange(change) {
+    const location = change.locationLabel ? `${change.locationLabel}：` : "";
     if (change.type === "added") {
-      return `新增：${change.newText}`;
+      return `${location}新增：${change.newText}`;
     }
     if (change.type === "deleted") {
-      return `删除：${change.oldText}`;
+      return `${location}删除：${change.oldText}`;
     }
     if (change.type === "modified") {
-      return `修改：${change.oldText} → ${change.newText}`;
+      return `${location}修改：${change.oldText} → ${change.newText}`;
     }
-    return change.newText || change.oldText || UI_TEXT.actionCompleted;
+    return `${location}${change.newText || change.oldText || UI_TEXT.actionCompleted}`;
   }
 
   debug(message) {

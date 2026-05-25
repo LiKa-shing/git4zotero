@@ -10,8 +10,9 @@ const DOCX_SOURCES = [
 
 const REMOVED_CONTAINER_PATTERN = /<[\w.-]+:(?:del|moveFrom)\b[\s\S]*?<\/[\w.-]+:(?:del|moveFrom)>/g;
 const REMOVED_TEXT_PATTERN = /<[\w.-]+:delText\b[^>]*>[\s\S]*?<\/[\w.-]+:delText>/g;
-const PARAGRAPH_PATTERN = /<(?:[\w.-]+:)?p\b[\s\S]*?<\/(?:[\w.-]+:)?p>/g;
 const TEXT_TOKEN_PATTERN = /<(?:[\w.-]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?t>|<(?:[\w.-]+:)?(tab|br|cr)\b[^>]*\/>/g;
+const STRUCTURE_TOKEN_PATTERN = /<(?:[\w.-]+:)?tbl\b[^>]*>|<\/(?:[\w.-]+:)?tbl>|<(?:[\w.-]+:)?p\b[\s\S]*?<\/(?:[\w.-]+:)?p>/g;
+const STYLE_PATTERN = /<(?:[\w.-]+:)?pStyle\b[^>]*(?:[\w.-]+:)?val=["']([^"']+)["'][^>]*\/?>/i;
 
 export class DocxReader {
   constructor(platform = null) {
@@ -84,17 +85,31 @@ export function extractParagraphsFromXml(xml, descriptor = { source: "document",
     const doc = new DOMParser().parseFromString(xml, "application/xml");
     const parserError = doc.getElementsByTagName("parsererror")[0];
     if (!parserError) {
-      return [...doc.getElementsByTagNameNS("*", "p")]
-        .map((paragraph, index) => createParagraphRecord(
-          collectParagraphText(paragraph),
-          descriptor,
-          index
-        ))
-        .filter(Boolean);
+      return extractParagraphsFromDom(doc, descriptor);
     }
   }
 
   return extractParagraphsWithRegex(xml, descriptor);
+}
+
+function extractParagraphsFromDom(doc, descriptor) {
+  const context = createExtractionContext(descriptor);
+  return [...doc.getElementsByTagNameNS("*", "p")]
+    .map((paragraph, index) => {
+      const location = createParagraphLocation({
+        descriptor,
+        context,
+        paragraphXml: "",
+        paragraphNode: paragraph
+      });
+      return createParagraphRecord(
+        collectParagraphText(paragraph),
+        descriptor,
+        index,
+        location
+      );
+    })
+    .filter(Boolean);
 }
 
 function collectParagraphText(node, skip = false) {
@@ -130,21 +145,41 @@ function extractParagraphsWithRegex(xml, descriptor) {
     .replace(REMOVED_TEXT_PATTERN, "");
   const paragraphs = [];
   let index = 0;
+  const context = createExtractionContext(descriptor);
 
-  for (const paragraphMatch of cleaned.matchAll(PARAGRAPH_PATTERN)) {
-    const parts = [];
-    for (const tokenMatch of paragraphMatch[0].matchAll(TEXT_TOKEN_PATTERN)) {
-      if (tokenMatch[1] !== undefined) {
-        parts.push(decodeXml(tokenMatch[1]));
+  for (const tokenMatch of cleaned.matchAll(STRUCTURE_TOKEN_PATTERN)) {
+    const token = tokenMatch[0];
+    if (/^<(?:[\w.-]+:)?tbl\b/i.test(token)) {
+      context.tableDepth += 1;
+      if (context.tableDepth === 1) {
+        context.currentTableIndex += 1;
       }
-      else if (tokenMatch[2] === "tab") {
+      continue;
+    }
+    if (/^<\/(?:[\w.-]+:)?tbl>/i.test(token)) {
+      context.tableDepth = Math.max(0, context.tableDepth - 1);
+      continue;
+    }
+
+    const parts = [];
+    for (const textMatch of token.matchAll(TEXT_TOKEN_PATTERN)) {
+      if (textMatch[1] !== undefined) {
+        parts.push(decodeXml(textMatch[1]));
+      }
+      else if (textMatch[2] === "tab") {
         parts.push("\t");
       }
-      else if (tokenMatch[2] === "br" || tokenMatch[2] === "cr") {
+      else if (textMatch[2] === "br" || textMatch[2] === "cr") {
         parts.push("\n");
       }
     }
-    const record = createParagraphRecord(parts.join(""), descriptor, index);
+    const location = createParagraphLocation({
+      descriptor,
+      context,
+      paragraphXml: token,
+      paragraphNode: null
+    });
+    const record = createParagraphRecord(parts.join(""), descriptor, index, location);
     if (record) {
       paragraphs.push(record);
       index += 1;
@@ -153,18 +188,163 @@ function extractParagraphsWithRegex(xml, descriptor) {
   return paragraphs;
 }
 
-function createParagraphRecord(text, descriptor, index) {
+function createParagraphRecord(text, descriptor, index, location = {}) {
   const normalizedText = normalizeParagraph(text);
   if (!normalizedText) {
     return null;
   }
+  const heading = location.headingLevel
+    ? updateHeadingContext(location.context, location.headingLevel, normalizedText)
+    : location.headingPath;
   return {
     text: String(text ?? ""),
     normalizedText,
     source: descriptor.source,
     role: descriptor.role,
-    index
+    index,
+    sourceLabel: location.sourceLabel,
+    areaType: location.areaType,
+    tableIndex: location.tableIndex ?? null,
+    headingLevel: location.headingLevel ?? null,
+    headingPath: heading ?? [],
+    locationLabel: formatLocationLabel({
+      sourceLabel: location.sourceLabel,
+      areaType: location.areaType,
+      tableIndex: location.tableIndex,
+      headingPath: heading ?? [],
+      index
+    })
   };
+}
+
+function createExtractionContext(descriptor) {
+  return {
+    descriptor,
+    headingPath: [],
+    currentTableIndex: 0,
+    tableDepth: 0,
+    tableMap: typeof WeakMap === "function" ? new WeakMap() : null
+  };
+}
+
+function createParagraphLocation({ descriptor, context, paragraphXml, paragraphNode }) {
+  const headingLevel = paragraphNode
+    ? getHeadingLevelFromNode(paragraphNode)
+    : getHeadingLevelFromXml(paragraphXml);
+  const tableIndex = paragraphNode
+    ? getTableIndexFromNode(paragraphNode, context)
+    : (context.tableDepth > 0 ? context.currentTableIndex : null);
+  const areaType = getAreaType(descriptor, tableIndex);
+  const sourceLabel = getSourceLabel(descriptor.source, areaType);
+  return {
+    context,
+    areaType,
+    sourceLabel,
+    tableIndex,
+    headingLevel,
+    headingPath: context.headingPath
+  };
+}
+
+function getTableIndexFromNode(node, context) {
+  const table = findAncestor(node, "tbl");
+  if (!table) {
+    return null;
+  }
+  if (context.tableMap?.has(table)) {
+    return context.tableMap.get(table);
+  }
+  context.currentTableIndex += 1;
+  context.tableMap?.set(table, context.currentTableIndex);
+  return context.currentTableIndex;
+}
+
+function findAncestor(node, localName) {
+  for (let current = node?.parentNode; current; current = current.parentNode) {
+    if (current.localName === localName) {
+      return current;
+    }
+  }
+  return null;
+}
+
+function getHeadingLevelFromNode(paragraph) {
+  for (const node of paragraph.getElementsByTagNameNS?.("*", "pStyle") ?? []) {
+    const value = node.getAttribute("w:val")
+      || node.getAttribute("val")
+      || node.getAttributeNS?.("*", "val")
+      || "";
+    const level = parseHeadingLevel(value);
+    if (level) {
+      return level;
+    }
+  }
+  return null;
+}
+
+function getHeadingLevelFromXml(xml) {
+  return parseHeadingLevel(STYLE_PATTERN.exec(String(xml ?? ""))?.[1]);
+}
+
+function parseHeadingLevel(value) {
+  const style = String(value ?? "").trim();
+  const match = /^(?:heading|标题)\s*([1-6])$/i.exec(style)
+    || /^Heading([1-6])$/i.exec(style);
+  return match ? Number(match[1]) : null;
+}
+
+function updateHeadingContext(context, level, text) {
+  const next = context.headingPath.slice(0, Math.max(0, level - 1));
+  next[level - 1] = text;
+  context.headingPath = next.filter(Boolean);
+  return context.headingPath;
+}
+
+function getAreaType(descriptor, tableIndex) {
+  if (descriptor.source === "footnotes") {
+    return "footnote";
+  }
+  if (descriptor.source === "endnotes") {
+    return "endnote";
+  }
+  if (tableIndex) {
+    return "table";
+  }
+  return descriptor.source === "document" ? "body" : descriptor.source;
+}
+
+function getSourceLabel(source, areaType) {
+  if (areaType === "table") {
+    return "表格";
+  }
+  if (source === "footnotes") {
+    return "脚注";
+  }
+  if (source === "endnotes") {
+    return "尾注";
+  }
+  if (source === "header") {
+    return "页眉";
+  }
+  if (source === "footer") {
+    return "页脚";
+  }
+  return "正文";
+}
+
+function formatLocationLabel({ sourceLabel, areaType, tableIndex, headingPath, index }) {
+  const parts = [];
+  if (headingPath?.length) {
+    parts.push(headingPath.join(" / "));
+  }
+  if (areaType === "table" && tableIndex) {
+    parts.push(`表格 ${tableIndex}`);
+  }
+  else if (sourceLabel && sourceLabel !== "正文") {
+    parts.push(sourceLabel);
+  }
+  parts.push(`第 ${index + 1} 段`);
+  return parts.join(" · ");
 }
 
 export function normalizeParagraph(text) {

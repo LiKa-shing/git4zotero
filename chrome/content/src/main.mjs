@@ -138,7 +138,7 @@ export const Git4Zotero = {
           this.pane.init(this.withPaneID(renderContext));
         },
         onItemChange: (renderContext) => {
-          return this.pane.updateItemAvailability(this.withPaneID(renderContext));
+          return this.pane.handleItemChange(this.withPaneID(renderContext));
         },
         onRender: (renderContext) => {
           this.pane.render(this.withPaneID(renderContext));

@@ -39,6 +39,22 @@ const SCOPED_TIMELINE_STYLE = `
   background: Canvas;
 }
 
+.git4zotero-panel-root .git4zotero-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.git4zotero-panel-root .git4zotero-refresh-button {
+  color: CanvasText;
+  background: Canvas;
+  border: 1px solid ButtonBorder;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.3;
+  padding: 3px 8px;
+}
+
 .git4zotero-panel-root .git4zotero-status,
 .git4zotero-panel-root .git4zotero-change,
 .git4zotero-panel-root .git4zotero-change-summary,
@@ -197,6 +213,14 @@ export class PaperVersionPane {
     return enabled;
   }
 
+  handleItemChange(renderContext = {}) {
+    const enabled = this.updateItemAvailability(renderContext);
+    if (enabled && renderContext.body) {
+      this.render(renderContext, { reason: "item-change" });
+    }
+    return enabled;
+  }
+
   render(renderContext, options = {}) {
     const shell = this.renderShell(renderContext);
     this.scheduleAsyncRender(renderContext, shell.token, {
@@ -228,7 +252,7 @@ export class PaperVersionPane {
     this.registerLiveBody({ body, item, paneID, panel, root, setSectionSummary, token });
     const cached = this.getCachedState({ paneID, item });
     if (cached) {
-      this.renderState({ body, panel, state: cached.state, setSectionSummary, token, paneID });
+      this.renderState({ body, item, panel, state: cached.state, setSectionSummary, token, paneID });
       this.debug(`item pane cached state rendered in shell actualPaneID=${paneID}, item=${cached.itemIdentity}, ageMs=${Date.now() - cached.updatedAt}`);
     }
     else {
@@ -360,7 +384,7 @@ export class PaperVersionPane {
         }
         return;
       }
-      this.renderState({ body: target.body, panel: target.panel, state, setSectionSummary: target.setSectionSummary, token: target.token, paneID: target.paneID });
+      this.renderState({ body: target.body, item, panel: target.panel, state, setSectionSummary: target.setSectionSummary, token: target.token, paneID: target.paneID });
       this.debug(`item pane async render complete source=${source}`);
     }
     catch (error) {
@@ -377,10 +401,11 @@ export class PaperVersionPane {
     }
   }
 
-  renderState({ body, panel, state, setSectionSummary, token, paneID }) {
+  renderState({ body, item, panel, state, setSectionSummary, token, paneID }) {
     const doc = panel.ownerDocument;
     this.clear(panel);
     const versionCount = state.versions?.length ?? 0;
+    panel.append(this.toolbar(doc, { body, item, setSectionSummary, paneID }));
 
     if (!state.attachment) {
       this.setPanelDiagnostics(panel, { status: "no-attachment", versionCount, renderPhase: "state" });
@@ -435,6 +460,28 @@ export class PaperVersionPane {
     setSectionSummary?.(this.stateSummary(state));
     this.debugRenderComplete(panel, state, "ready");
     this.revealPane(body, { token, phase: "state", reason: "ready", paneID });
+  }
+
+  toolbar(doc, { body, item, setSectionSummary, paneID }) {
+    const toolbar = this.el(doc, "div", "git4zotero-toolbar");
+    const button = this.el(doc, "button", "git4zotero-refresh-button");
+    button.setAttribute("type", "button");
+    button.setAttribute("aria-label", UI_TEXT.refreshPanel);
+    button.textContent = UI_TEXT.refreshPanel;
+    button.addEventListener?.("click", () => {
+      this.manualRefresh({ body, item, setSectionSummary, paneID });
+    });
+    toolbar.append(button);
+    return toolbar;
+  }
+
+  manualRefresh({ body, item, setSectionSummary, paneID }) {
+    if (!body || !this.isConnected(body)) {
+      this.debug(`item pane manual refresh ignored detached body actualPaneID=${paneID || this.actualPaneID}`);
+      return;
+    }
+    this.debug(`item pane manual refresh requested actualPaneID=${paneID || this.actualPaneID}, item=${this.itemIdentity(item)}`);
+    this.render({ body, item, setSectionSummary, paneID }, { reason: "manual-refresh" });
   }
 
   stateSummary(state) {
@@ -558,10 +605,13 @@ export class PaperVersionPane {
     const wrapper = this.el(doc, "div", "git4zotero-file");
     const title = this.el(doc, "strong");
     title.textContent = `${UI_TEXT.currentFile}：${attachment.fileName}`;
+    const mode = attachment.extension === ".docx"
+      ? UI_TEXT.contentModeDocx
+      : (attachment.extension === ".doc" ? UI_TEXT.docFileOnlyTracking : UI_TEXT.contentModeFileOnly);
     wrapper.append(
       title,
       this.el(doc, "br"),
-      this.text(doc, attachment.extension === ".docx" ? UI_TEXT.contentModeDocx : UI_TEXT.contentModeFileOnly)
+      this.text(doc, mode)
     );
     return wrapper;
   }
@@ -582,6 +632,9 @@ export class PaperVersionPane {
 
     if (lastCheck.contentSummary?.mode === "docx-content") {
       section.append(this.meta(doc, `正文 ${lastCheck.contentSummary.paragraphCount} 段 · ${lastCheck.contentSummary.wordCount} 字/词`));
+    }
+    else if (lastCheck.contentSummary?.extension === ".doc") {
+      section.append(this.meta(doc, UI_TEXT.docFileOnlyTracking));
     }
     const changes = this.changeList(doc, lastCheck.changeSummary, 5);
     if (changes) {
@@ -672,6 +725,7 @@ export class PaperVersionPane {
       summary.textContent = version.changeSummary.summary;
       body.append(summary);
     }
+    body.append(this.versionDetails(doc, version));
     const changes = this.changeList(doc, version.changeSummary, 2);
     if (changes) {
       body.append(changes);
@@ -679,6 +733,35 @@ export class PaperVersionPane {
 
     item.append(line, node, body);
     return item;
+  }
+
+  versionDetails(doc, version) {
+    const details = this.el(doc, "details", "git4zotero-version-details");
+    const summary = this.el(doc, "summary", "git4zotero-version-details-summary");
+    summary.textContent = UI_TEXT.versionDetails;
+    const list = this.el(doc, "dl", "git4zotero-version-details-list");
+    const rows = [
+      ["版本说明", version.note || UI_TEXT.defaultNote],
+      ["创建时间", this.formatDate(version.createdAt)],
+      ["Git hash", version.commitHash || version.id || "unknown"],
+      ["文件名", version.fileName || "unknown"],
+      ["文件大小", this.formatSize(version.fileSize)],
+      ["版本类型", this.versionKindLabel(version)],
+      ["安全备份", version.kind === "safety" ? "是，恢复前自动备份" : "否"],
+      ["变化摘要", version.changeSummary?.summary || UI_TEXT.actionCompleted]
+    ];
+    if (version.contentSummary?.extension === ".doc") {
+      rows.push(["跟踪方式", UI_TEXT.docFileOnlyTracking]);
+    }
+    for (const [label, value] of rows) {
+      const term = this.el(doc, "dt");
+      term.textContent = label;
+      const description = this.el(doc, "dd");
+      description.textContent = value;
+      list.append(term, description);
+    }
+    details.append(summary, list);
+    return details;
   }
 
   appendOptional(parent, child) {
@@ -708,6 +791,9 @@ export class PaperVersionPane {
   }
 
   changeList(doc, changeSummary, limit = 5) {
+    if (changeSummary?.changeGroups?.length) {
+      return this.changeGroupList(doc, changeSummary, limit);
+    }
     const changes = changeSummary?.paragraphChanges?.length
       ? changeSummary.paragraphChanges
       : (changeSummary?.displayChanges ?? []);
@@ -729,6 +815,32 @@ export class PaperVersionPane {
       wrapper.append(this.meta(doc, `另有 ${omitted} 处段落变化未展开。`));
     }
 
+    return wrapper;
+  }
+
+  changeGroupList(doc, changeSummary, limit = 5) {
+    const wrapper = this.el(doc, "div", "git4zotero-change-list");
+    const groups = changeSummary.changeGroups.slice(0, limit);
+    let shownChanges = 0;
+    for (const group of groups) {
+      const groupNode = this.el(doc, "div", "git4zotero-change-group");
+      const title = this.el(doc, "strong", "git4zotero-change-group-title");
+      title.textContent = group.summary || group.label;
+      groupNode.append(title);
+      for (const change of (group.changes ?? []).slice(0, Math.max(1, Math.min(2, limit)))) {
+        groupNode.append(this.changeItem(doc, change));
+        shownChanges += 1;
+      }
+      wrapper.append(groupNode);
+    }
+
+    const totalChanges = Number.isFinite(changeSummary?.totalParagraphChanges)
+      ? changeSummary.totalParagraphChanges
+      : shownChanges + Math.max(0, changeSummary?.omittedChanges ?? 0);
+    const omitted = Math.max(0, totalChanges - shownChanges);
+    if (omitted > 0) {
+      wrapper.append(this.meta(doc, `另有 ${omitted} 处段落变化未展开。`));
+    }
     return wrapper;
   }
 
@@ -782,6 +894,9 @@ export class PaperVersionPane {
   }
 
   changeLocation(change) {
+    if (change.locationLabel) {
+      return change.locationLabel;
+    }
     const index = change.newIndex ?? change.oldIndex;
     const source = change.source && change.source !== "document" ? ` · ${change.source}` : "";
     return Number.isInteger(index) ? `第 ${index + 1} 段${source}` : source.trim();

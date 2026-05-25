@@ -79,6 +79,9 @@ jobs:
       - name: Create Zotero update manifest
         run: node scripts/create-update-manifest.mjs "${{ steps.meta.outputs.xpi }}" dist/updates.json
 
+      - name: Create release notes
+        run: node scripts/create-release-notes.mjs dist/release-notes.md
+
       - name: Publish pre-release
         if: ${{ inputs.prerelease }}
         run: >
@@ -87,7 +90,7 @@ jobs:
           "dist/updates.json"
           --target "${{ github.sha }}"
           --title "${{ steps.meta.outputs.tag }}"
-          --generate-notes
+          --notes-file "dist/release-notes.md"
           --prerelease
           --latest=false
         env:
@@ -101,6 +104,6 @@ jobs:
           "dist/updates.json"
           --target "${{ github.sha }}"
           --title "${{ steps.meta.outputs.tag }}"
-          --generate-notes
+          --notes-file "dist/release-notes.md"
         env:
           GH_TOKEN: ${{ github.token }}

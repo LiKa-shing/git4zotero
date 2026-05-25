@@ -101,6 +101,37 @@ export class VersionService {
     return this.getVersionHistory(item);
   }
 
+  async exportVersionSummary(item, options = {}) {
+    const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
+    const scope = options.scope === "last-check" ? "last-check" : "history";
+    const format = options.format === "text" ? "text" : "markdown";
+    const extension = format === "markdown" ? ".md" : ".txt";
+    let versions = [];
+    let lastCheck = metadata.lastCheck ?? null;
+
+    if (scope === "history") {
+      await this.requireGitAvailable();
+      versions = await this.loadVersionHistory(repoPath, metadata, attachment);
+    }
+    else if (!lastCheck) {
+      throw new Error(UI_TEXT.exportNoLastCheck);
+    }
+
+    const content = format === "markdown"
+      ? renderMarkdownExport({ scope, attachment, versions, lastCheck })
+      : renderTextExport({ scope, attachment, versions, lastCheck });
+    const defaultFileName = buildExportFileName(attachment, scope, extension);
+    const path = await this.platform.saveTextFile({
+      title: UI_TEXT.menuExportSummary,
+      defaultFileName,
+      content
+    });
+    if (!path) {
+      return null;
+    }
+    return { path, scope, format, fileName: defaultFileName };
+  }
+
   async loadVersionHistory(repoPath, metadata, attachment) {
     const history = await this.gitBackend.listHistory(repoPath);
     return this.mergeHistoryWithMetadata(history, metadata, attachment);
@@ -734,4 +765,203 @@ function toStoredSnapshot(snapshot) {
     wordCount: snapshot.wordCount,
     sections: snapshot.sections
   };
+}
+
+function buildExportFileName(attachment, scope, extension) {
+  const key = sanitizeForPath(attachment.itemKey || attachment.attachmentKey || "item") || "item";
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const kind = scope === "last-check" ? "diff" : "history";
+  return `git4zotero-${kind}-${key}-${timestamp}${extension}`;
+}
+
+function renderMarkdownExport({ scope, attachment, versions, lastCheck }) {
+  const lines = [
+    `# git4zotero ${scope === "last-check" ? "最近检查差异" : "版本历史"}`,
+    "",
+    `- 文件：${attachment.fileName}`,
+    `- 条目：${attachment.itemKey || "unknown"}`,
+    `- 导出时间：${new Date().toISOString()}`,
+    ""
+  ];
+  if (scope === "last-check") {
+    lines.push(...renderMarkdownCheck(lastCheck));
+  }
+  else if (!versions.length) {
+    lines.push("尚未创建版本。");
+  }
+  else {
+    for (const version of versions) {
+      lines.push(...renderMarkdownVersion(version), "");
+    }
+  }
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+function renderMarkdownCheck(lastCheck) {
+  return [
+    "## 最近检查",
+    "",
+    `- 时间：${lastCheck.checkedAt || "unknown"}`,
+    `- 文件：${lastCheck.fileName || "unknown"}`,
+    `- 大小：${formatByteSize(lastCheck.fileSize)}`,
+    `- 摘要：${lastCheck.changeSummary?.summary || UI_TEXT.actionCompleted}`,
+    "",
+    ...renderMarkdownChangeSummary(lastCheck.changeSummary)
+  ];
+}
+
+function renderMarkdownVersion(version) {
+  return [
+    `## ${version.note || UI_TEXT.defaultNote}`,
+    "",
+    `- 时间：${version.createdAt || "unknown"}`,
+    `- Hash：${version.commitHash || version.id || "unknown"}`,
+    `- 文件：${version.fileName || "unknown"}`,
+    `- 大小：${formatByteSize(version.fileSize)}`,
+    `- 类型：${formatVersionKind(version)}`,
+    `- 安全备份：${version.kind === "safety" ? "是" : "否"}`,
+    `- 摘要：${version.changeSummary?.summary || UI_TEXT.actionCompleted}`,
+    "",
+    ...renderMarkdownChangeSummary(version.changeSummary)
+  ];
+}
+
+function renderMarkdownChangeSummary(changeSummary) {
+  if (!changeSummary) {
+    return [];
+  }
+  if (changeSummary.changeGroups?.length) {
+    const lines = ["### 位置摘要", ""];
+    for (const group of changeSummary.changeGroups) {
+      lines.push(`- ${group.summary || group.label}`);
+    }
+    lines.push("");
+    for (const group of changeSummary.changeGroups) {
+      lines.push(`### ${group.label}`, "");
+      for (const change of group.changes ?? []) {
+        lines.push(`- ${formatParagraphChange(change)}`);
+      }
+      lines.push("");
+    }
+    return lines;
+  }
+  const changes = changeSummary.paragraphChanges ?? changeSummary.displayChanges ?? [];
+  if (!changes.length) {
+    return [];
+  }
+  return [
+    "### 具体修改",
+    "",
+    ...changes.map((change) => `- ${formatParagraphChange(change)}`)
+  ];
+}
+
+function renderTextExport({ scope, attachment, versions, lastCheck }) {
+  const lines = [
+    `git4zotero ${scope === "last-check" ? "最近检查差异" : "版本历史"}`,
+    "",
+    `文件：${attachment.fileName}`,
+    `条目：${attachment.itemKey || "unknown"}`,
+    `导出时间：${new Date().toISOString()}`,
+    ""
+  ];
+  if (scope === "last-check") {
+    lines.push(...renderTextCheck(lastCheck));
+  }
+  else if (!versions.length) {
+    lines.push("尚未创建版本。");
+  }
+  else {
+    for (const version of versions) {
+      lines.push(...renderTextVersion(version), "");
+    }
+  }
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+function renderTextCheck(lastCheck) {
+  return [
+    "最近检查",
+    `时间：${lastCheck.checkedAt || "unknown"}`,
+    `文件：${lastCheck.fileName || "unknown"}`,
+    `大小：${formatByteSize(lastCheck.fileSize)}`,
+    `摘要：${lastCheck.changeSummary?.summary || UI_TEXT.actionCompleted}`,
+    "",
+    ...renderTextChangeSummary(lastCheck.changeSummary)
+  ];
+}
+
+function renderTextVersion(version) {
+  return [
+    version.note || UI_TEXT.defaultNote,
+    `时间：${version.createdAt || "unknown"}`,
+    `Hash：${version.commitHash || version.id || "unknown"}`,
+    `文件：${version.fileName || "unknown"}`,
+    `大小：${formatByteSize(version.fileSize)}`,
+    `类型：${formatVersionKind(version)}`,
+    `安全备份：${version.kind === "safety" ? "是" : "否"}`,
+    `摘要：${version.changeSummary?.summary || UI_TEXT.actionCompleted}`,
+    "",
+    ...renderTextChangeSummary(version.changeSummary)
+  ];
+}
+
+function renderTextChangeSummary(changeSummary) {
+  if (!changeSummary) {
+    return [];
+  }
+  if (changeSummary.changeGroups?.length) {
+    const lines = ["位置摘要"];
+    for (const group of changeSummary.changeGroups) {
+      lines.push(`- ${group.summary || group.label}`);
+    }
+    for (const group of changeSummary.changeGroups) {
+      lines.push("", group.label);
+      for (const change of group.changes ?? []) {
+        lines.push(`- ${formatParagraphChange(change)}`);
+      }
+    }
+    return lines;
+  }
+  const changes = changeSummary.paragraphChanges ?? changeSummary.displayChanges ?? [];
+  return changes.length
+    ? ["具体修改", ...changes.map((change) => `- ${formatParagraphChange(change)}`)]
+    : [];
+}
+
+function formatParagraphChange(change) {
+  const location = change.locationLabel ? `${change.locationLabel}：` : "";
+  if (change.type === "added") {
+    return `${location}新增：${change.newText || ""}`;
+  }
+  if (change.type === "deleted") {
+    return `${location}删除：${change.oldText || ""}`;
+  }
+  if (change.type === "modified") {
+    return `${location}修改：${change.oldText || ""} -> ${change.newText || ""}`;
+  }
+  return `${location}${change.newText || change.oldText || UI_TEXT.actionCompleted}`;
+}
+
+function formatVersionKind(version) {
+  if (version.kind === "safety") {
+    return "恢复前自动备份";
+  }
+  if (version.source === "git") {
+    return "Git 历史";
+  }
+  return "手动版本";
+}
+
+function formatByteSize(size) {
+  if (!Number.isFinite(size)) {
+    return "大小未知";
+  }
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }

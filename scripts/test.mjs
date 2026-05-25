@@ -19,6 +19,7 @@ import { inflateRaw } from "../chrome/content/src/vendor/zip-reader.mjs";
 import {
   createEmptyMetadata,
   createVersionRecord,
+  METADATA_SCHEMA_VERSION,
   MetadataStore,
   normalizeVersionNote,
   sortNewestFirst
@@ -528,6 +529,93 @@ assert.throws(() => assertSafeCommitHash("../HEAD"));
 }
 
 {
+  const writes = [];
+  const directories = [];
+  const picker = {
+    file: { path: "C:\\Exports\\summary.md" },
+    init(_parent, title, mode) {
+      assert.equal(title, UI_TEXT.menuExportSummary);
+      assert.equal(mode, 1);
+    },
+    appendFilter(label, pattern) {
+      assert.equal(label, "Markdown");
+      assert.equal(pattern, "*.md");
+    },
+    appendFilters(filter) {
+      assert.equal(filter, 99);
+    },
+    open(resolve) {
+      resolve(0);
+    }
+  };
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: {
+      dirsvc: { get: () => ({ path: "C:\\Profile" }) },
+      prompt: {}
+    },
+    Cc: {
+      "@mozilla.org/filepicker;1": {
+        createInstance: () => picker
+      }
+    },
+    Ci: {
+      nsIFile: function nsIFile() {},
+      nsIFilePicker: {
+        modeSave: 1,
+        returnCancel: 2,
+        filterAll: 99
+      }
+    },
+    ChromeUtils: {},
+    IOUtils: {
+      makeDirectory: async (target) => directories.push(target),
+      writeUTF8: async (target, content) => writes.push([target, content])
+    },
+    PathUtils: null
+  });
+  const savedPath = await platform.saveTextFile({
+    title: UI_TEXT.menuExportSummary,
+    defaultFileName: "summary.md",
+    content: "# Summary\n"
+  });
+  assert.equal(savedPath, "C:\\Exports\\summary.md");
+  assert.deepEqual(writes, [["C:\\Exports\\summary.md", "# Summary\n"]]);
+  assert.deepEqual(directories, ["C:\\Exports"]);
+}
+
+{
+  const writes = [];
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: {
+      dirsvc: { get: () => ({ path: "C:\\Profile" }) },
+      prompt: {}
+    },
+    Cc: {},
+    Ci: { nsIFile: function nsIFile() {} },
+    ChromeUtils: {},
+    IOUtils: {
+      makeDirectory: async () => {},
+      writeUTF8: async (target, content) => writes.push([target, content])
+    },
+    PathUtils: null
+  });
+  const savedPath = await platform.saveTextFile({
+    defaultFileName: "fallback.txt",
+    content: "fallback"
+  });
+  assert.equal(savedPath, "C:\\Profile\\git4zotero\\exports\\fallback.txt");
+  assert.deepEqual(writes, [["C:\\Profile\\git4zotero\\exports\\fallback.txt", "fallback"]]);
+}
+
+{
   const parentItem = {
     id: 10,
     key: "PARENT",
@@ -631,7 +719,7 @@ assert.throws(() => assertSafeCommitHash("../HEAD"));
 }
 
 const metadata = createEmptyMetadata();
-assert.equal(metadata.schemaVersion, 3);
+assert.equal(metadata.schemaVersion, METADATA_SCHEMA_VERSION);
 assert.equal(metadata.enabled, false);
 assert.deepEqual(metadata.versions, []);
 assert.equal(metadata.lastCheck, null);
@@ -655,7 +743,7 @@ const older = createVersionRecord({
   itemKey: "ITEM",
   attachmentID: 3,
   attachmentKey: "ATT",
-  pluginVersion: "0.2.0"
+  pluginVersion: "0.2.1"
 });
 const newer = {
   ...older,
@@ -764,7 +852,7 @@ const disabledService = new VersionService({
       throw new Error("panel state must not write metadata");
     }
   },
-  pluginVersion: "0.2.0",
+  pluginVersion: "0.2.1",
   contentAnalyzer: {
     analyze: async () => {
       throw new Error("disabled item must not analyze content");
@@ -821,7 +909,7 @@ const fullHistoryService = new VersionService({
       throw new Error("history reads must not write metadata");
     }
   },
-  pluginVersion: "0.2.0"
+  pluginVersion: "0.2.1"
 });
 const versionHistory = await fullHistoryService.getVersionHistory({});
 assert.equal(versionHistory.length, 4);
@@ -829,6 +917,91 @@ assert(versionHistory.some((version) => version.source === "git" && version.trac
 assert(versionHistory.some((version) => version.id === "metadata-only"));
 const fullPanelState = await fullHistoryService.getPanelState({});
 assert.equal(fullPanelState.versions.length, 4);
+
+const exportedFiles = [];
+const exportService = new VersionService({
+  platform: {
+    getRepoPath: () => "repo",
+    saveTextFile: async (request) => {
+      exportedFiles.push(request);
+      return `exports/${request.defaultFileName}`;
+    }
+  },
+  attachmentFinder: {
+    findManageableAttachment: async () => managedAttachment
+  },
+  gitBackend: {
+    checkAvailability: async () => ({ available: true, detail: "git version 2.44.0" }),
+    listHistory: async () => [{
+      hash: older.commitHash,
+      shortHash: older.shortHash,
+      createdAt: older.createdAt,
+      subject: "git4zotero: 旧版本",
+      trackedRelativePath: older.trackedRelativePath
+    }]
+  },
+  metadataStore: {
+    read: async () => ({
+      ...createEmptyMetadata(),
+      enabled: true,
+      trackedFile: { trackedRelativePath: "tracked/document.docx" },
+      versions: [{
+        ...older,
+        changeSummary: {
+          summary: "正文内容已修改；修改 1 段。",
+          changeGroups: [{
+            key: "heading:引言",
+            label: "引言",
+            summary: "引言 · 修改 1 段",
+            totalChanges: 1,
+            changes: [{
+              type: "modified",
+              oldText: "旧引言段",
+              newText: "新引言段",
+              locationLabel: "引言 · 第 1 段"
+            }]
+          }],
+          paragraphChanges: [{
+            type: "modified",
+            oldText: "旧引言段",
+            newText: "新引言段",
+            locationLabel: "引言 · 第 1 段"
+          }],
+          totalParagraphChanges: 1
+        }
+      }],
+      lastCheck: {
+        checkedAt: "2026-05-20T12:00:00.000Z",
+        fileName: "paper.docx",
+        fileSize: 42,
+        changeSummary: {
+          summary: "正文内容已修改；修改 1 段。",
+          paragraphChanges: [{ type: "modified", oldText: "旧", newText: "新", locationLabel: "引言 · 第 1 段" }]
+        }
+      }
+    })
+  },
+  pluginVersion: "0.2.1"
+});
+const historyExport = await exportService.exportVersionSummary({}, { scope: "history", format: "markdown" });
+assert(historyExport.path.includes("git4zotero-history-ITEM"));
+assert(exportedFiles.at(-1).content.includes("# git4zotero 版本历史"));
+assert(exportedFiles.at(-1).content.includes("Hash：0123abcd"));
+assert(exportedFiles.at(-1).content.includes("位置摘要"));
+assert(exportedFiles.at(-1).content.includes("引言 · 修改 1 段"));
+const diffExport = await exportService.exportVersionSummary({}, { scope: "last-check", format: "text" });
+assert(diffExport.path.endsWith(".txt"));
+assert(exportedFiles.at(-1).content.includes("git4zotero 最近检查差异"));
+assert(exportedFiles.at(-1).content.includes("引言 · 第 1 段"));
+await assert.rejects(
+  () => new VersionService({
+    platform: { getRepoPath: () => "repo", saveTextFile: async () => "unused" },
+    attachmentFinder: { findManageableAttachment: async () => managedAttachment },
+    metadataStore: { read: async () => ({ ...createEmptyMetadata(), enabled: true }) },
+    gitBackend: { checkAvailability: async () => ({ available: true }) }
+  }).exportVersionSummary({}, { scope: "last-check" }),
+  /尚未检查修改/
+);
 
 const healthyService = new VersionService({
   platform: {
@@ -965,6 +1138,29 @@ assert(gitAvailablePaneText.includes("修改前：旧方法段"));
 assert(gitAvailablePaneText.includes("修改后：新方法段"));
 assert(gitAvailablePaneText.includes("新增：新增结论段"));
 
+const docPaneText = await renderPaneText({
+  attachment: { ...managedAttachment, fileName: "legacy.doc", extension: ".doc" },
+  enabled: true,
+  git: { available: true, detail: "git version 2.44.0" },
+  lastCheck: {
+    checkedAt: "2026-05-20T12:00:00.000Z",
+    fileName: "legacy.doc",
+    fileSize: 42,
+    changeSummary: { summary: UI_TEXT.docFileOnlyTracking },
+    contentSummary: { mode: "file-only", extension: ".doc", fileOnly: true },
+    workingTree: { clean: true, entries: [], summary: UI_TEXT.workingTreeClean }
+  },
+  workingTree: { clean: true, entries: [], summary: UI_TEXT.workingTreeClean },
+  versions: [{
+    ...older,
+    fileName: "legacy.doc",
+    contentSummary: { mode: "file-only", extension: ".doc", fileOnly: true },
+    changeSummary: { summary: UI_TEXT.docFileOnlyTracking }
+  }]
+});
+assert(docPaneText.includes(UI_TEXT.docFileOnlyTracking));
+assert(docPaneText.includes("文件级跟踪"));
+
 const summaryHarness = await renderPaneHarness({
   stateProvider: () => ({
     attachment: managedAttachment,
@@ -1000,6 +1196,9 @@ assert(historyPaneText.includes("工作树无未提交修改"));
 assert(!historyPaneText.includes("恢复此版本"));
 assert(historyPaneText.includes("恢复历史版本"));
 assert(historyPaneText.includes("旧版本"));
+assert(historyPaneText.includes("版本详情"));
+assert(historyPaneText.includes("Git hash"));
+assert(historyPaneText.includes(older.commitHash));
 assert(historyPaneText.includes("修改前：旧引言段"));
 assert(historyPaneText.includes("修改后：新引言段"));
 
@@ -1035,6 +1234,7 @@ const timelineText = timelineHarness.body.textContent;
 assert(timelineText.indexOf(UI_TEXT.versionHistory) < timelineText.indexOf("工作流"));
 assert(timelineText.indexOf(UI_TEXT.versionHistory) < timelineText.indexOf(UI_TEXT.lastCheck));
 assert(timelineText.indexOf(UI_TEXT.versionHistory) < timelineText.indexOf(UI_TEXT.workingTree));
+assert(timelineText.includes(UI_TEXT.refreshPanel));
 const timelinePanel = findByClass(timelineHarness.body, "git4zotero-panel");
 const timelineRoot = findByClass(timelineHarness.body, "git4zotero-panel-root");
 const scopedStyle = findByAttribute(timelineHarness.body, "data-git4zotero-scoped-style", "true");
@@ -1043,6 +1243,68 @@ assert.equal(timelineHarness.body.getAttribute("data-git4zotero-style-injected")
 assert.equal(timelineRoot.getAttribute("data-git4zotero-root"), "true");
 assert.equal(timelineRoot.getAttribute("data-git4zotero-status"), "ready");
 assert.equal(timelineRoot.getAttribute("data-git4zotero-version-count"), "5");
+
+let refreshStateVersion = "刷新前版本";
+let refreshReads = 0;
+const refreshHarness = await renderPaneHarness({
+  stateProvider: () => {
+    refreshReads += 1;
+    return {
+      attachment: managedAttachment,
+      enabled: true,
+      git: { available: true, detail: "git version 2.44.0" },
+      workingTree: { clean: true, entries: [], summary: UI_TEXT.workingTreeClean },
+      versions: [{
+        ...older,
+        id: `refresh-${refreshReads}`,
+        note: refreshStateVersion,
+        commitHash: `abcdef0${refreshReads}23456789`,
+        shortHash: `abcdef0${refreshReads}`
+      }]
+    };
+  }
+});
+assert(refreshHarness.body.textContent.includes("刷新前版本"));
+refreshStateVersion = "刷新后版本";
+await findButton(refreshHarness.body, UI_TEXT.refreshPanel).click();
+await waitForScheduledPaneRender();
+assert(refreshHarness.body.textContent.includes("刷新后版本"));
+assert(refreshReads >= 2);
+
+let itemChangeVersion = "切换前版本";
+let itemChangeReads = 0;
+const itemChangeHarness = await renderPaneHarness({
+  stateProvider: () => {
+    itemChangeReads += 1;
+    return {
+      attachment: managedAttachment,
+      enabled: true,
+      git: { available: true, detail: "git version 2.44.0" },
+      workingTree: { clean: true, entries: [], summary: UI_TEXT.workingTreeClean },
+      versions: [{
+        ...older,
+        id: `item-change-${itemChangeReads}`,
+        note: itemChangeVersion,
+        commitHash: `bcdef0${itemChangeReads}23456789`,
+        shortHash: `bcdef0${itemChangeReads}`
+      }]
+    };
+  }
+});
+let itemChangeEnabled = null;
+itemChangeVersion = "切换后版本";
+assert.equal(itemChangeHarness.pane.handleItemChange({
+  body: itemChangeHarness.body,
+  item: {},
+  setEnabled: (value) => {
+    itemChangeEnabled = value;
+  },
+  setSectionSummary: () => {}
+}), true);
+await waitForScheduledPaneRender();
+assert.equal(itemChangeEnabled, true);
+assert(itemChangeHarness.body.textContent.includes("切换后版本"));
+assert(itemChangeReads >= 2);
 assert.equal(timelineRoot.getAttribute("data-git4zotero-render-phase"), "state");
 assert.equal(timelineRoot.getAttribute("data-git4zotero-style-injected"), "true");
 assert.equal(timelinePanel.getAttribute("data-git4zotero-status"), "ready");
@@ -1536,7 +1798,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
-    pluginVersion: "0.2.0",
+    pluginVersion: "0.2.1",
     contentAnalyzer: {
       analyze: async () => ({
         fileHash: "new-file",
@@ -1578,7 +1840,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       read: async () => ({ ...createEmptyMetadata(), enabled: true, versions: [] }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
-    pluginVersion: "0.2.0",
+    pluginVersion: "0.2.1",
     contentAnalyzer: {
       analyze: async () => ({
         fileHash: "new-file",
@@ -1652,7 +1914,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
-    pluginVersion: "0.2.0",
+    pluginVersion: "0.2.1",
     contentAnalyzer: {
       analyze: async () => ({
         fileHash: "safety-file",
@@ -1726,7 +1988,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
-    pluginVersion: "0.2.0"
+    pluginVersion: "0.2.1"
   });
 
   await assert.rejects(
@@ -1742,6 +2004,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   const calls = [];
   let menuStateCalls = 0;
   let restoreOptions = [];
+  const selectResponses = [2, 0, 1];
   const menuPathPlatform = new ZoteroPlatform({
     Zotero: {
       Prefs: { get: () => "" },
@@ -1791,6 +2054,10 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
           safetyVersion: { shortHash: "safe1234" }
         };
       },
+      exportVersionSummary: async (selected, options) => {
+        calls.push(["export", selected, options.scope, options.format]);
+        return { path: "exports/history.txt" };
+      },
       getPanelState: async () => {
         menuStateCalls += 1;
         return {
@@ -1804,8 +2071,10 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
     },
     platformOverrides: {
       selectFromList: (_title, _message, options) => {
-        restoreOptions = options;
-        return 2;
+        if (options.length === 3) {
+          restoreOptions = options;
+        }
+        return selectResponses.shift() ?? 0;
       }
     }
   });
@@ -1814,7 +2083,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(harness.registered.menus.length, 1);
   const rootMenu = harness.registered.menus[0];
   assert.equal(rootMenu.menuType, "submenu");
-  assert.equal(rootMenu.menus.length, 6);
+  assert.equal(rootMenu.menus.length, 7);
   let showingVisible = null;
   await rootMenu.onShowing({}, {
     items: [item],
@@ -1836,15 +2105,16 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }
     });
   }
-  assert.deepEqual(menuVisibility, [true, true, true, true, false, true]);
-  assert.deepEqual(menuEnabled, [false, true, true, true, false, true]);
+  assert.deepEqual(menuVisibility, [true, true, true, true, true, false, true]);
+  assert.deepEqual(menuEnabled, [false, true, true, true, true, false, true]);
   assert.equal(menuStateCalls, 1);
   await rootMenu.menus[0].onCommand({}, { items: [item] });
   await rootMenu.menus[1].onCommand({}, { items: [item] });
   await rootMenu.menus[2].onCommand({}, { items: [item] });
   await rootMenu.menus[3].onCommand({}, { items: [item] });
-  await rootMenu.menus[5].onCommand({}, { items: [item] });
-  assert.deepEqual(calls.map((call) => call[0]), ["enable", "check", "create", "restore", "disable"]);
+  await rootMenu.menus[4].onCommand({}, { items: [item] });
+  await rootMenu.menus[6].onCommand({}, { items: [item] });
+  assert.deepEqual(calls.map((call) => call[0]), ["enable", "check", "create", "restore", "export", "disable"]);
   assert.equal(calls.find((call) => call[0] === "enable")[2], "C:\\Profile\\git4zotero\\library-1\\item-ABC123");
   assert.equal(calls.find((call) => call[0] === "create")[2], "菜单版本");
   assert.equal(restoreOptions.length, 3);
@@ -1855,7 +2125,11 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(restoreCall[2], "oldest");
   assert.equal(restoreCall[3], oldest.commitHash);
   assert.equal(restoreCall[4], oldest.trackedRelativePath);
+  const exportCall = calls.find((call) => call[0] === "export");
+  assert.equal(exportCall[2], "history");
+  assert.equal(exportCall[3], "text");
   assert(harness.alerts.some(([_title, message]) => message.includes("目标版本") && message.includes("safe1234")));
+  assert(harness.alerts.some(([_title, message]) => message.includes("版本摘要已导出")));
   assert.equal(harness.refreshCount, 5);
   assert.throws(() => harness.menu.requireSingleItem({ context: { items: [item, { id: 2 }] } }), /只选择一个/);
 
@@ -1883,7 +2157,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert(fallbackRoot, "fallback menu root should be created when official menu is missing");
   const fallbackPopup = fallbackRoot.children.find((child) => child.tagName === "menupopup");
   await harness.menu.populateFallbackPopup(fallbackPopup);
-  assert.equal(fallbackPopup.children.length, 5);
+  assert.equal(fallbackPopup.children.length, 6);
   assert.equal(fallbackPopup.children.some((child) => child.getAttribute("data-git4zotero-status") === "true"), false);
   assert.equal(fallbackPopup.children.some((child) => child.tagName === "menuseparator"), false);
   assert.equal(doc.getElementById("git4zotero-menu-configure-git-fallback"), null);
@@ -2160,8 +2434,8 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }
     });
   }
-  assert.deepEqual(gitMissingVisibility, [true, true, true, true, true, true]);
-  assert.deepEqual(gitMissingEnabled, [false, false, false, false, true, true]);
+  assert.deepEqual(gitMissingVisibility, [true, true, true, true, true, true, true]);
+  assert.deepEqual(gitMissingEnabled, [false, false, false, false, false, true, true]);
   const doc = new FakeDocument();
   const popup = doc.createXULElement("menupopup");
   doc.documentElement.append(popup);
@@ -2304,6 +2578,28 @@ const revisedDocx = makeDocx({
   "word/comments.xml": wordDocument(["批注不应参与正文差异"]),
   "word/header1.xml": wordDocument(["页眉上下文"])
 });
+const structuredOldDocx = makeDocx({
+  "word/document.xml": wordDocumentRaw(`
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>引言</w:t></w:r></w:p>
+    <w:p><w:r><w:t>旧正文段</w:t></w:r></w:p>
+    <w:tbl>
+      <w:tr><w:tc><w:p><w:r><w:t>旧表格段</w:t></w:r></w:p></w:tc></w:tr>
+    </w:tbl>
+  `),
+  "word/footnotes.xml": wordDocument(["旧脚注"]),
+  "word/endnotes.xml": wordDocument(["旧尾注"])
+});
+const structuredNewDocx = makeDocx({
+  "word/document.xml": wordDocumentRaw(`
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>引言</w:t></w:r></w:p>
+    <w:p><w:r><w:t>新正文段</w:t></w:r></w:p>
+    <w:tbl>
+      <w:tr><w:tc><w:p><w:r><w:t>新表格段</w:t></w:r></w:p></w:tc></w:tr>
+    </w:tbl>
+  `),
+  "word/footnotes.xml": wordDocument(["新脚注"]),
+  "word/endnotes.xml": wordDocument(["新尾注"])
+});
 const storedDeflateDocx = makeDocx({
   "word/document.xml": wordDocument(["stored block"])
 }, { deflateOptions: { level: 0 } });
@@ -2322,6 +2618,11 @@ assert(!revisedSnapshot.normalizedText.includes("删除文本"));
 assert(!revisedSnapshot.normalizedText.includes("移走文本"));
 assert(!revisedSnapshot.normalizedText.includes("批注"));
 assert(revisedSnapshot.paragraphDetails.some((paragraph) => paragraph.source === "header"));
+const structuredSnapshot = await reader.readBytes(structuredNewDocx);
+assert(structuredSnapshot.paragraphDetails.some((paragraph) => paragraph.headingPath?.includes("引言")));
+assert(structuredSnapshot.paragraphDetails.some((paragraph) => paragraph.areaType === "table" && paragraph.tableIndex === 1));
+assert(structuredSnapshot.paragraphDetails.some((paragraph) => paragraph.areaType === "footnote" && paragraph.sourceLabel === "脚注"));
+assert(structuredSnapshot.paragraphDetails.some((paragraph) => paragraph.areaType === "endnote" && paragraph.sourceLabel === "尾注"));
 assert.equal((await reader.readBytes(storedDeflateDocx)).paragraphs[0], "stored block");
 assert.equal((await reader.readBytes(fixedDeflateDocx)).paragraphs[0], "fixed huffman block");
 assert.throws(() => inflateRaw(new Uint8Array([0x07])), /reserved/);
@@ -2335,6 +2636,8 @@ const platform = new TestPlatform({
   "second.docx": secondDocx,
   "deleted.docx": deletedDocx,
   "style-only.docx": styleOnlyDocx,
+  "structured-old.docx": structuredOldDocx,
+  "structured-new.docx": structuredNewDocx,
   "legacy.doc": new Uint8Array([1, 2, 3])
 });
 const analyzer = new ContentAnalyzer({ platform, docxReader: new DocxReader(platform) });
@@ -2359,6 +2662,19 @@ assert(contentAnalysis.changeSummary.paragraphChanges.some((change) => change.ty
 assert(contentAnalysis.changeSummary.paragraphChanges.some((change) => change.type === "added" && change.newText.includes("新增结论段")));
 assert(contentAnalysis.changeSummary.displayChanges.length > 0);
 
+const structuredPreviousAnalysis = await analyzer.analyze("structured-old.docx", null);
+const structuredAnalysis = await analyzer.analyze("structured-new.docx", {
+  fileHash: structuredPreviousAnalysis.fileHash,
+  contentHash: structuredPreviousAnalysis.contentHash,
+  contentSummary: structuredPreviousAnalysis.contentSummary,
+  contentSnapshot: structuredPreviousAnalysis.contentSnapshot
+});
+assert(structuredAnalysis.changeSummary.changeGroups.some((group) => group.label === "引言" && group.modifiedParagraphs === 1));
+assert(structuredAnalysis.changeSummary.changeGroups.some((group) => group.label === "引言 · 表格 1" && group.modifiedParagraphs === 1));
+assert(structuredAnalysis.changeSummary.changeGroups.some((group) => group.label === "脚注" && group.modifiedParagraphs === 1));
+assert(structuredAnalysis.changeSummary.changeGroups.some((group) => group.label === "尾注" && group.modifiedParagraphs === 1));
+assert(structuredAnalysis.changeSummary.locationSummary.includes("表格 1"));
+
 const deletedAnalysis = await analyzer.analyze("deleted.docx", previousVersion);
 assert.equal(deletedAnalysis.changeSummary.deletedParagraphs, 1);
 assert(deletedAnalysis.changeSummary.paragraphChanges.some((change) => change.type === "deleted" && change.oldText.includes("方法第二段")));
@@ -2375,7 +2691,7 @@ const docPrevious = { fileHash: await platform.hashBytes(new Uint8Array([1, 2]))
 const docAnalysis = await analyzer.analyze("legacy.doc", docPrevious);
 assert.equal(docAnalysis.contentHash, null);
 assert.equal(docAnalysis.changeSummary.changeType, "file-level");
-assert(docAnalysis.changeSummary.summary.includes(".doc 仅支持文件级识别"));
+assert(docAnalysis.changeSummary.summary.includes(".doc 仅支持文件级跟踪"));
 
 console.log("逻辑测试通过：附件识别、右键菜单、lastCheck、Git 工作树、只读面板、设置页 Git 测试和正文差异均已验证。");
 
@@ -2582,6 +2898,7 @@ function makeMenuHarness({ serviceOverrides = {}, platformOverrides = {} } = {})
     checkCurrentChange: async () => ({ attachment: managedAttachment, changeSummary: { summary: "未检测到修改。" } }),
     createVersion: async () => older,
     restoreVersion: async () => {},
+    exportVersionSummary: async () => ({ path: "exports/history.md" }),
     getPanelState: async () => ({
       enabled: true,
       git: { available: true, detail: "git version 2.44.0" },

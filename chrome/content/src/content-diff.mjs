@@ -4,6 +4,13 @@ import { DocxReader } from "./docx-reader.mjs";
 const MAX_STORED_PARAGRAPH_CHANGES = 20;
 const MAX_DISPLAY_CHANGES = 3;
 const MAX_CHANGE_TEXT_LENGTH = 240;
+const SOURCE_LABELS = Object.freeze({
+  document: "正文",
+  footnotes: "脚注",
+  endnotes: "尾注",
+  header: "页眉",
+  footer: "页脚"
+});
 
 export class ContentAnalyzer {
   constructor({ platform, docxReader = null }) {
@@ -86,6 +93,7 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
   if (!previousVersion) {
     const paragraphChanges = createInitialParagraphChanges(current);
     const displayChanges = paragraphChanges.slice(0, MAX_DISPLAY_CHANGES);
+    const changeGroups = createChangeGroups(paragraphChanges);
     return {
       changeType: "first-version",
       summary: "首次创建版本，将保存当前 .docx 正文内容快照。",
@@ -95,6 +103,9 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
       wordDelta: current.wordCount,
       paragraphChanges,
       displayChanges,
+      changeGroups,
+      groupedChangeCount: changeGroups.length,
+      locationSummary: formatLocationSummary(changeGroups),
       totalParagraphChanges: current.paragraphCount,
       omittedChanges: Math.max(0, current.paragraphCount - displayChanges.length),
       fileChanged,
@@ -121,6 +132,9 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
       wordDelta: 0,
       paragraphChanges: [],
       displayChanges: [],
+      changeGroups: [],
+      groupedChangeCount: 0,
+      locationSummary: "",
       totalParagraphChanges: 0,
       omittedChanges: 0,
       fileChanged: false,
@@ -138,6 +152,9 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
       wordDelta: 0,
       paragraphChanges: [],
       displayChanges: [],
+      changeGroups: [],
+      groupedChangeCount: 0,
+      locationSummary: "",
       totalParagraphChanges: 0,
       omittedChanges: 0,
       fileChanged: true,
@@ -155,6 +172,7 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
   const totalParagraphChanges = paragraphDiff.paragraphChanges.length;
   const paragraphChanges = paragraphDiff.paragraphChanges.slice(0, MAX_STORED_PARAGRAPH_CHANGES);
   const displayChanges = paragraphChanges.slice(0, MAX_DISPLAY_CHANGES);
+  const changeGroups = createChangeGroups(paragraphChanges);
   return {
     changeType: "content",
     summary: [
@@ -167,6 +185,9 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
     ...paragraphDiff,
     paragraphChanges,
     displayChanges,
+    changeGroups,
+    groupedChangeCount: changeGroups.length,
+    locationSummary: formatLocationSummary(changeGroups),
     totalParagraphChanges,
     omittedChanges: Math.max(0, totalParagraphChanges - displayChanges.length),
     wordDelta,
@@ -212,9 +233,10 @@ export function summarizeFileLevelChange({ extension, previousVersion, fileChang
   if (extension === ".doc") {
     return {
       changeType: "file-level",
-      summary: "旧版 .doc 仅支持文件级识别：文件内容已变化，但不解析正文差异。",
+      summary: ".doc 仅支持文件级跟踪，可创建和恢复版本，但不解析正文差异。",
       fileChanged: true,
-      contentChanged: null
+      contentChanged: null,
+      fileOnlyReason: "doc-binary"
     };
   }
 
@@ -226,8 +248,8 @@ export function summarizeFileLevelChange({ extension, previousVersion, fileChang
   };
 }
 
-export function diffParagraphs(oldParagraphs, newParagraphs) {
-  return diffParagraphsWithDetails(oldParagraphs, newParagraphs);
+export function diffParagraphs(oldParagraphs, newParagraphs, oldDetails = [], newDetails = []) {
+  return diffParagraphsWithDetails(oldParagraphs, newParagraphs, oldDetails, newDetails);
 }
 
 export function diffParagraphsWithDetails(
@@ -334,6 +356,12 @@ function createParagraphChange({
     newIndex,
     source: newDetail?.source || oldDetail?.source || "document"
   };
+  const detail = newDetail || oldDetail || {};
+  change.sourceLabel = detail.sourceLabel || labelSource(change.source);
+  change.locationLabel = detail.locationLabel || "";
+  change.headingPath = detail.headingPath ?? [];
+  change.areaType = detail.areaType || (change.source === "footnotes" ? "footnote" : (change.source === "endnotes" ? "endnote" : "body"));
+  change.tableIndex = detail.tableIndex ?? null;
   if (type === "deleted" || type === "modified") {
     change.oldText = truncateChangeText(oldText);
   }
@@ -341,6 +369,85 @@ function createParagraphChange({
     change.newText = truncateChangeText(newText);
   }
   return change;
+}
+
+function createChangeGroups(changes) {
+  const groups = [];
+  const groupMap = new Map();
+  for (const change of changes) {
+    const descriptor = describeChangeGroup(change);
+    if (!groupMap.has(descriptor.key)) {
+      groupMap.set(descriptor.key, {
+        key: descriptor.key,
+        label: descriptor.label,
+        areaType: change.areaType,
+        sourceLabel: change.sourceLabel,
+        headingPath: change.headingPath ?? [],
+        tableIndex: change.tableIndex ?? null,
+        addedParagraphs: 0,
+        deletedParagraphs: 0,
+        modifiedParagraphs: 0,
+        totalChanges: 0,
+        changes: []
+      });
+      groups.push(groupMap.get(descriptor.key));
+    }
+    const group = groupMap.get(descriptor.key);
+    group.totalChanges += 1;
+    group.changes.push(change);
+    if (change.type === "added") {
+      group.addedParagraphs += 1;
+    }
+    else if (change.type === "deleted") {
+      group.deletedParagraphs += 1;
+    }
+    else if (change.type === "modified") {
+      group.modifiedParagraphs += 1;
+    }
+    group.summary = formatGroupSummary(group);
+  }
+  return groups;
+}
+
+function describeChangeGroup(change) {
+  const heading = change.headingPath?.filter(Boolean).join(" / ") || "";
+  if (change.areaType === "table") {
+    const table = change.tableIndex ? `表格 ${change.tableIndex}` : "表格";
+    const label = heading ? `${heading} · ${table}` : table;
+    return { key: `table:${heading}:${change.tableIndex ?? ""}`, label };
+  }
+  if (change.areaType === "footnote") {
+    return { key: "footnote", label: "脚注" };
+  }
+  if (change.areaType === "endnote") {
+    return { key: "endnote", label: "尾注" };
+  }
+  if (heading) {
+    return { key: `heading:${heading}`, label: heading };
+  }
+  return { key: "body:untitled", label: "无标题正文" };
+}
+
+function formatGroupSummary(group) {
+  const parts = [];
+  if (group.addedParagraphs) {
+    parts.push(`新增 ${group.addedParagraphs} 段`);
+  }
+  if (group.deletedParagraphs) {
+    parts.push(`删除 ${group.deletedParagraphs} 段`);
+  }
+  if (group.modifiedParagraphs) {
+    parts.push(`修改 ${group.modifiedParagraphs} 段`);
+  }
+  return `${group.label} · ${parts.join("，") || `${group.totalChanges} 处变化`}`;
+}
+
+function formatLocationSummary(groups) {
+  return groups.map((group) => group.summary).slice(0, 5).join("；");
+}
+
+function labelSource(source) {
+  return SOURCE_LABELS[source] || "正文";
 }
 
 function truncateChangeText(value) {
