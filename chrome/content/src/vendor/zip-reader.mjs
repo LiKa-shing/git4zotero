@@ -1,3 +1,6 @@
+import { UI_TEXT } from "../constants.mjs";
+import { formatText } from "../localization.mjs";
+
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_SIGNATURE = 0x02014b50;
 const LOCAL_SIGNATURE = 0x04034b50;
@@ -75,7 +78,7 @@ export class ZipReader {
 
     for (let index = 0; index < count; index += 1) {
       if (this.view.getUint32(offset, true) !== CENTRAL_SIGNATURE) {
-        throw new Error("无效的 docx 压缩目录。");
+        throw new Error(UI_TEXT.invalidDocxZipDirectory);
       }
 
       const flags = this.view.getUint16(offset + 8, true);
@@ -107,7 +110,7 @@ export class ZipReader {
   async readEntry(entry) {
     const offset = entry.localHeaderOffset;
     if (this.view.getUint32(offset, true) !== LOCAL_SIGNATURE) {
-      throw new Error(`docx 条目 ${entry.name} 的本地头无效。`);
+      throw new Error(formatText("invalidDocxLocalHeader", { name: entry.name }));
     }
 
     const nameLength = this.view.getUint16(offset + 26, true);
@@ -124,16 +127,20 @@ export class ZipReader {
         output = inflateRaw(compressed);
       }
       else {
-        throw new Error(`暂不支持的压缩方式：${entry.method}`);
+        throw new Error(formatText("unsupportedCompressionMethod", { method: entry.method }));
       }
     }
     catch (error) {
-      throw new Error(`无法解析 docx 条目 ${entry.name} 的压缩内容：${error.message || error}`);
+      throw new Error(formatText("docxEntryInflateFailed", { name: entry.name, message: error.message || error }));
     }
 
     if (output.byteLength !== entry.uncompressedSize) {
       throw new Error(
-        `docx 条目 ${entry.name} 解压长度不符：期望 ${entry.uncompressedSize}，实际 ${output.byteLength}。`
+        formatText("docxEntrySizeMismatch", {
+          name: entry.name,
+          expected: entry.uncompressedSize,
+          actual: output.byteLength
+        })
       );
     }
     return output;
@@ -146,7 +153,7 @@ export class ZipReader {
         return offset;
       }
     }
-    throw new Error("无法读取 docx：未找到 ZIP 中央目录。");
+    throw new Error(UI_TEXT.missingZipCentralDirectory);
   }
 }
 
@@ -189,7 +196,7 @@ class BitReader {
   readBits(count) {
     while (this.bitCount < count) {
       if (this.byteOffset >= this.bytes.length) {
-        throw new Error("压缩数据意外结束。");
+        throw new Error(UI_TEXT.compressedDataUnexpectedEnd);
       }
       this.bitBuffer |= this.bytes[this.byteOffset] << this.bitCount;
       this.byteOffset += 1;
@@ -209,7 +216,7 @@ class BitReader {
 
   readByte() {
     if (this.byteOffset >= this.bytes.length) {
-      throw new Error("压缩数据意外结束。");
+      throw new Error(UI_TEXT.compressedDataUnexpectedEnd);
     }
     return this.bytes[this.byteOffset++];
   }

@@ -26,6 +26,7 @@ const requiredFiles = [
   "tsconfig.json",
   "locale/en-US/git4zotero.ftl",
   "locale/zh-CN/git4zotero.ftl",
+  "locale/zh-TW/git4zotero.ftl",
   "chrome/content/preferences.xhtml",
   "chrome/content/preferences.mjs",
   "chrome/content/preferences.css",
@@ -36,7 +37,9 @@ const requiredFiles = [
   "chrome/content/icons/paper-version-48.png",
   "chrome/content/icons/paper-version-96.png",
   "chrome/content/src/content-diff.mjs",
+  "chrome/content/src/cleanup.mjs",
   "chrome/content/src/docx-reader.mjs",
+  "chrome/content/src/localization.mjs",
   "chrome/content/src/main.mjs",
   "chrome/content/src/git-backend.mjs",
   "chrome/content/src/menu.mjs",
@@ -63,6 +66,8 @@ const requiredChineseText = [
   "具体修改",
   ".doc 仅支持文件级跟踪",
   "导出版本摘要",
+  "已删除条目留下的版本历史",
+  "永久删除",
   "启用版本管理",
   "停用版本管理",
   "Git 可执行文件路径",
@@ -209,6 +214,10 @@ assert(mainModule.includes("label: UI_TEXT.preferencePaneLabel"));
 assert(!mainModule.includes("rawLabel"), "PreferencePanes.register should use label, not rawLabel");
 assert(mainModule.includes("registerItemPane"));
 assert(mainModule.includes("registerContextMenu"));
+assert(mainModule.includes("registerItemDeletionObserver"));
+assert(mainModule.includes("unregisterItemDeletionObserver"));
+assert(mainModule.includes("Notifier.registerObserver"));
+assert(mainModule.includes("git4zotero-cleanup"));
 assert(mainModule.includes("bodyXHTML: this.pane.bodyXHTML()"), "Item pane should provide a stable bodyXHTML root");
 assert(mainModule.includes("git4zotero-item-pane-sidenav"));
 assert(mainModule.includes("orderable: false"));
@@ -265,7 +274,7 @@ assert(uiModule.includes("item pane async render complete"));
 assert(uiModule.includes("lastCheck(doc, lastCheck)"));
 assert(uiModule.includes("workingTree(doc, workingTree)"));
 assert(uiModule.includes("workflow(doc, state)"));
-assert(uiModule.includes("工作流"));
+assert(uiModule.includes("UI_TEXT.workflow"));
 assert(uiModule.includes("versionTimelineItem"));
 assert(uiModule.includes("SCOPED_TIMELINE_STYLE"));
 assert(uiModule.includes("data-git4zotero-scoped-style"));
@@ -346,6 +355,20 @@ assert(platformModule.includes("promptText"));
 assert(platformModule.includes("selectFromList"));
 assert(platformModule.includes("options.length"));
 assert(platformModule.includes("refreshItemPane"));
+assert(platformModule.includes("removeDirectory"));
+assert(platformModule.includes("listDirectory"));
+
+const cleanupModule = await fs.readFile(path.join(root, "chrome/content/src/cleanup.mjs"), "utf8");
+assert(cleanupModule.includes("RepositoryIndexStore"));
+assert(cleanupModule.includes("RepositoryCleanupService"));
+assert(cleanupModule.includes("index.json"));
+assert(cleanupModule.includes("handleItemEvent"));
+assert(cleanupModule.includes("event === \"trash\""));
+assert(cleanupModule.includes("event !== \"delete\""));
+assert(cleanupModule.includes("isSafeRepoRelativePath"));
+assert(cleanupModule.includes("metadataMatchesDeletedIDs"));
+assert(cleanupModule.includes("scanOrphanRepositories"));
+assert(cleanupModule.includes("cleanupOrphanRepositories"));
 
 const contentDiffModule = await fs.readFile(path.join(root, "chrome/content/src/content-diff.mjs"), "utf8");
 assert(contentDiffModule.includes("paragraphChanges"));
@@ -371,6 +394,8 @@ assert(preferencesXhtml.includes("尚未测试 Git。"));
 assert(preferencesXhtml.includes("论文版本管理") || mainModule.includes("preferencePaneLabel"));
 assert(preferencesXhtml.includes("状态与排错"));
 assert(preferencesXhtml.includes(manifest.version));
+assert(preferencesXhtml.includes("检查已删除条目的历史"));
+assert(preferencesXhtml.includes("清理已删除条目的历史"));
 assert(!preferencesXhtml.includes("preference=\"extensions.git4zotero.gitPath\""));
 const preferencesScript = await fs.readFile(path.join(root, "chrome/content/preferences.mjs"), "utf8");
 assert(preferencesScript.includes("window.Git4ZoteroPreferences"));
@@ -380,12 +405,18 @@ assert(preferencesScript.includes("document.readyState === \"loading\""));
 assert(preferencesScript.includes("requiredElementsReady"));
 assert(preferencesScript.includes("scheduleInit"));
 assert(preferencesScript.includes("checkGitAvailability"));
+assert(preferencesScript.includes("checkOrphanHistory"));
+assert(preferencesScript.includes("cleanupOrphanHistory"));
+assert(preferencesScript.includes("RepositoryCleanupService"));
 assert(preferencesScript.includes("gitInput.value = this.getSavedGitPath()"));
+assert(preferencesScript.includes("Git4ZoteroPreferenceL10n"));
+assert(preferencesScript.includes("Tested path"));
 assert(preferencesScript.includes("已测试路径"));
-assert(preferencesScript.includes("已保存路径"));
 
 const zhFtl = await fs.readFile(path.join(root, "locale/zh-CN/git4zotero.ftl"), "utf8");
-for (const id of [
+const enFtl = await fs.readFile(path.join(root, "locale/en-US/git4zotero.ftl"), "utf8");
+const twFtl = await fs.readFile(path.join(root, "locale/zh-TW/git4zotero.ftl"), "utf8");
+const requiredFtlIDs = [
   "git4zotero-menu-root",
   "git4zotero-menu-enable",
   "git4zotero-menu-check",
@@ -394,11 +425,40 @@ for (const id of [
   "git4zotero-menu-export",
   "git4zotero-menu-configure-git",
   "git4zotero-menu-disable"
-]) {
-  const index = zhFtl.indexOf(`${id} =`);
-  assert(index >= 0, `missing FTL id ${id}`);
-  assert(zhFtl.slice(index, index + 120).includes(".label ="), `${id} must define .label`);
+];
+const localeFiles = new Map([
+  ["zh-CN", zhFtl],
+  ["zh-TW", twFtl],
+  ["en-US", enFtl]
+]);
+for (const [locale, ftl] of localeFiles) {
+  for (const id of requiredFtlIDs) {
+    const index = ftl.indexOf(`${id} =`);
+    assert(index >= 0, `missing FTL id ${id} in ${locale}`);
+    assert(ftl.slice(index, index + 140).includes(".label ="), `${id} must define .label in ${locale}`);
+  }
 }
+const extractFtlIDs = (ftl) => [...ftl.matchAll(/^([a-z0-9-]+)\s*=/gmi)].map((match) => match[1]).sort();
+assert.deepEqual(extractFtlIDs(enFtl), extractFtlIDs(zhFtl), "en-US FTL ids must match zh-CN");
+assert.deepEqual(extractFtlIDs(twFtl), extractFtlIDs(zhFtl), "zh-TW FTL ids must match zh-CN");
+assert(enFtl.includes("Paper Versions"), "en-US FTL must contain English labels");
+assert(!/论文版本|创建版本|检查修改/.test(enFtl), "en-US FTL must not contain Simplified Chinese menu labels");
+assert(twFtl.includes("論文版本"), "zh-TW FTL must contain Traditional Chinese labels");
+
+const localizationModule = await import(pathToFileURL(path.join(root, "chrome/content/src/localization.mjs")));
+const constantsModule = await import(pathToFileURL(path.join(root, "chrome/content/src/constants.mjs")));
+assert.equal(localizationModule.resolveUILocale("zh-CN"), "zh-CN");
+assert.equal(localizationModule.resolveUILocale("zh-TW"), "zh-TW");
+assert.equal(localizationModule.resolveUILocale("zh-HK"), "zh-TW");
+assert.equal(localizationModule.resolveUILocale("en-US"), "en-US");
+assert.equal(localizationModule.resolveUILocale("fr-FR"), "en-US");
+localizationModule.setUILocale("en-US");
+assert.equal(constantsModule.UI_TEXT.menuRoot, "Paper Versions");
+assert(!/[\u4e00-\u9fff]/.test(JSON.stringify(constantsModule.UI_TEXT)), "en-US UI_TEXT must not contain Chinese text");
+localizationModule.setUILocale("zh-TW");
+assert.equal(constantsModule.UI_TEXT.menuRoot, "論文版本");
+localizationModule.setUILocale("zh-CN");
+assert.equal(constantsModule.UI_TEXT.menuRoot, "论文版本");
 
 for (const file of allSourceFiles.filter((file) => {
   const rel = toPosix(path.relative(root, file));

@@ -13,6 +13,12 @@ import {
   sanitizeForPath
 } from "../chrome/content/src/attachments.mjs";
 import { ContentAnalyzer } from "../chrome/content/src/content-diff.mjs";
+import {
+  RepositoryCleanupService,
+  RepositoryIndexStore,
+  createEmptyRepositoryIndex,
+  isSafeRepoRelativePath
+} from "../chrome/content/src/cleanup.mjs";
 import { PREFS, SECTION_ID, UI_TEXT } from "../chrome/content/src/constants.mjs";
 import { DocxReader } from "../chrome/content/src/docx-reader.mjs";
 import { inflateRaw } from "../chrome/content/src/vendor/zip-reader.mjs";
@@ -24,6 +30,7 @@ import {
   normalizeVersionNote,
   sortNewestFirst
 } from "../chrome/content/src/metadata.mjs";
+import { resolveUILocale, setUILocale } from "../chrome/content/src/localization.mjs";
 import { assertSafeCommitHash, GitBackend } from "../chrome/content/src/git-backend.mjs";
 import { PaperVersionMenu } from "../chrome/content/src/menu.mjs";
 import { normalizeJoinParts, ZoteroPlatform } from "../chrome/content/src/platform.mjs";
@@ -31,6 +38,21 @@ import { PaperVersionPane } from "../chrome/content/src/ui.mjs";
 import { VersionService } from "../chrome/content/src/version-service.mjs";
 
 let CRC_TABLE = null;
+
+assert.equal(resolveUILocale("zh-CN"), "zh-CN");
+assert.equal(resolveUILocale("zh-TW"), "zh-TW");
+assert.equal(resolveUILocale("zh-HK"), "zh-TW");
+assert.equal(resolveUILocale("en-US"), "en-US");
+assert.equal(resolveUILocale("fr-FR"), "en-US");
+setUILocale("en-US");
+assert.equal(UI_TEXT.menuRoot, "Paper Versions");
+assert.equal(UI_TEXT.preferences.testGit, "Test Git");
+assert(!/[\u4e00-\u9fff]/.test(JSON.stringify(UI_TEXT)));
+setUILocale("zh-TW");
+assert.equal(UI_TEXT.menuRoot, "論文版本");
+assert.equal(UI_TEXT.preferences.testGit, "測試 Git");
+setUILocale("zh-CN");
+assert.equal(UI_TEXT.menuRoot, "论文版本");
 
 class TestPlatform {
   constructor(files) {
@@ -743,7 +765,7 @@ const older = createVersionRecord({
   itemKey: "ITEM",
   attachmentID: 3,
   attachmentKey: "ATT",
-  pluginVersion: "0.2.1"
+  pluginVersion: "0.2.2"
 });
 const newer = {
   ...older,
@@ -831,6 +853,123 @@ const managedAttachment = {
   attachmentID: 3,
   attachmentKey: "ATT"
 };
+
+assert.equal(isSafeRepoRelativePath("library-1/item-ITEM"), true);
+assert.equal(isSafeRepoRelativePath("../library-1/item-ITEM"), false);
+assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
+
+{
+  const files = new Map();
+  const directories = new Set(["C:/Profile", "C:/Profile/git4zotero"]);
+  const removedDirectories = [];
+  const platform = {
+    Zotero: {
+      Items: {
+        get: () => null
+      },
+      debug() {}
+    },
+    getPluginDataDirectory: () => "C:/Profile/git4zotero",
+    join: (...parts) => parts.join("/"),
+    exists: async (target) => files.has(target) || directories.has(target),
+    makeDirectory: async (target) => directories.add(target),
+    readText: async (target) => files.get(target),
+    writeText: async (target, content) => {
+      directories.add(target.replace(/\/[^/]+$/, ""));
+      files.set(target, content);
+    },
+    listDirectory: async (target) => {
+      if (target === "C:/Profile/git4zotero") {
+        return ["C:/Profile/git4zotero/library-1"];
+      }
+      if (target === "C:/Profile/git4zotero/library-1") {
+        return ["C:/Profile/git4zotero/library-1/item-ITEM"];
+      }
+      return [];
+    },
+    removeDirectory: async (target) => {
+      removedDirectories.push(target);
+      directories.delete(target);
+      for (const key of [...files.keys()]) {
+        if (key === target || key.startsWith(`${target}/`)) {
+          files.delete(key);
+        }
+      }
+    }
+  };
+  const metadataStore = new MetadataStore(platform);
+  const indexStore = new RepositoryIndexStore(platform);
+  const cleanupService = new RepositoryCleanupService({ platform, metadataStore, indexStore });
+  const repoPath = "C:/Profile/git4zotero/library-1/item-ITEM";
+  directories.add(repoPath);
+  await metadataStore.write(repoPath, {
+    ...createEmptyMetadata(),
+    enabled: true,
+    item: { libraryID: 1, itemID: 2, itemKey: "ITEM" },
+    attachment: { attachmentID: 3, attachmentKey: "ATT", fileName: "paper.docx" },
+    versions: [older]
+  });
+  await indexStore.upsertAttachment(managedAttachment, { enabled: true });
+
+  await cleanupService.handleItemEvent("trash", "item", [2]);
+  assert.equal(removedDirectories.length, 0);
+  assert.equal(await platform.exists(repoPath), true);
+
+  await cleanupService.handleItemEvent("delete", "item", [2]);
+  assert.deepEqual(removedDirectories, [repoPath]);
+  assert.equal(await platform.exists(repoPath), false);
+  assert.equal((await indexStore.read()).repositories.length, 0);
+
+  directories.add(repoPath);
+  await metadataStore.write(repoPath, {
+    ...createEmptyMetadata(),
+    enabled: true,
+    item: { libraryID: 1, itemID: 2, itemKey: "ITEM" },
+    attachment: { attachmentID: 3, attachmentKey: "ATT", fileName: "paper.docx" },
+    versions: [older]
+  });
+  await indexStore.upsertAttachment(managedAttachment, { enabled: true });
+  await cleanupService.handleItemEvent("delete", "item", [3]);
+  assert.equal(removedDirectories.at(-1), repoPath);
+
+  const invalidResult = await cleanupService.cleanupCandidates(
+    [{ ...managedAttachment, repoRelativePath: "../escape" }],
+    new Set([2])
+  );
+  assert.equal(invalidResult.cleaned.length, 0);
+  assert.equal(invalidResult.skipped.length, 1);
+
+  directories.add(repoPath);
+  await metadataStore.write(repoPath, {
+    ...createEmptyMetadata(),
+    enabled: true,
+    item: { libraryID: 1, itemID: 222, itemKey: "OTHER" },
+    attachment: { attachmentID: 333, attachmentKey: "OTHERATT", fileName: "paper.docx" },
+    versions: []
+  });
+  const mismatch = await cleanupService.cleanupCandidates(
+    [{
+      ...managedAttachment,
+      repoRelativePath: "library-1/item-ITEM"
+    }],
+    new Set([2])
+  );
+  assert.equal(mismatch.cleaned.length, 0);
+  assert.equal(mismatch.skipped[0].reason.includes("元数据"), true);
+
+  files.delete("C:/Profile/git4zotero/index.json");
+  await metadataStore.write(repoPath, {
+    ...createEmptyMetadata(),
+    enabled: true,
+    item: { libraryID: 1, itemID: 2, itemKey: "ITEM" },
+    attachment: { attachmentID: 3, attachmentKey: "ATT", fileName: "paper.docx" },
+    versions: [older]
+  });
+  const orphanScan = await cleanupService.scanOrphanRepositories();
+  assert.equal(orphanScan.count, 1);
+  assert.equal(orphanScan.repositories[0].repoRelativePath, "library-1/item-ITEM");
+}
+
 const disabledService = new VersionService({
   platform: {
     getRepoPath: () => "repo"
@@ -852,7 +991,7 @@ const disabledService = new VersionService({
       throw new Error("panel state must not write metadata");
     }
   },
-  pluginVersion: "0.2.1",
+  pluginVersion: "0.2.2",
   contentAnalyzer: {
     analyze: async () => {
       throw new Error("disabled item must not analyze content");
@@ -909,7 +1048,7 @@ const fullHistoryService = new VersionService({
       throw new Error("history reads must not write metadata");
     }
   },
-  pluginVersion: "0.2.1"
+  pluginVersion: "0.2.2"
 });
 const versionHistory = await fullHistoryService.getVersionHistory({});
 assert.equal(versionHistory.length, 4);
@@ -981,7 +1120,7 @@ const exportService = new VersionService({
       }
     })
   },
-  pluginVersion: "0.2.1"
+  pluginVersion: "0.2.2"
 });
 const historyExport = await exportService.exportVersionSummary({}, { scope: "history", format: "markdown" });
 assert(historyExport.path.includes("git4zotero-history-ITEM"));
@@ -1798,7 +1937,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
-    pluginVersion: "0.2.1",
+    pluginVersion: "0.2.2",
     contentAnalyzer: {
       analyze: async () => ({
         fileHash: "new-file",
@@ -1840,7 +1979,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       read: async () => ({ ...createEmptyMetadata(), enabled: true, versions: [] }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
-    pluginVersion: "0.2.1",
+    pluginVersion: "0.2.2",
     contentAnalyzer: {
       analyze: async () => ({
         fileHash: "new-file",
@@ -1914,7 +2053,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
-    pluginVersion: "0.2.1",
+    pluginVersion: "0.2.2",
     contentAnalyzer: {
       analyze: async () => ({
         fileHash: "safety-file",
@@ -1988,7 +2127,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
-    pluginVersion: "0.2.1"
+    pluginVersion: "0.2.2"
   });
 
   await assert.rejects(
@@ -2521,9 +2660,32 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   delayedPrefs.releaseElements();
   assert.equal(delayedPrefs.context.window.Git4ZoteroPreferences.initialized, true);
   assert.equal(delayedPrefs.elements["git4zotero-git-status"].textContent, "尚未测试 Git。");
+
+  const orphanPrefs = await runPreferencesScript();
+  const prefWindow = orphanPrefs.context.window.Git4ZoteroPreferences;
+  let cleanupCalled = false;
+  prefWindow.cleanupService = {
+    scanOrphanRepositories: async () => ({
+      count: 1,
+      repositories: [{ repoRelativePath: "library-1/item-MISSING" }],
+      skipped: []
+    }),
+    cleanupOrphanRepositories: async () => {
+      cleanupCalled = true;
+      return { cleaned: [{ path: "repo" }], skipped: [] };
+    }
+  };
+  prefWindow.getPlatform = () => ({ confirm: () => true });
+  await prefWindow.checkOrphanHistory();
+  assert(orphanPrefs.elements["git4zotero-orphan-status"].textContent.includes("发现 1 个已删除条目留下的版本历史"));
+  assert.equal(orphanPrefs.elements["git4zotero-check-orphans"].disabled, false);
+  await prefWindow.cleanupOrphanHistory();
+  assert.equal(cleanupCalled, true);
+  assert(orphanPrefs.elements["git4zotero-orphan-status"].textContent.includes("已清理 1 个已删除条目的版本历史"));
 }
 
 let enabledMetadata = null;
+const indexUpdates = [];
 const enablingService = new VersionService({
   platform: {
     getRepoPath: () => "repo"
@@ -2536,12 +2698,18 @@ const enablingService = new VersionService({
     write: async (repoPath, metadataToWrite) => {
       enabledMetadata = metadataToWrite;
     }
+  },
+  indexStore: {
+    upsertAttachment: async (attachment, options) => {
+      indexUpdates.push([attachment.itemKey, options.enabled]);
+    }
   }
 });
 await enablingService.enableVersionManagement({});
 assert.equal(enabledMetadata.enabled, true);
 await enablingService.disableVersionManagement({});
 assert.equal(enabledMetadata.enabled, false);
+assert.deepEqual(indexUpdates, [["ITEM", true], ["ITEM", false]]);
 
 const firstDocx = makeDocx({
   "word/document.xml": wordDocument(["引言第一段", "方法第二段"]),
@@ -3035,6 +3203,7 @@ async function runPreferencesScript({
       }
     },
     Zotero: {
+      locale: "zh-CN",
       debug() {},
       Prefs: {
         get: (key) => prefs.get(key) ?? "",

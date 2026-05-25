@@ -40,6 +40,12 @@
   min-height: 30px;
 }
 
+.git4zotero-pref-actions {
+  grid-template-columns: repeat(2, max-content);
+  justify-content: start;
+  margin-top: 14px;
+}
+
 .git4zotero-pref-checkbox {
   align-items: center;
   display: flex !important;
@@ -65,6 +71,10 @@
 
 .git4zotero-pref-status[data-tone="error"] {
   color: #b3261e;
+}
+
+.git4zotero-pref-status[data-tone="warning"] {
+  color: #8a5a00;
 }
 
 .git4zotero-pref-status {

@@ -1,4 +1,5 @@
 import { SECTION_ID, UI_TEXT } from "./constants.mjs";
+import { formatText } from "./localization.mjs";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 const ROOT_INLINE_STYLE = "display:block;box-sizing:border-box;width:100%;min-width:0;min-height:72px;color:CanvasText;background:Canvas;";
@@ -488,13 +489,13 @@ export class PaperVersionPane {
     const versionCount = state.versions?.length ?? 0;
     const workingTree = state.workingTree ?? state.lastCheck?.workingTree ?? null;
     const workingTreeSummary = workingTree?.clean === false
-      ? "有未提交修改"
-      : (workingTree?.clean ? "工作树干净" : "尚未检查工作树");
+      ? UI_TEXT.stateDirty
+      : (workingTree?.clean ? UI_TEXT.stateClean : UI_TEXT.stateUnchecked);
     const latestSummary = this.latestVersionSummary(state.versions?.[0]);
     return [
-      "已启用",
-      `${versionCount} 个版本`,
-      latestSummary ? `最新 ${latestSummary}` : "",
+      UI_TEXT.stateEnabled,
+      formatText("stateVersionCount", { count: versionCount }),
+      latestSummary ? formatText("stateLatest", { value: latestSummary }) : "",
       workingTreeSummary
     ].filter(Boolean).join(" · ");
   }
@@ -510,7 +511,7 @@ export class PaperVersionPane {
   }
 
   workflow(doc, state) {
-    const section = this.section(doc, "工作流");
+    const section = this.section(doc, UI_TEXT.workflow);
     const list = this.el(doc, "ol", "git4zotero-workflow");
     for (const step of this.workflowSteps(state)) {
       list.append(this.workflowStep(doc, step));
@@ -524,8 +525,8 @@ export class PaperVersionPane {
       return [
         {
           tone: "current",
-          title: "添加论文附件",
-          detail: "为当前条目添加 .docx 或 .doc 文件后再进行版本管理。"
+          title: UI_TEXT.workflowAddAttachmentTitle,
+          detail: UI_TEXT.workflowAddAttachmentDetail
         }
       ];
     }
@@ -534,13 +535,19 @@ export class PaperVersionPane {
       return [
         {
           tone: "current",
-          title: "启用版本管理",
-          detail: `右键条目或附件，选择“${UI_TEXT.menuRoot} → ${UI_TEXT.enableManagement}”。`
+          title: UI_TEXT.workflowEnableTitle,
+          detail: formatText("workflowEnableDetail", {
+            menuRoot: UI_TEXT.menuRoot,
+            enableManagement: UI_TEXT.enableManagement
+          })
         },
         {
           tone: "pending",
-          title: "检查修改并创建首个版本",
-          detail: `启用后使用“${UI_TEXT.checkChanges}”确认差异，再使用“${UI_TEXT.createVersion}”。`
+          title: UI_TEXT.workflowCheckCreateFirstTitle,
+          detail: formatText("workflowCheckCreateFirstDetail", {
+            checkChanges: UI_TEXT.checkChanges,
+            createVersion: UI_TEXT.createVersion
+          })
         }
       ];
     }
@@ -549,13 +556,13 @@ export class PaperVersionPane {
       return [
         {
           tone: "done",
-          title: "版本管理已启用",
+          title: UI_TEXT.workflowEnabledTitle,
           detail: state.attachment.fileName
         },
         {
           tone: "current",
-          title: "配置 Git",
-          detail: `打开设置页填写 Git 路径，或右键选择“${UI_TEXT.menuConfigureGit}”。`
+          title: UI_TEXT.workflowConfigureGitTitle,
+          detail: formatText("workflowConfigureGitDetail", { menuConfigureGit: UI_TEXT.menuConfigureGit })
         }
       ];
     }
@@ -565,26 +572,29 @@ export class PaperVersionPane {
     return [
       {
         tone: "done",
-        title: "版本管理已启用",
+        title: UI_TEXT.workflowEnabledTitle,
         detail: state.attachment.fileName
       },
       {
         tone: "current",
-        title: hasHistory ? "检查当前修改" : "检查并创建首个版本",
-        detail: `保存论文文件后，右键选择“${UI_TEXT.checkChanges}”；确认无误后选择“${UI_TEXT.createVersion}”。`
+        title: hasHistory ? UI_TEXT.workflowCheckCurrentTitle : UI_TEXT.workflowCheckCreateFirstCurrentTitle,
+        detail: formatText("workflowCheckSavedDetail", {
+          checkChanges: UI_TEXT.checkChanges,
+          createVersion: UI_TEXT.createVersion
+        })
       },
       {
         tone: hasHistory ? "available" : "pending",
-        title: "恢复历史版本",
+        title: UI_TEXT.workflowRestoreHistoryTitle,
         detail: hasHistory
-          ? `已有 ${state.versions.length} 个版本，可右键选择“恢复版本...”。`
-          : "创建首个版本后，这里会显示可恢复的历史。"
+          ? formatText("workflowRestoreHistoryAvailable", { count: state.versions.length, restoreVersionMenu: UI_TEXT.menuRestorePromptTitle + "..." })
+          : UI_TEXT.workflowRestoreHistoryEmpty
       },
       {
         tone: workingTree?.clean === false ? "warning" : "done",
-        title: "工作树状态",
+        title: UI_TEXT.workflowWorkingTreeTitle,
         detail: workingTree?.clean === false
-          ? "检测到未提交修改，创建版本后会进入历史记录。"
+          ? UI_TEXT.workflowWorkingTreeDirty
           : (workingTree?.summary || UI_TEXT.workingTreeClean)
       }
     ];
@@ -604,7 +614,7 @@ export class PaperVersionPane {
   fileSummary(doc, attachment) {
     const wrapper = this.el(doc, "div", "git4zotero-file");
     const title = this.el(doc, "strong");
-    title.textContent = `${UI_TEXT.currentFile}：${attachment.fileName}`;
+    title.textContent = `${UI_TEXT.currentFile}${UI_TEXT.colon}${attachment.fileName}`;
     const mode = attachment.extension === ".docx"
       ? UI_TEXT.contentModeDocx
       : (attachment.extension === ".doc" ? UI_TEXT.docFileOnlyTracking : UI_TEXT.contentModeFileOnly);
@@ -631,7 +641,10 @@ export class PaperVersionPane {
     ));
 
     if (lastCheck.contentSummary?.mode === "docx-content") {
-      section.append(this.meta(doc, `正文 ${lastCheck.contentSummary.paragraphCount} 段 · ${lastCheck.contentSummary.wordCount} 字/词`));
+      section.append(this.meta(doc, formatText("contentSummaryDocx", {
+        paragraphCount: lastCheck.contentSummary.paragraphCount,
+        wordCount: lastCheck.contentSummary.wordCount
+      })));
     }
     else if (lastCheck.contentSummary?.extension === ".doc") {
       section.append(this.meta(doc, UI_TEXT.docFileOnlyTracking));
@@ -674,10 +687,10 @@ export class PaperVersionPane {
 
     const issues = (health.checks ?? []).filter((check) => check.status !== "ok");
     for (const issue of issues.slice(0, 4)) {
-      section.append(this.meta(doc, `${issue.label}：${issue.detail}`));
+      section.append(this.meta(doc, `${issue.label}${UI_TEXT.colon}${issue.detail}`));
     }
     if (issues.length > 4) {
-      section.append(this.meta(doc, `另有 ${issues.length - 4} 个问题未展开。`));
+      section.append(this.meta(doc, formatText("additionalIssues", { count: issues.length - 4 })));
     }
     return section;
   }
@@ -741,17 +754,17 @@ export class PaperVersionPane {
     summary.textContent = UI_TEXT.versionDetails;
     const list = this.el(doc, "dl", "git4zotero-version-details-list");
     const rows = [
-      ["版本说明", version.note || UI_TEXT.defaultNote],
-      ["创建时间", this.formatDate(version.createdAt)],
-      ["Git hash", version.commitHash || version.id || "unknown"],
-      ["文件名", version.fileName || "unknown"],
-      ["文件大小", this.formatSize(version.fileSize)],
-      ["版本类型", this.versionKindLabel(version)],
-      ["安全备份", version.kind === "safety" ? "是，恢复前自动备份" : "否"],
-      ["变化摘要", version.changeSummary?.summary || UI_TEXT.actionCompleted]
+      [UI_TEXT.versionNoteLabel, version.note || UI_TEXT.defaultNote],
+      [UI_TEXT.createdAtLabel, this.formatDate(version.createdAt)],
+      [UI_TEXT.gitHashLabel, version.commitHash || version.id || UI_TEXT.unknown],
+      [UI_TEXT.fileNameLabel, version.fileName || UI_TEXT.unknown],
+      [UI_TEXT.fileSizeLabel, this.formatSize(version.fileSize)],
+      [UI_TEXT.versionTypeLabel, this.versionKindLabel(version)],
+      [UI_TEXT.safetyBackupLabel, version.kind === "safety" ? UI_TEXT.safetyBackupYes : UI_TEXT.safetyBackupNo],
+      [UI_TEXT.changeSummaryLabel, version.changeSummary?.summary || UI_TEXT.actionCompleted]
     ];
     if (version.contentSummary?.extension === ".doc") {
-      rows.push(["跟踪方式", UI_TEXT.docFileOnlyTracking]);
+      rows.push([UI_TEXT.trackingModeLabel, UI_TEXT.docFileOnlyTracking]);
     }
     for (const [label, value] of rows) {
       const term = this.el(doc, "dt");
@@ -782,12 +795,12 @@ export class PaperVersionPane {
 
   versionKindLabel(version) {
     if (version.kind === "safety") {
-      return "自动备份";
+      return UI_TEXT.versionKindSafety;
     }
     if (version.source === "git") {
-      return "Git 历史";
+      return UI_TEXT.versionKindGit;
     }
-    return "手动";
+    return UI_TEXT.versionKindManual;
   }
 
   changeList(doc, changeSummary, limit = 5) {
@@ -812,7 +825,7 @@ export class PaperVersionPane {
       : changes.length + Math.max(0, changeSummary?.omittedChanges ?? 0);
     const omitted = Math.max(0, totalChanges - shownChanges.length);
     if (omitted > 0) {
-      wrapper.append(this.meta(doc, `另有 ${omitted} 处段落变化未展开。`));
+      wrapper.append(this.meta(doc, formatText("omittedParagraphChanges", { count: omitted })));
     }
 
     return wrapper;
@@ -839,7 +852,7 @@ export class PaperVersionPane {
       : shownChanges + Math.max(0, changeSummary?.omittedChanges ?? 0);
     const omitted = Math.max(0, totalChanges - shownChanges);
     if (omitted > 0) {
-      wrapper.append(this.meta(doc, `另有 ${omitted} 处段落变化未展开。`));
+      wrapper.append(this.meta(doc, formatText("omittedParagraphChanges", { count: omitted })));
     }
     return wrapper;
   }
@@ -859,38 +872,38 @@ export class PaperVersionPane {
 
     if (change.type === "modified") {
       wrapper.append(
-        this.changeText(doc, "修改前", change.oldText),
-        this.changeText(doc, "修改后", change.newText)
+        this.changeText(doc, UI_TEXT.changeBefore, change.oldText),
+        this.changeText(doc, UI_TEXT.changeAfter, change.newText)
       );
       return wrapper;
     }
 
     if (change.type === "deleted") {
-      wrapper.append(this.changeText(doc, "删除", change.oldText));
+      wrapper.append(this.changeText(doc, UI_TEXT.changeDeleted, change.oldText));
       return wrapper;
     }
 
-    wrapper.append(this.changeText(doc, "新增", change.newText));
+    wrapper.append(this.changeText(doc, UI_TEXT.changeAdded, change.newText));
     return wrapper;
   }
 
   changeText(doc, label, value) {
     const line = this.el(doc, "div", "git4zotero-change-text");
-    line.textContent = `${label}：${this.formatChangeText(value)}`;
+    line.textContent = `${label}${UI_TEXT.colon}${this.formatChangeText(value)}`;
     return line;
   }
 
   changeKind(change) {
     if (change.type === "added") {
-      return "新增段落";
+      return UI_TEXT.changeKindAdded;
     }
     if (change.type === "deleted") {
-      return "删除段落";
+      return UI_TEXT.changeKindDeleted;
     }
     if (change.type === "modified") {
-      return "修改段落";
+      return UI_TEXT.changeKindModified;
     }
-    return "段落变化";
+    return UI_TEXT.changeKindParagraph;
   }
 
   changeLocation(change) {
@@ -899,13 +912,13 @@ export class PaperVersionPane {
     }
     const index = change.newIndex ?? change.oldIndex;
     const source = change.source && change.source !== "document" ? ` · ${change.source}` : "";
-    return Number.isInteger(index) ? `第 ${index + 1} 段${source}` : source.trim();
+    return Number.isInteger(index) ? `${formatText("paragraphIndex", { index: index + 1 })}${source}` : source.trim();
   }
 
   formatChangeText(value) {
     const text = String(value ?? "").replace(/\s+/g, " ").trim();
     if (!text) {
-      return "（空段落）";
+      return UI_TEXT.emptyParagraph;
     }
     return text.length > 180 ? `${text.slice(0, 179)}…` : text;
   }
@@ -2055,7 +2068,7 @@ export class PaperVersionPane {
 
   formatDate(value) {
     try {
-      return new Intl.DateTimeFormat("zh-CN", {
+      return new Intl.DateTimeFormat(UI_TEXT.dateLocale || "zh-CN", {
         dateStyle: "medium",
         timeStyle: "short"
       }).format(new Date(value));
@@ -2067,7 +2080,7 @@ export class PaperVersionPane {
 
   formatSize(size) {
     if (!Number.isFinite(size)) {
-      return "大小未知";
+      return UI_TEXT.exportUnknownSize;
     }
     if (size < 1024) {
       return `${size} B`;

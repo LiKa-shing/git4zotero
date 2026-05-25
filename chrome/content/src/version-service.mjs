@@ -1,6 +1,7 @@
 import { PREFS, UI_TEXT } from "./constants.mjs";
 import { buildTrackedFileName, sanitizeForPath } from "./attachments.mjs";
 import { ContentAnalyzer } from "./content-diff.mjs";
+import { formatText } from "./localization.mjs";
 import {
   createVersionRecord,
   METADATA_SCHEMA_VERSION,
@@ -14,6 +15,7 @@ export class VersionService {
     attachmentFinder,
     gitBackend,
     metadataStore,
+    indexStore = null,
     pluginVersion,
     contentAnalyzer = null
   }) {
@@ -21,6 +23,7 @@ export class VersionService {
     this.attachmentFinder = attachmentFinder;
     this.gitBackend = gitBackend;
     this.metadataStore = metadataStore;
+    this.indexStore = indexStore;
     this.pluginVersion = pluginVersion;
     this.contentAnalyzer = contentAnalyzer ?? new ContentAnalyzer({ platform });
   }
@@ -160,6 +163,7 @@ export class VersionService {
       trackedFile,
       lastCheck
     });
+    await this.recordRepositoryIndex(attachment, true);
 
     return {
       attachment,
@@ -187,7 +191,7 @@ export class VersionService {
       this.platform.getPref(PREFS.defaultVersionNote, UI_TEXT.defaultNote)
     );
     if (!(await this.platform.exists(attachment.filePath))) {
-      throw new Error(`论文文件不存在：${attachment.filePath}`);
+      throw new Error(formatText("fileDoesNotExist", { path: attachment.filePath }));
     }
 
     await this.requireGitAvailable();
@@ -243,6 +247,7 @@ export class VersionService {
       lastCheck,
       versions: [record, ...(metadata.versions ?? [])]
     });
+    await this.recordRepositoryIndex(attachment, true);
 
     return record;
   }
@@ -251,7 +256,7 @@ export class VersionService {
     const { attachment, repoPath } = await this.requireEnabledAttachment(item);
     const trackedRelativePath = this.normalizeTrackedRelativePath(versionRecord.trackedRelativePath);
     if (!trackedRelativePath) {
-      throw new Error("历史版本缺少可恢复文件路径，无法恢复。");
+      throw new Error(UI_TEXT.missingRestorePath);
     }
     const targetVersion = {
       ...versionRecord,
@@ -266,7 +271,7 @@ export class VersionService {
     if (safetyEnabled) {
       safetyVersion = await this.createVersion(
         item,
-        `${UI_TEXT.safetyNotePrefix}：${targetVersion.shortHash}`,
+        `${UI_TEXT.safetyNotePrefix}${UI_TEXT.colon}${targetVersion.shortHash}`,
         { kind: "safety" }
       );
     }
@@ -279,7 +284,7 @@ export class VersionService {
       );
     }
     catch (error) {
-      throw new Error(`无法恢复所选版本：${error.message || String(error)}`);
+      throw new Error(formatText("restoreCannotRestore", { reason: error.message || String(error) }));
     }
 
     const sourcePath = this.pathFromRelative(repoPath, targetVersion.trackedRelativePath);
@@ -306,6 +311,7 @@ export class VersionService {
         backupPath: restoreResult.backupPath
       }
     });
+    await this.recordRepositoryIndex(attachment, true);
 
     return {
       attachment,
@@ -339,6 +345,7 @@ export class VersionService {
       item: this.createItemMetadata(attachment),
       attachment: this.createAttachmentMetadata(attachment)
     });
+    await this.recordRepositoryIndex(attachment, enabled);
     return { attachment, repoPath, enabled };
   }
 
@@ -379,14 +386,14 @@ export class VersionService {
   async requireGitAvailable() {
     const git = await this.gitBackend.checkAvailability();
     if (!git.available) {
-      throw new Error(`${UI_TEXT.gitUnavailable}：${git.error || git.detail || UI_TEXT.gitUnavailableDetail}`);
+      throw new Error(`${UI_TEXT.gitUnavailable}${UI_TEXT.colon}${git.error || git.detail || UI_TEXT.gitUnavailableDetail}`);
     }
     return git;
   }
 
   async writeWorkingTreeSnapshot(attachment, repoPath) {
     if (!(await this.platform.exists(attachment.filePath))) {
-      throw new Error(`论文文件不存在：${attachment.filePath}`);
+      throw new Error(formatText("fileDoesNotExist", { path: attachment.filePath }));
     }
 
     const trackedFileName = buildTrackedFileName(attachment.filePath);
@@ -424,7 +431,7 @@ export class VersionService {
 
   async restoreFileWithRollback({ attachment, repoPath, sourcePath, targetVersion }) {
     if (!(await this.safeExists(sourcePath))) {
-      throw new Error(`无法恢复所选版本：历史版本文件不存在：${sourcePath}`);
+      throw new Error(formatText("restoreSourceMissing", { path: sourcePath }));
     }
 
     const sourceHash = await this.platform.hashFile(sourcePath);
@@ -440,7 +447,7 @@ export class VersionService {
     try {
       const stagedHash = await this.platform.hashFile(stagedPath);
       if (stagedHash !== sourceHash) {
-        throw new Error("历史版本暂存校验失败，已取消恢复。");
+        throw new Error(UI_TEXT.restoreStagingHashMismatch);
       }
       await this.platform.copyFile(stagedPath, attachment.filePath);
       const restoredHash = await this.platform.hashFile(attachment.filePath);
@@ -455,7 +462,11 @@ export class VersionService {
     }
     catch (error) {
       await this.rollbackRestoredFile(backupPath, attachment.filePath);
-      throw new Error(`${UI_TEXT.restoreFailedWithBackup} 备份路径：${backupPath}。${error.message || String(error)}`);
+      throw new Error(formatText("restoreFailedWithBackupPath", {
+        message: UI_TEXT.restoreFailedWithBackup,
+        path: backupPath,
+        reason: error.message || String(error)
+      }));
     }
     finally {
       await this.removeFileQuietly(stagedPath);
@@ -484,6 +495,18 @@ export class VersionService {
     }
   }
 
+  async recordRepositoryIndex(attachment, enabled) {
+    if (!this.indexStore?.upsertAttachment) {
+      return;
+    }
+    try {
+      await this.indexStore.upsertAttachment(attachment, { enabled });
+    }
+    catch (error) {
+      this.platform.Zotero?.debug?.(`git4zotero: repository index update failed: ${error?.stack || error}`);
+    }
+  }
+
   async buildRepositoryHealth({ attachment, repoPath, metadata, git, versions, workingTree }) {
     const checks = [];
     const add = (id, label, status, detail = "") => {
@@ -492,27 +515,27 @@ export class VersionService {
 
     add(
       "attachment",
-      "当前附件",
+      UI_TEXT.currentAttachment,
       await this.safeExists(attachment.filePath) ? "ok" : "error",
-      await this.safeExists(attachment.filePath) ? attachment.fileName : "当前论文文件不存在。"
+      await this.safeExists(attachment.filePath) ? attachment.fileName : UI_TEXT.currentFileMissing
     );
 
     const metadataVersions = Array.isArray(metadata.versions) ? metadata.versions : [];
     add(
       "metadata",
-      "版本元数据",
+      UI_TEXT.metadataFile,
       Array.isArray(metadata.versions) ? "ok" : "error",
       Array.isArray(metadata.versions)
-        ? `schema ${metadata.schemaVersion ?? "unknown"}，${metadataVersions.length} 条记录。`
-        : "versions.json 中的 versions 不是数组。"
+        ? formatText("metadataRecordCount", { schema: metadata.schemaVersion ?? UI_TEXT.unknown, count: metadataVersions.length })
+        : UI_TEXT.metadataVersionsInvalid
     );
 
     if ((metadata.schemaVersion ?? 1) !== METADATA_SCHEMA_VERSION) {
       add(
         "metadata-schema",
-        "元数据版本",
+        UI_TEXT.metadataVersions,
         "warning",
-        `当前 schema ${metadata.schemaVersion ?? "unknown"}，写入后会升级为 ${METADATA_SCHEMA_VERSION}。`
+        formatText("metadataWillUpgrade", { current: metadata.schemaVersion ?? UI_TEXT.unknown, next: METADATA_SCHEMA_VERSION })
       );
     }
 
@@ -526,9 +549,9 @@ export class VersionService {
     const gitDirExists = await this.safeExists(this.joinPath(repoPath, ".git"));
     add(
       "git-repo",
-      "Git 仓库",
+      UI_TEXT.gitRepository,
       gitDirExists ? "ok" : (metadataVersions.length ? "error" : "warning"),
-      gitDirExists ? "已初始化。" : "尚未找到 .git 目录。"
+      gitDirExists ? UI_TEXT.repositoryInitialized : UI_TEXT.repositoryGitDirMissing
     );
 
     const invalidTrackedVersions = metadataVersions.filter((version) => {
@@ -537,9 +560,9 @@ export class VersionService {
     if (invalidTrackedVersions.length) {
       add(
         "tracked-paths",
-        "历史文件路径",
+        UI_TEXT.historyFilePath,
         "error",
-        `${invalidTrackedVersions.length} 条版本缺少可恢复的 tracked 文件路径。`
+        formatText("invalidTrackedVersions", { count: invalidTrackedVersions.length })
       );
     }
 
@@ -549,15 +572,15 @@ export class VersionService {
     const trackedExists = await this.safeExists(trackedPath);
     add(
       "tracked-file",
-      "当前 tracked 文件",
+      UI_TEXT.currentTrackedFile,
       trackedExists || !metadataVersions.length ? "ok" : "warning",
-      trackedExists ? trackedRelativePath : "当前工作树中未找到 tracked 文件；历史版本仍可能可从 Git 恢复。"
+      trackedExists ? trackedRelativePath : UI_TEXT.trackedFileMissing
     );
 
     if (workingTree) {
       add(
         "working-tree",
-        "Git 工作树",
+        UI_TEXT.workingTree,
         workingTree.clean ? "ok" : "warning",
         workingTree.summary || UI_TEXT.workingTreeClean
       );
@@ -566,9 +589,9 @@ export class VersionService {
     if ((versions?.length ?? 0) < metadataVersions.length) {
       add(
         "history",
-        "版本历史",
+        UI_TEXT.versionHistoryHealth,
         "warning",
-        `面板可读版本 ${versions?.length ?? 0} 条，元数据记录 ${metadataVersions.length} 条。`
+        formatText("versionHistoryHealthDetail", { visibleCount: versions?.length ?? 0, metadataCount: metadataVersions.length })
       );
     }
 
@@ -776,18 +799,18 @@ function buildExportFileName(attachment, scope, extension) {
 
 function renderMarkdownExport({ scope, attachment, versions, lastCheck }) {
   const lines = [
-    `# git4zotero ${scope === "last-check" ? "最近检查差异" : "版本历史"}`,
+    `# git4zotero ${scope === "last-check" ? UI_TEXT.exportTitleLastCheck : UI_TEXT.exportTitleHistory}`,
     "",
-    `- 文件：${attachment.fileName}`,
-    `- 条目：${attachment.itemKey || "unknown"}`,
-    `- 导出时间：${new Date().toISOString()}`,
+    `- ${UI_TEXT.exportFieldFile}${UI_TEXT.colon}${attachment.fileName}`,
+    `- ${UI_TEXT.exportFieldItem}${UI_TEXT.colon}${attachment.itemKey || UI_TEXT.unknown}`,
+    `- ${UI_TEXT.exportFieldExportedAt}${UI_TEXT.colon}${new Date().toISOString()}`,
     ""
   ];
   if (scope === "last-check") {
     lines.push(...renderMarkdownCheck(lastCheck));
   }
   else if (!versions.length) {
-    lines.push("尚未创建版本。");
+    lines.push(UI_TEXT.exportNoVersions);
   }
   else {
     for (const version of versions) {
@@ -799,12 +822,12 @@ function renderMarkdownExport({ scope, attachment, versions, lastCheck }) {
 
 function renderMarkdownCheck(lastCheck) {
   return [
-    "## 最近检查",
+    `## ${UI_TEXT.exportRecentCheck}`,
     "",
-    `- 时间：${lastCheck.checkedAt || "unknown"}`,
-    `- 文件：${lastCheck.fileName || "unknown"}`,
-    `- 大小：${formatByteSize(lastCheck.fileSize)}`,
-    `- 摘要：${lastCheck.changeSummary?.summary || UI_TEXT.actionCompleted}`,
+    `- ${UI_TEXT.exportFieldTime}${UI_TEXT.colon}${lastCheck.checkedAt || UI_TEXT.unknown}`,
+    `- ${UI_TEXT.exportFieldFile}${UI_TEXT.colon}${lastCheck.fileName || UI_TEXT.unknown}`,
+    `- ${UI_TEXT.exportFieldSize}${UI_TEXT.colon}${formatByteSize(lastCheck.fileSize)}`,
+    `- ${UI_TEXT.exportFieldSummary}${UI_TEXT.colon}${lastCheck.changeSummary?.summary || UI_TEXT.actionCompleted}`,
     "",
     ...renderMarkdownChangeSummary(lastCheck.changeSummary)
   ];
@@ -814,13 +837,13 @@ function renderMarkdownVersion(version) {
   return [
     `## ${version.note || UI_TEXT.defaultNote}`,
     "",
-    `- 时间：${version.createdAt || "unknown"}`,
-    `- Hash：${version.commitHash || version.id || "unknown"}`,
-    `- 文件：${version.fileName || "unknown"}`,
-    `- 大小：${formatByteSize(version.fileSize)}`,
-    `- 类型：${formatVersionKind(version)}`,
-    `- 安全备份：${version.kind === "safety" ? "是" : "否"}`,
-    `- 摘要：${version.changeSummary?.summary || UI_TEXT.actionCompleted}`,
+    `- ${UI_TEXT.exportFieldTime}${UI_TEXT.colon}${version.createdAt || UI_TEXT.unknown}`,
+    `- Hash${UI_TEXT.colon}${version.commitHash || version.id || UI_TEXT.unknown}`,
+    `- ${UI_TEXT.exportFieldFile}${UI_TEXT.colon}${version.fileName || UI_TEXT.unknown}`,
+    `- ${UI_TEXT.exportFieldSize}${UI_TEXT.colon}${formatByteSize(version.fileSize)}`,
+    `- ${UI_TEXT.exportFieldType}${UI_TEXT.colon}${formatVersionKind(version)}`,
+    `- ${UI_TEXT.safetyBackupLabel}${UI_TEXT.colon}${version.kind === "safety" ? UI_TEXT.yes : UI_TEXT.no}`,
+    `- ${UI_TEXT.exportFieldSummary}${UI_TEXT.colon}${version.changeSummary?.summary || UI_TEXT.actionCompleted}`,
     "",
     ...renderMarkdownChangeSummary(version.changeSummary)
   ];
@@ -831,7 +854,7 @@ function renderMarkdownChangeSummary(changeSummary) {
     return [];
   }
   if (changeSummary.changeGroups?.length) {
-    const lines = ["### 位置摘要", ""];
+    const lines = [`### ${UI_TEXT.exportLocationSummary}`, ""];
     for (const group of changeSummary.changeGroups) {
       lines.push(`- ${group.summary || group.label}`);
     }
@@ -850,7 +873,7 @@ function renderMarkdownChangeSummary(changeSummary) {
     return [];
   }
   return [
-    "### 具体修改",
+    `### ${UI_TEXT.concreteChanges}`,
     "",
     ...changes.map((change) => `- ${formatParagraphChange(change)}`)
   ];
@@ -858,18 +881,18 @@ function renderMarkdownChangeSummary(changeSummary) {
 
 function renderTextExport({ scope, attachment, versions, lastCheck }) {
   const lines = [
-    `git4zotero ${scope === "last-check" ? "最近检查差异" : "版本历史"}`,
+    `git4zotero ${scope === "last-check" ? UI_TEXT.exportTitleLastCheck : UI_TEXT.exportTitleHistory}`,
     "",
-    `文件：${attachment.fileName}`,
-    `条目：${attachment.itemKey || "unknown"}`,
-    `导出时间：${new Date().toISOString()}`,
+    `${UI_TEXT.exportFieldFile}${UI_TEXT.colon}${attachment.fileName}`,
+    `${UI_TEXT.exportFieldItem}${UI_TEXT.colon}${attachment.itemKey || UI_TEXT.unknown}`,
+    `${UI_TEXT.exportFieldExportedAt}${UI_TEXT.colon}${new Date().toISOString()}`,
     ""
   ];
   if (scope === "last-check") {
     lines.push(...renderTextCheck(lastCheck));
   }
   else if (!versions.length) {
-    lines.push("尚未创建版本。");
+    lines.push(UI_TEXT.exportNoVersions);
   }
   else {
     for (const version of versions) {
@@ -881,11 +904,11 @@ function renderTextExport({ scope, attachment, versions, lastCheck }) {
 
 function renderTextCheck(lastCheck) {
   return [
-    "最近检查",
-    `时间：${lastCheck.checkedAt || "unknown"}`,
-    `文件：${lastCheck.fileName || "unknown"}`,
-    `大小：${formatByteSize(lastCheck.fileSize)}`,
-    `摘要：${lastCheck.changeSummary?.summary || UI_TEXT.actionCompleted}`,
+    UI_TEXT.exportRecentCheck,
+    `${UI_TEXT.exportFieldTime}${UI_TEXT.colon}${lastCheck.checkedAt || UI_TEXT.unknown}`,
+    `${UI_TEXT.exportFieldFile}${UI_TEXT.colon}${lastCheck.fileName || UI_TEXT.unknown}`,
+    `${UI_TEXT.exportFieldSize}${UI_TEXT.colon}${formatByteSize(lastCheck.fileSize)}`,
+    `${UI_TEXT.exportFieldSummary}${UI_TEXT.colon}${lastCheck.changeSummary?.summary || UI_TEXT.actionCompleted}`,
     "",
     ...renderTextChangeSummary(lastCheck.changeSummary)
   ];
@@ -894,13 +917,13 @@ function renderTextCheck(lastCheck) {
 function renderTextVersion(version) {
   return [
     version.note || UI_TEXT.defaultNote,
-    `时间：${version.createdAt || "unknown"}`,
-    `Hash：${version.commitHash || version.id || "unknown"}`,
-    `文件：${version.fileName || "unknown"}`,
-    `大小：${formatByteSize(version.fileSize)}`,
-    `类型：${formatVersionKind(version)}`,
-    `安全备份：${version.kind === "safety" ? "是" : "否"}`,
-    `摘要：${version.changeSummary?.summary || UI_TEXT.actionCompleted}`,
+    `${UI_TEXT.exportFieldTime}${UI_TEXT.colon}${version.createdAt || UI_TEXT.unknown}`,
+    `Hash${UI_TEXT.colon}${version.commitHash || version.id || UI_TEXT.unknown}`,
+    `${UI_TEXT.exportFieldFile}${UI_TEXT.colon}${version.fileName || UI_TEXT.unknown}`,
+    `${UI_TEXT.exportFieldSize}${UI_TEXT.colon}${formatByteSize(version.fileSize)}`,
+    `${UI_TEXT.exportFieldType}${UI_TEXT.colon}${formatVersionKind(version)}`,
+    `${UI_TEXT.safetyBackupLabel}${UI_TEXT.colon}${version.kind === "safety" ? UI_TEXT.yes : UI_TEXT.no}`,
+    `${UI_TEXT.exportFieldSummary}${UI_TEXT.colon}${version.changeSummary?.summary || UI_TEXT.actionCompleted}`,
     "",
     ...renderTextChangeSummary(version.changeSummary)
   ];
@@ -911,7 +934,7 @@ function renderTextChangeSummary(changeSummary) {
     return [];
   }
   if (changeSummary.changeGroups?.length) {
-    const lines = ["位置摘要"];
+    const lines = [UI_TEXT.exportLocationSummary];
     for (const group of changeSummary.changeGroups) {
       lines.push(`- ${group.summary || group.label}`);
     }
@@ -925,37 +948,37 @@ function renderTextChangeSummary(changeSummary) {
   }
   const changes = changeSummary.paragraphChanges ?? changeSummary.displayChanges ?? [];
   return changes.length
-    ? ["具体修改", ...changes.map((change) => `- ${formatParagraphChange(change)}`)]
+    ? [UI_TEXT.concreteChanges, ...changes.map((change) => `- ${formatParagraphChange(change)}`)]
     : [];
 }
 
 function formatParagraphChange(change) {
-  const location = change.locationLabel ? `${change.locationLabel}：` : "";
+  const location = change.locationLabel ? `${change.locationLabel}${UI_TEXT.colon}` : "";
   if (change.type === "added") {
-    return `${location}新增：${change.newText || ""}`;
+    return `${location}${UI_TEXT.changeAdded}${UI_TEXT.colon}${change.newText || ""}`;
   }
   if (change.type === "deleted") {
-    return `${location}删除：${change.oldText || ""}`;
+    return `${location}${UI_TEXT.changeDeleted}${UI_TEXT.colon}${change.oldText || ""}`;
   }
   if (change.type === "modified") {
-    return `${location}修改：${change.oldText || ""} -> ${change.newText || ""}`;
+    return `${location}${UI_TEXT.changeKindModified}${UI_TEXT.colon}${change.oldText || ""} -> ${change.newText || ""}`;
   }
   return `${location}${change.newText || change.oldText || UI_TEXT.actionCompleted}`;
 }
 
 function formatVersionKind(version) {
   if (version.kind === "safety") {
-    return "恢复前自动备份";
+    return UI_TEXT.versionKindSafetyFull;
   }
   if (version.source === "git") {
-    return "Git 历史";
+    return UI_TEXT.versionKindGit;
   }
-  return "手动版本";
+  return UI_TEXT.versionKindManualFull;
 }
 
 function formatByteSize(size) {
   if (!Number.isFinite(size)) {
-    return "大小未知";
+    return UI_TEXT.exportUnknownSize;
   }
   if (size < 1024) {
     return `${size} B`;

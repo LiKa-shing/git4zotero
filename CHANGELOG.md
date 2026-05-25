@@ -12,6 +12,22 @@
 
 - Nothing yet.
 
+## 0.2.2
+
+### 中文
+
+- 增加 Zotero 条目永久删除监听：移入回收站时保留版本历史，永久删除或清空回收站后自动清理对应插件仓库。
+- 增加 `git4zotero/index.json` 仓库索引，用于匹配 Zotero 条目、附件和本地版本仓库。
+- 增加设置页“已删除条目留下的版本历史”检查与清理入口，用于处理升级前遗留的无对应条目的版本历史。
+- 增加安全校验，清理前确认路径位于插件数据目录且版本元数据与删除事件匹配。
+
+### English
+
+- Added Zotero item deletion handling: repository history is retained when items move to trash and cleaned only after permanent deletion or trash emptying.
+- Added a `git4zotero/index.json` repository index to map Zotero items, attachments, and local version repositories.
+- Added preference-pane orphan history checks and cleanup for legacy unmanaged repository directories.
+- Added safety checks so cleanup only removes plugin repositories whose paths and metadata match the deleted Zotero item.
+
 ## 0.2.1
 
 ### 中文

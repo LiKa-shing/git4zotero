@@ -1,4 +1,5 @@
 import { AttachmentFinder } from "./attachments.mjs";
+import { RepositoryCleanupService, RepositoryIndexStore } from "./cleanup.mjs";
 import {
   FTL_FILE,
   ICON_16,
@@ -11,6 +12,7 @@ import {
   STYLE_ID,
   UI_TEXT
 } from "./constants.mjs";
+import { setUILocale } from "./localization.mjs";
 import { GitBackend } from "./git-backend.mjs";
 import { MetadataStore } from "./metadata.mjs";
 import { PaperVersionMenu } from "./menu.mjs";
@@ -25,6 +27,9 @@ export const Git4Zotero = {
   sectionID: null,
   pane: null,
   menu: null,
+  cleanup: null,
+  notifierObserverID: null,
+  notifierObserver: null,
 
   async startup(context) {
     this.context = context;
@@ -38,16 +43,25 @@ export const Git4Zotero = {
       IOUtils: context.IOUtils,
       PathUtils: context.PathUtils
     });
+    const locale = setUILocale(zotero.locale || context.Services?.locale?.appLocaleAsBCP47 || context.Services?.locale?.requestedLocale);
+    this.debug(`using UI locale ${locale}`);
 
     const attachmentFinder = new AttachmentFinder({ Zotero: zotero });
     const gitBackend = new GitBackend(this.platform);
     const metadataStore = new MetadataStore(this.platform);
+    const indexStore = new RepositoryIndexStore(this.platform);
     const service = new VersionService({
       platform: this.platform,
       attachmentFinder,
       gitBackend,
       metadataStore,
+      indexStore,
       pluginVersion: context.version
+    });
+    this.cleanup = new RepositoryCleanupService({
+      platform: this.platform,
+      metadataStore,
+      indexStore
     });
 
     this.pane = new PaperVersionPane({ service, platform: this.platform });
@@ -60,6 +74,7 @@ export const Git4Zotero = {
 
     this.registerItemPane(context);
     this.registerContextMenu(context);
+    this.registerItemDeletionObserver();
   },
 
   async shutdown() {
@@ -75,6 +90,7 @@ export const Git4Zotero = {
       this.preferencePaneID = null;
     }
 
+    this.unregisterItemDeletionObserver();
     this.menu?.unregister();
 
     for (const win of zotero?.getMainWindows?.() ?? []) {
@@ -83,6 +99,7 @@ export const Git4Zotero = {
 
     this.pane = null;
     this.menu = null;
+    this.cleanup = null;
     this.platform = null;
     this.context = null;
   },
@@ -176,6 +193,43 @@ export const Git4Zotero = {
     catch (error) {
       this.debug(`context menu registration failed: ${error?.stack || error}`);
     }
+  },
+
+  registerItemDeletionObserver() {
+    const zotero = this.platform.Zotero;
+    if (!zotero.Notifier?.registerObserver || !this.cleanup) {
+      this.debug("Notifier.registerObserver unavailable");
+      return;
+    }
+    if (this.notifierObserverID) {
+      return;
+    }
+
+    this.notifierObserver = {
+      notify: async (event, type, ids, extraData) => {
+        try {
+          await this.cleanup.handleItemEvent(event, type, ids, extraData);
+        }
+        catch (error) {
+          this.debug(`repository cleanup failed: ${error?.stack || error}`);
+        }
+      }
+    };
+    this.notifierObserverID = zotero.Notifier.registerObserver(
+      this.notifierObserver,
+      ["item"],
+      "git4zotero-cleanup"
+    );
+    this.debug("item deletion observer registered");
+  },
+
+  unregisterItemDeletionObserver() {
+    const zotero = this.platform?.Zotero ?? this.context?.Zotero;
+    if (this.notifierObserverID && zotero?.Notifier?.unregisterObserver) {
+      zotero.Notifier.unregisterObserver(this.notifierObserverID);
+    }
+    this.notifierObserverID = null;
+    this.notifierObserver = null;
   },
 
   async onMainWindowLoad(win) {

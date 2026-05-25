@@ -1,6 +1,8 @@
+import { UI_TEXT } from "./constants.mjs";
+
 export const METADATA_SCHEMA_VERSION = 4;
 
-export function normalizeVersionNote(note, fallback = "论文版本") {
+export function normalizeVersionNote(note, fallback = UI_TEXT.defaultNote) {
   const normalized = String(note ?? "").trim();
   return normalized || fallback;
 }

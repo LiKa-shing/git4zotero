@@ -1,5 +1,6 @@
 import { PREFS, UI_TEXT } from "./constants.mjs";
 import { buildRepoRelativePath, getExtension } from "./attachments.mjs";
+import { formatText } from "./localization.mjs";
 
 const GIT_COMMAND = "git";
 const WINDOWS_GIT_CANDIDATES = [
@@ -91,7 +92,7 @@ export class ZoteroPlatform {
       const result = await this.runProcess(resolution.command, ["--version"]);
       const detail = result.stdout.trim() || result.stderr.trim();
       if (result.exitCode !== 0) {
-        const error = detail || `退出码 ${result.exitCode}`;
+      const error = detail || formatText("processExitCode", { code: result.exitCode });
         return {
           available: false,
           command: resolution.command,
@@ -279,7 +280,7 @@ export class ZoteroPlatform {
     return accepted ? selected.value : -1;
   }
 
-  async saveTextFile({ title = "保存文件", defaultFileName = "git4zotero-export.txt", content = "" } = {}) {
+  async saveTextFile({ title = UI_TEXT.saveFileTitle, defaultFileName = "git4zotero-export.txt", content = "" } = {}) {
     const fallbackPath = this.join(this.getPluginDataDirectory(), "exports", defaultFileName);
     try {
       const targetPath = await this.pickSavePath(title, defaultFileName);
@@ -300,7 +301,7 @@ export class ZoteroPlatform {
     const filePickerInterface = this.Ci?.nsIFilePicker;
     const picker = this.Cc?.["@mozilla.org/filepicker;1"]?.createInstance?.(filePickerInterface);
     if (!picker || !filePickerInterface) {
-      throw new Error("当前环境无法打开保存对话框。");
+      throw new Error(UI_TEXT.saveDialogUnavailable);
     }
     picker.init(null, title, filePickerInterface.modeSave);
     picker.defaultString = defaultFileName;
@@ -319,7 +320,7 @@ export class ZoteroPlatform {
     }
     const path = picker.file?.path || "";
     if (!path) {
-      throw new Error("保存对话框未返回文件路径。");
+      throw new Error(UI_TEXT.saveDialogNoPath);
     }
     return path;
   }
@@ -333,7 +334,7 @@ export class ZoteroPlatform {
     if (typeof picker.show === "function") {
       return picker.show();
     }
-    throw new Error("当前环境不支持文件保存对话框。");
+    throw new Error(UI_TEXT.saveDialogUnsupported);
   }
 
   refreshItemPane() {
@@ -410,6 +411,23 @@ export class ZoteroPlatform {
     }
   }
 
+  async removeDirectory(path) {
+    if (await this.exists(path)) {
+      await this.requireIOUtils().remove(path, { recursive: true });
+    }
+  }
+
+  async listDirectory(path) {
+    if (!(await this.exists(path))) {
+      return [];
+    }
+    const io = this.requireIOUtils();
+    if (typeof io.getChildren !== "function") {
+      throw new Error(UI_TEXT.missingIOUtilsGetChildren);
+    }
+    return io.getChildren(path);
+  }
+
   async stat(path) {
     return this.requireIOUtils().stat(path);
   }
@@ -434,7 +452,7 @@ export class ZoteroPlatform {
 
   requireIOUtils() {
     if (!this.IOUtils) {
-      throw new Error("当前 Zotero 环境缺少 IOUtils，无法访问论文文件。");
+      throw new Error(UI_TEXT.missingIOUtils);
     }
     return this.IOUtils;
   }
@@ -500,7 +518,7 @@ export function normalizeJoinParts(parts) {
         continue;
       }
       if (segment === "..") {
-        throw new Error("路径片段不能包含 ..");
+        throw new Error(UI_TEXT.pathSegmentParent);
       }
       normalized.push(segment);
     }

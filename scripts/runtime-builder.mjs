@@ -5,11 +5,13 @@ export const runtimeEntry = "chrome/content/runtime/git4zotero-runtime.js";
 
 export const runtimeModuleOrder = [
   "chrome/content/src/constants.mjs",
+  "chrome/content/src/localization.mjs",
   "chrome/content/src/attachments.mjs",
   "chrome/content/src/vendor/zip-reader.mjs",
   "chrome/content/src/docx-reader.mjs",
   "chrome/content/src/content-diff.mjs",
   "chrome/content/src/metadata.mjs",
+  "chrome/content/src/cleanup.mjs",
   "chrome/content/src/git-backend.mjs",
   "chrome/content/src/platform.mjs",
   "chrome/content/src/version-service.mjs",

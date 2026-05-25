@@ -1,4 +1,5 @@
 import { ZipReader } from "./vendor/zip-reader.mjs";
+import { formatText } from "./localization.mjs";
 
 const DOCX_SOURCES = [
   { pattern: /^word\/document\.xml$/, source: "document", role: "core", order: 0 },
@@ -21,7 +22,7 @@ export class DocxReader {
 
   async read(path) {
     if (!this.platform?.readFileBytes) {
-      throw new Error("当前环境无法读取 docx 文件字节。");
+      throw new Error(formatText("noDocxByteReader"));
     }
     return this.readBytes(await this.platform.readFileBytes(path));
   }
@@ -30,7 +31,7 @@ export class DocxReader {
     const zip = new ZipReader(bytes);
     const names = zip.listNames();
     if (!names.includes("word/document.xml")) {
-      throw new Error("无法识别 docx 正文：缺少 word/document.xml。");
+      throw new Error(formatText("missingDocumentXml"));
     }
 
     const entries = names
@@ -58,7 +59,7 @@ export class DocxReader {
     const paragraphDetails = sections.flatMap((section) => section.paragraphs);
     const contentParagraphDetails = paragraphDetails.filter((paragraph) => paragraph.role === "core");
     if (!contentParagraphDetails.length) {
-      throw new Error("未在 docx 正文、脚注或尾注中识别到可比对文本。请确认文件已保存且包含正文。");
+      throw new Error(formatText("noComparableText"));
     }
 
     const paragraphs = contentParagraphDetails.map((paragraph) => paragraph.normalizedText);
@@ -315,21 +316,21 @@ function getAreaType(descriptor, tableIndex) {
 
 function getSourceLabel(source, areaType) {
   if (areaType === "table") {
-    return "表格";
+    return formatText("tableLabel");
   }
   if (source === "footnotes") {
-    return "脚注";
+    return formatText("sourceFootnotes");
   }
   if (source === "endnotes") {
-    return "尾注";
+    return formatText("sourceEndnotes");
   }
   if (source === "header") {
-    return "页眉";
+    return formatText("sourceHeader");
   }
   if (source === "footer") {
-    return "页脚";
+    return formatText("sourceFooter");
   }
-  return "正文";
+  return formatText("sourceDocument");
 }
 
 function formatLocationLabel({ sourceLabel, areaType, tableIndex, headingPath, index }) {
@@ -338,12 +339,12 @@ function formatLocationLabel({ sourceLabel, areaType, tableIndex, headingPath, i
     parts.push(headingPath.join(" / "));
   }
   if (areaType === "table" && tableIndex) {
-    parts.push(`表格 ${tableIndex}`);
+    parts.push(formatText("tableWithIndex", { index: tableIndex }));
   }
-  else if (sourceLabel && sourceLabel !== "正文") {
+  else if (sourceLabel && sourceLabel !== formatText("sourceDocument")) {
     parts.push(sourceLabel);
   }
-  parts.push(`第 ${index + 1} 段`);
+  parts.push(formatText("paragraphIndex", { index: index + 1 }));
   return parts.join(" · ");
 }
 

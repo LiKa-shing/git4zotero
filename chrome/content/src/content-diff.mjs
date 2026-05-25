@@ -1,15 +1,17 @@
 import { getExtension } from "./attachments.mjs";
 import { DocxReader } from "./docx-reader.mjs";
+import { UI_TEXT } from "./constants.mjs";
+import { formatText } from "./localization.mjs";
 
 const MAX_STORED_PARAGRAPH_CHANGES = 20;
 const MAX_DISPLAY_CHANGES = 3;
 const MAX_CHANGE_TEXT_LENGTH = 240;
 const SOURCE_LABELS = Object.freeze({
-  document: "正文",
-  footnotes: "脚注",
-  endnotes: "尾注",
-  header: "页眉",
-  footer: "页脚"
+  document: "sourceDocument",
+  footnotes: "sourceFootnotes",
+  endnotes: "sourceEndnotes",
+  header: "sourceHeader",
+  footer: "sourceFooter"
 });
 
 export class ContentAnalyzer {
@@ -96,7 +98,7 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
     const changeGroups = createChangeGroups(paragraphChanges);
     return {
       changeType: "first-version",
-      summary: "首次创建版本，将保存当前 .docx 正文内容快照。",
+      summary: formatText("firstDocxSummary"),
       addedParagraphs: current.paragraphCount,
       deletedParagraphs: 0,
       modifiedParagraphs: 0,
@@ -125,7 +127,7 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
   if (!fileChanged) {
     return {
       changeType: "no-change",
-      summary: "未检测到修改。",
+      summary: formatText("noChanges"),
       addedParagraphs: 0,
       deletedParagraphs: 0,
       modifiedParagraphs: 0,
@@ -145,7 +147,7 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
   if (!contentChanged) {
     return {
       changeType: "file-only",
-      summary: "正文内容未变化，仅检测到格式、样式、元数据或 Word 内部状态变化。",
+      summary: formatText("fileOnlyFormattingSummary"),
       addedParagraphs: 0,
       deletedParagraphs: 0,
       modifiedParagraphs: 0,
@@ -176,12 +178,12 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
   return {
     changeType: "content",
     summary: [
-      "正文内容已修改",
-      `新增 ${paragraphDiff.addedParagraphs} 段`,
-      `删除 ${paragraphDiff.deletedParagraphs} 段`,
-      `修改 ${paragraphDiff.modifiedParagraphs} 段`,
-      `字数变化 ${formatSignedNumber(wordDelta)}`
-    ].join("；") + "。",
+      formatText("docxContentChanged"),
+      formatText("addedParagraphs", { count: paragraphDiff.addedParagraphs }),
+      formatText("deletedParagraphs", { count: paragraphDiff.deletedParagraphs }),
+      formatText("modifiedParagraphs", { count: paragraphDiff.modifiedParagraphs }),
+      formatText("wordDelta", { value: formatSignedNumber(wordDelta) })
+    ].join(UI_TEXT.semicolon) + UI_TEXT.fullStop,
     ...paragraphDiff,
     paragraphChanges,
     displayChanges,
@@ -202,8 +204,8 @@ export function summarizeFileLevelChange({ extension, previousVersion, fileChang
     return {
       changeType: "first-version",
       summary: docxReadFailed
-        ? "首次创建版本，当前 .docx 暂不可解析，已保存文件级快照。"
-        : `首次创建版本，${extension || "该格式"} 将保存文件级快照。`,
+        ? formatText("firstDocxUnreadableSummary")
+        : formatText("firstFileLevelSummary", { extension: extension || formatText("thisFormat") }),
       fileChanged: true,
       contentChanged: null,
       readError: readError || null
@@ -213,7 +215,7 @@ export function summarizeFileLevelChange({ extension, previousVersion, fileChang
   if (!fileChanged) {
     return {
       changeType: "no-change",
-      summary: "未检测到修改。",
+      summary: formatText("noChanges"),
       fileChanged: false,
       contentChanged: null,
       readError: readError || null
@@ -223,7 +225,7 @@ export function summarizeFileLevelChange({ extension, previousVersion, fileChang
   if (docxReadFailed) {
     return {
       changeType: "file-level",
-      summary: "当前 .docx 暂不可解析，已按文件级快照保存；请确认文件已由 Word/WPS 完整保存。",
+      summary: formatText("docxReadFailedSummary"),
       fileChanged: true,
       contentChanged: null,
       readError
@@ -233,7 +235,7 @@ export function summarizeFileLevelChange({ extension, previousVersion, fileChang
   if (extension === ".doc") {
     return {
       changeType: "file-level",
-      summary: ".doc 仅支持文件级跟踪，可创建和恢复版本，但不解析正文差异。",
+      summary: formatText("docFileOnlyTracking"),
       fileChanged: true,
       contentChanged: null,
       fileOnlyReason: "doc-binary"
@@ -242,7 +244,7 @@ export function summarizeFileLevelChange({ extension, previousVersion, fileChang
 
   return {
     changeType: "file-level",
-    summary: "当前格式仅支持文件级识别：文件内容已变化，但不解析正文差异。",
+    summary: formatText("genericFileLevelSummary"),
     fileChanged: true,
     contentChanged: null
   };
@@ -412,42 +414,42 @@ function createChangeGroups(changes) {
 function describeChangeGroup(change) {
   const heading = change.headingPath?.filter(Boolean).join(" / ") || "";
   if (change.areaType === "table") {
-    const table = change.tableIndex ? `表格 ${change.tableIndex}` : "表格";
+    const table = change.tableIndex ? formatText("tableWithIndex", { index: change.tableIndex }) : formatText("tableLabel");
     const label = heading ? `${heading} · ${table}` : table;
     return { key: `table:${heading}:${change.tableIndex ?? ""}`, label };
   }
   if (change.areaType === "footnote") {
-    return { key: "footnote", label: "脚注" };
+    return { key: "footnote", label: formatText("sourceFootnotes") };
   }
   if (change.areaType === "endnote") {
-    return { key: "endnote", label: "尾注" };
+    return { key: "endnote", label: formatText("sourceEndnotes") };
   }
   if (heading) {
     return { key: `heading:${heading}`, label: heading };
   }
-  return { key: "body:untitled", label: "无标题正文" };
+  return { key: "body:untitled", label: formatText("untitledBody") };
 }
 
 function formatGroupSummary(group) {
   const parts = [];
   if (group.addedParagraphs) {
-    parts.push(`新增 ${group.addedParagraphs} 段`);
+    parts.push(formatText("addedParagraphs", { count: group.addedParagraphs }));
   }
   if (group.deletedParagraphs) {
-    parts.push(`删除 ${group.deletedParagraphs} 段`);
+    parts.push(formatText("deletedParagraphs", { count: group.deletedParagraphs }));
   }
   if (group.modifiedParagraphs) {
-    parts.push(`修改 ${group.modifiedParagraphs} 段`);
+    parts.push(formatText("modifiedParagraphs", { count: group.modifiedParagraphs }));
   }
-  return `${group.label} · ${parts.join("，") || `${group.totalChanges} 处变化`}`;
+  return `${group.label} · ${parts.join(UI_TEXT.listComma) || formatText("changeCount", { count: group.totalChanges })}`;
 }
 
 function formatLocationSummary(groups) {
-  return groups.map((group) => group.summary).slice(0, 5).join("；");
+  return groups.map((group) => group.summary).slice(0, 5).join(UI_TEXT.semicolon);
 }
 
 function labelSource(source) {
-  return SOURCE_LABELS[source] || "正文";
+  return formatText(SOURCE_LABELS[source] || "sourceDocument");
 }
 
 function truncateChangeText(value) {

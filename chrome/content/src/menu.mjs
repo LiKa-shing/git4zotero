@@ -1,4 +1,5 @@
 import { ICON_20, PLUGIN_ID, UI_TEXT } from "./constants.mjs";
+import { formatText } from "./localization.mjs";
 
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
@@ -104,7 +105,7 @@ export class PaperVersionMenu {
       {
         action: "restore",
         id: "git4zotero-menu-restore",
-        label: "恢复版本...",
+        label: UI_TEXT.menuRestorePromptTitle + "...",
         l10nID: "git4zotero-menu-restore"
       },
       {
@@ -639,7 +640,7 @@ export class PaperVersionMenu {
         throw new Error(UI_TEXT.itemNotEnabledError);
       }
       if (!state.git?.available) {
-        throw new Error(`${UI_TEXT.gitUnavailable}：${state.git?.error || state.git?.detail || UI_TEXT.gitUnavailableDetail}`);
+        throw new Error(`${UI_TEXT.gitUnavailable}${UI_TEXT.colon}${state.git?.error || state.git?.detail || UI_TEXT.gitUnavailableDetail}`);
       }
       versions = state.versions;
     }
@@ -667,14 +668,14 @@ export class PaperVersionMenu {
 
     const result = await this.service.restoreVersion(item, targetVersion);
     const safetyStatus = result?.safetyVersion
-      ? `恢复前已自动备份：${result.safetyVersion.shortHash}`
-      : "恢复前自动备份：未创建（设置未启用）";
+      ? formatText("restoreSafetyCreated", { hash: result.safetyVersion.shortHash })
+      : UI_TEXT.restoreSafetySkipped;
     const fileBackupStatus = result?.backupPath
-      ? `\n${UI_TEXT.restoreSafetyBackup}：${result.backupPath}`
+      ? `\n${UI_TEXT.restoreSafetyBackup}${UI_TEXT.colon}${result.backupPath}`
       : "";
     this.platform.alert(
       UI_TEXT.restoreConfirmTitle,
-      `${UI_TEXT.restoreSuccess}\n目标版本：${targetVersion.shortHash}\n文件：${result?.attachment?.fileName ?? targetVersion.fileName}\n${safetyStatus}${fileBackupStatus}`
+      `${UI_TEXT.restoreSuccess}\n${UI_TEXT.restoreTargetVersion}${UI_TEXT.colon}${targetVersion.shortHash}\n${UI_TEXT.restoreFile}${UI_TEXT.colon}${result?.attachment?.fileName ?? targetVersion.fileName}\n${safetyStatus}${fileBackupStatus}`
     );
     this.refresh();
   }
@@ -780,7 +781,7 @@ export class PaperVersionMenu {
 
   formatDate(value) {
     try {
-      return new Intl.DateTimeFormat("zh-CN", {
+      return new Intl.DateTimeFormat(UI_TEXT.dateLocale || "zh-CN", {
         dateStyle: "medium",
         timeStyle: "short"
       }).format(new Date(value));
@@ -806,12 +807,12 @@ export class PaperVersionMenu {
 
   formatVersionKind(version) {
     if (version.kind === "safety") {
-      return "自动备份";
+      return UI_TEXT.versionKindSafety;
     }
     if (version.source === "git") {
-      return "Git 历史";
+      return UI_TEXT.versionKindGit;
     }
-    return "手动";
+    return UI_TEXT.versionKindManual;
   }
 
   formatChangeDetails(changeSummary, limit = 3) {
@@ -824,9 +825,9 @@ export class PaperVersionMenu {
         }
       }
       const omitted = changeSummary.omittedChanges > 0
-        ? `\n- 另有 ${changeSummary.omittedChanges} 处段落变化未在弹窗中展开。`
+        ? `\n- ${formatText("omittedParagraphChangesDialog", { count: changeSummary.omittedChanges })}`
         : "";
-      return `\n\n具体修改：\n${lines.join("\n")}${omitted}`;
+      return `\n\n${UI_TEXT.concreteChanges}${UI_TEXT.colon}\n${lines.join("\n")}${omitted}`;
     }
     const changes = changeSummary?.displayChanges ?? changeSummary?.paragraphChanges ?? [];
     if (!changes.length) {
@@ -834,21 +835,21 @@ export class PaperVersionMenu {
     }
     const lines = changes.slice(0, limit).map((change) => `- ${this.formatParagraphChange(change)}`);
     const omitted = changeSummary.omittedChanges > 0
-      ? `\n- 另有 ${changeSummary.omittedChanges} 处段落变化未在弹窗中展开。`
+      ? `\n- ${formatText("omittedParagraphChangesDialog", { count: changeSummary.omittedChanges })}`
       : "";
-    return `\n\n具体修改：\n${lines.join("\n")}${omitted}`;
+    return `\n\n${UI_TEXT.concreteChanges}${UI_TEXT.colon}\n${lines.join("\n")}${omitted}`;
   }
 
   formatParagraphChange(change) {
-    const location = change.locationLabel ? `${change.locationLabel}：` : "";
+    const location = change.locationLabel ? `${change.locationLabel}${UI_TEXT.colon}` : "";
     if (change.type === "added") {
-      return `${location}新增：${change.newText}`;
+      return `${location}${UI_TEXT.changeAdded}${UI_TEXT.colon}${change.newText}`;
     }
     if (change.type === "deleted") {
-      return `${location}删除：${change.oldText}`;
+      return `${location}${UI_TEXT.changeDeleted}${UI_TEXT.colon}${change.oldText}`;
     }
     if (change.type === "modified") {
-      return `${location}修改：${change.oldText} → ${change.newText}`;
+      return `${location}${UI_TEXT.changeKindModified}${UI_TEXT.colon}${change.oldText} → ${change.newText}`;
     }
     return `${location}${change.newText || change.oldText || UI_TEXT.actionCompleted}`;
   }

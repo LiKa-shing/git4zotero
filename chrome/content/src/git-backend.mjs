@@ -1,4 +1,5 @@
 import { UI_TEXT } from "./constants.mjs";
+import { formatText } from "./localization.mjs";
 
 const COMMIT_RE = /^[0-9a-f]{7,40}$/i;
 const RECORD_SEPARATOR = "\x1e";
@@ -75,7 +76,7 @@ export class GitBackend {
     if (!normalizedPath
       || normalizedPath.startsWith("/")
       || normalizedPath.split("/").includes("..")) {
-      throw new Error("跟踪文件路径无效，已取消恢复。");
+      throw new Error(UI_TEXT.invalidTrackedPath);
     }
     await this.mustRun(["checkout", commitHash, "--", normalizedPath], {
       cwd: repoPath
@@ -146,7 +147,7 @@ export class GitBackend {
     ], { cwd: repoPath });
 
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr || result.stdout || "无法读取 Git 工作树状态。");
+      throw new Error(result.stderr || result.stdout || UI_TEXT.gitStatusFailed);
     }
 
     const entries = result.stdout
@@ -171,7 +172,7 @@ export class GitBackend {
   async mustRun(args, options = {}) {
     const result = await this.runGit(args, options);
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr || result.stdout || `Git 命令失败：git ${args.join(" ")}`);
+      throw new Error(result.stderr || result.stdout || formatText("gitCommandFailed", { args: args.join(" ") }));
     }
     return result;
   }

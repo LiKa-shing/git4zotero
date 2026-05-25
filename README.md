@@ -106,7 +106,8 @@ C:\Program Files\Git\cmd\git.exe
 - 本插件提供本地版本管理，不是云同步、备份盘或多人实时协作系统。
 - 本插件不替代 Word/WPS/LibreOffice 的修订模式；它保存的是附件文件在不同时间点的版本。
 - 右侧 `论文版本` 面板主要用于显示状态；启用、检查、创建、恢复等写操作请通过条目列表右键菜单完成。
-- 不建议手动修改 Zotero 配置目录中 `git4zotero` 文件夹内的 Git 仓库和 `.git4zotero` 元数据。
+- 不建议手动修改 Zotero 配置目录中 `git4zotero` 文件夹内的 Git 仓库、`index.json` 和 `.git4zotero` 元数据。
+- Zotero 条目移入回收站时会保留版本历史；永久删除条目或清空回收站后，插件会自动清理对应历史。
 
 ## 常见问题
 
@@ -132,6 +133,10 @@ C:\Program Files\Git\cmd\git.exe
 
 恢复前请先保存并关闭 Word/WPS/LibreOffice 中打开的同一文件。有些文字处理软件会在退出或自动保存时再次写入文件，可能覆盖插件刚恢复的版本。
 
+### 删除 Zotero 条目后历史目录仍存在
+
+如果只是将条目移入 Zotero 回收站，插件会保留版本历史，方便条目恢复后继续使用。只有永久删除条目或清空回收站后，插件才会自动清理对应仓库。升级前遗留的“已删除条目留下的版本历史”可在 Zotero 设置页的 `Git` 面板中检查并清理。
+
 ## 开发与贡献
 
 开发环境、打包和 Zotero 本地验证流程见 [docs/INSTALL.md](docs/INSTALL.md)。贡献规范见 [CONTRIBUTING.md](CONTRIBUTING.md)。
@@ -156,4 +161,4 @@ dist\git4zotero.xpi
 
 ## 致谢
 
-感谢 [Zotero](https://www.zotero.org/) 提供开放的文献管理平台，感谢 [Git](https://git-scm.com/) 提供稳定可靠的版本管理能力，也感谢 Zotero 插件社区长期积累的开发经验与文档。
+感谢 [Zotero](https://www.zotero.org/) 提供开放的文献管理平台，感谢 [Git](https://git-scm.com/) 提供稳定可靠的版本管理能力，也感谢 Zotero 插件社区长期积累的开发经验与文档。特别感谢 Meng L.、Liu G. 在开发过程中提出的宝贵意见。
