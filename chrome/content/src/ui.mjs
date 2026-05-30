@@ -1,4 +1,5 @@
 import { SECTION_ID, UI_TEXT } from "./constants.mjs";
+import { classifyError, recordLastError } from "./diagnostics.mjs";
 import { formatText } from "./localization.mjs";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -962,7 +963,14 @@ export class PaperVersionPane {
     const panel = this.ensurePanel(body);
     this.clear(panel);
     this.setPanelDiagnostics(panel, { status: "error", renderPhase: "error" });
-    panel.append(this.status(body.ownerDocument, UI_TEXT.operationFailed, "warning", error.message || String(error)));
+    recordLastError(this.platform, error, { operation: UI_TEXT.versionHistory });
+    const classified = classifyError(error, { operation: UI_TEXT.versionHistory });
+    panel.append(this.status(
+      body.ownerDocument,
+      `${UI_TEXT.operationFailed} · ${classified.title}`,
+      "warning",
+      `${classified.message}\n${classified.suggestion}`
+    ));
     setSectionSummary?.(UI_TEXT.operationFailed);
   }
 

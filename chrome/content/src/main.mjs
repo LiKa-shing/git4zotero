@@ -13,6 +13,7 @@ import {
   UI_TEXT
 } from "./constants.mjs";
 import { setUILocale } from "./localization.mjs";
+import { recordLastError } from "./diagnostics.mjs";
 import { GitBackend } from "./git-backend.mjs";
 import { MetadataStore } from "./metadata.mjs";
 import { PaperVersionMenu } from "./menu.mjs";
@@ -44,6 +45,7 @@ export const Git4Zotero = {
       PathUtils: context.PathUtils
     });
     const locale = setUILocale(zotero.locale || context.Services?.locale?.appLocaleAsBCP47 || context.Services?.locale?.requestedLocale);
+    this.platform.pluginVersion = context.version;
     this.debug(`using UI locale ${locale}`);
 
     const attachmentFinder = new AttachmentFinder({ Zotero: zotero });
@@ -211,6 +213,7 @@ export const Git4Zotero = {
           await this.cleanup.handleItemEvent(event, type, ids, extraData);
         }
         catch (error) {
+          recordLastError(this.platform, error, { operation: "repository cleanup" });
           this.debug(`repository cleanup failed: ${error?.stack || error}`);
         }
       }

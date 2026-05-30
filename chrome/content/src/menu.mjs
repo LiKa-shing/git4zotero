@@ -1,4 +1,5 @@
 import { ICON_20, PLUGIN_ID, UI_TEXT } from "./constants.mjs";
+import { classifyError, recordLastError } from "./diagnostics.mjs";
 import { formatText } from "./localization.mjs";
 
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
@@ -771,7 +772,9 @@ export class PaperVersionMenu {
 
   showError(error) {
     this.debug(`context menu action failed: ${error?.stack || error}`);
-    this.platform.alert(UI_TEXT.menuUnavailable, error.message || String(error));
+    recordLastError(this.platform, error, { operation: UI_TEXT.menuRoot });
+    const classified = classifyError(error, { operation: UI_TEXT.menuRoot });
+    this.platform.alert(UI_TEXT.menuUnavailable, `${classified.title}\n${classified.message}\n${classified.suggestion}`);
   }
 
   refresh() {

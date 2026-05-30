@@ -1,4 +1,4 @@
-import { PREFS, UI_TEXT } from "./constants.mjs";
+import { PLUGIN_ID, PREFS, UI_TEXT } from "./constants.mjs";
 import { buildRepoRelativePath, getExtension } from "./attachments.mjs";
 import { formatText } from "./localization.mjs";
 
@@ -246,12 +246,69 @@ export class ZoteroPlatform {
     }
   }
 
+  getAppVersion() {
+    return String(this.Zotero?.version || this.Services?.appinfo?.version || "");
+  }
+
+  getPluginVersion() {
+    if (this.pluginVersion) {
+      return String(this.pluginVersion);
+    }
+    try {
+      const plugin = this.Zotero?.PluginManager?.getPlugin?.(PLUGIN_ID)
+        || this.Zotero?.Plugins?.get?.(PLUGIN_ID);
+      return String(plugin?.version || "");
+    }
+    catch (_error) {
+      return "";
+    }
+  }
+
+  getSystemInfo() {
+    const parts = [];
+    try {
+      if (this.Services?.appinfo?.OS) {
+        parts.push(`OS=${this.Services.appinfo.OS}`);
+      }
+      if (this.Services?.appinfo?.XPCOMABI) {
+        parts.push(`ABI=${this.Services.appinfo.XPCOMABI}`);
+      }
+      if (this.Services?.appinfo?.name) {
+        parts.push(`App=${this.Services.appinfo.name}`);
+      }
+      if (this.Services?.appinfo?.version) {
+        parts.push(`AppVersion=${this.Services.appinfo.version}`);
+      }
+    }
+    catch (_error) {
+      // Fall back to the minimal label below.
+    }
+    return parts.join(", ") || "unknown";
+  }
+
+  getLocale() {
+    return String(
+      this.Zotero?.locale
+      || this.Services?.locale?.appLocaleAsBCP47
+      || this.Services?.locale?.requestedLocale
+      || ""
+    );
+  }
+
   confirm(title, message) {
     return this.Services.prompt.confirm(null, title, message);
   }
 
   alert(title, message) {
     this.Services.prompt.alert(null, title, message);
+  }
+
+  copyTextToClipboard(text) {
+    const helper = this.Cc?.["@mozilla.org/widget/clipboardhelper;1"]?.getService?.(this.Ci?.nsIClipboardHelper);
+    if (!helper?.copyString) {
+      throw new Error("Clipboard helper is unavailable.");
+    }
+    helper.copyString(String(text ?? ""));
   }
 
   promptText(title, message, defaultValue = "") {
@@ -351,6 +408,15 @@ export class ZoteroPlatform {
     return this.join(profileDir, "git4zotero");
   }
 
+  redactPath(value) {
+    let output = String(value ?? "");
+    const home = this.getHomeDirectory();
+    if (home) {
+      output = replacePathPrefix(output, home, "<HOME>");
+    }
+    return output;
+  }
+
   getRepoPath(libraryID, itemKey) {
     const repoPath = this.join(this.getPluginDataDirectory(), buildRepoRelativePath(libraryID, itemKey));
     this.Zotero.debug?.(`git4zotero: resolved repo path for library=${libraryID}, item=${itemKey}`);
@@ -409,6 +475,14 @@ export class ZoteroPlatform {
     if (await this.exists(path)) {
       await this.requireIOUtils().remove(path);
     }
+  }
+
+  async writeTempProbeFile() {
+    const dataDir = this.getPluginDataDirectory();
+    const probePath = this.join(dataDir, "git4zotero-diagnostic-write-test.txt");
+    await this.writeText(probePath, `git4zotero write probe ${new Date().toISOString()}\n`);
+    await this.removeFile(probePath);
+    return probePath;
   }
 
   async removeDirectory(path) {
@@ -500,6 +574,15 @@ export function normalizeExecutablePath(value) {
 
 export function isGitCommandAlias(value) {
   return /^(?:git|git\.exe)$/i.test(normalizeExecutablePath(value));
+}
+
+function replacePathPrefix(value, prefix, replacement) {
+  const normalizedPrefix = String(prefix ?? "").replace(/[\\/]+$/g, "");
+  if (!normalizedPrefix) {
+    return value;
+  }
+  const escaped = normalizedPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(value).replace(new RegExp(escaped, "gi"), replacement);
 }
 
 export function normalizeJoinParts(parts) {

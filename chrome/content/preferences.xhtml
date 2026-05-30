@@ -46,7 +46,7 @@
     <html:dl class="git4zotero-pref-facts">
       <html:div>
         <html:dt data-git4zotero-i18n="pluginVersion">插件版本</html:dt>
-        <html:dd>0.2.2</html:dd>
+        <html:dd>0.2.3</html:dd>
       </html:div>
       <html:div>
         <html:dt data-git4zotero-i18n="supportedFormats">支持格式</html:dt>
@@ -58,6 +58,22 @@
       </html:div>
     </html:dl>
     <html:p class="git4zotero-pref-help" data-git4zotero-i18n="trackingHelp">是否跟踪某个条目由条目列表右键菜单中的“论文版本”操作控制；右侧面板仅显示状态。</html:p>
+    <label><html:h3 data-git4zotero-i18n="diagnosticsTitle">诊断与健康检查</html:h3></label>
+    <html:p class="git4zotero-pref-help" data-git4zotero-i18n="diagnosticsDescription">复制诊断信息可用于提交 issue；健康检查只读取状态，不会自动修复或清理历史。</html:p>
+    <html:div class="git4zotero-pref-row git4zotero-pref-actions">
+      <html:button id="git4zotero-copy-diagnostics"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.copyDiagnostics(event)"
+                    data-git4zotero-i18n="copyDiagnostics">复制诊断信息</html:button>
+      <html:button id="git4zotero-run-health-check"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.runHealthCheck(event)"
+                    data-git4zotero-i18n="runHealthCheck">运行健康检查</html:button>
+    </html:div>
+    <html:p id="git4zotero-diagnostics-status" class="git4zotero-pref-status" role="status" data-git4zotero-i18n="diagnosticsInitial">尚未复制诊断信息。</html:p>
+    <html:p id="git4zotero-health-status" class="git4zotero-pref-status" role="status" data-git4zotero-i18n="healthInitial">尚未运行健康检查。</html:p>
+    <html:p id="git4zotero-last-error-status" class="git4zotero-pref-status" role="status" data-git4zotero-i18n="lastErrorNone">尚未记录错误。</html:p>
+    <html:pre id="git4zotero-diagnostics-output" class="git4zotero-pref-output" hidden="hidden"></html:pre>
     <html:div class="git4zotero-pref-row git4zotero-pref-actions">
       <html:button id="git4zotero-check-orphans"
                     type="button"

@@ -14,6 +14,7 @@ export const runtimeModuleOrder = [
   "chrome/content/src/cleanup.mjs",
   "chrome/content/src/git-backend.mjs",
   "chrome/content/src/platform.mjs",
+  "chrome/content/src/diagnostics.mjs",
   "chrome/content/src/version-service.mjs",
   "chrome/content/src/menu.mjs",
   "chrome/content/src/ui.mjs",

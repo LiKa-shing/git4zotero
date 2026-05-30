@@ -38,6 +38,7 @@ const requiredFiles = [
   "chrome/content/icons/paper-version-96.png",
   "chrome/content/src/content-diff.mjs",
   "chrome/content/src/cleanup.mjs",
+  "chrome/content/src/diagnostics.mjs",
   "chrome/content/src/docx-reader.mjs",
   "chrome/content/src/localization.mjs",
   "chrome/content/src/main.mjs",
@@ -71,7 +72,10 @@ const requiredChineseText = [
   "启用版本管理",
   "停用版本管理",
   "Git 可执行文件路径",
-  "恢复旧版本前自动创建安全版本"
+  "恢复旧版本前自动创建安全版本",
+  "复制诊断信息",
+  "运行健康检查",
+  "最近错误"
 ];
 const legacyModulePattern = new RegExp("\\." + "jsm\\b");
 const oldPromiseName = "Blue" + "bird";
@@ -357,6 +361,9 @@ assert(platformModule.includes("options.length"));
 assert(platformModule.includes("refreshItemPane"));
 assert(platformModule.includes("removeDirectory"));
 assert(platformModule.includes("listDirectory"));
+assert(platformModule.includes("copyTextToClipboard"));
+assert(platformModule.includes("redactPath"));
+assert(platformModule.includes("writeTempProbeFile"));
 
 const cleanupModule = await fs.readFile(path.join(root, "chrome/content/src/cleanup.mjs"), "utf8");
 assert(cleanupModule.includes("RepositoryIndexStore"));
@@ -369,6 +376,15 @@ assert(cleanupModule.includes("isSafeRepoRelativePath"));
 assert(cleanupModule.includes("metadataMatchesDeletedIDs"));
 assert(cleanupModule.includes("scanOrphanRepositories"));
 assert(cleanupModule.includes("cleanupOrphanRepositories"));
+
+const diagnosticsModuleText = await fs.readFile(path.join(root, "chrome/content/src/diagnostics.mjs"), "utf8");
+assert(diagnosticsModuleText.includes("DiagnosticService"));
+assert(diagnosticsModuleText.includes("buildReport"));
+assert(diagnosticsModuleText.includes("runHealthCheck"));
+assert(diagnosticsModuleText.includes("classifyError"));
+assert(diagnosticsModuleText.includes("LastErrorStore"));
+assert(diagnosticsModuleText.includes("scanOrphanRepositories"));
+assert(!diagnosticsModuleText.includes("cleanupOrphanRepositories()"), "health check must not clean deleted item history");
 
 const contentDiffModule = await fs.readFile(path.join(root, "chrome/content/src/content-diff.mjs"), "utf8");
 assert(contentDiffModule.includes("paragraphChanges"));
@@ -396,6 +412,8 @@ assert(preferencesXhtml.includes("状态与排错"));
 assert(preferencesXhtml.includes(manifest.version));
 assert(preferencesXhtml.includes("检查已删除条目的历史"));
 assert(preferencesXhtml.includes("清理已删除条目的历史"));
+assert(preferencesXhtml.includes("复制诊断信息"));
+assert(preferencesXhtml.includes("运行健康检查"));
 assert(!preferencesXhtml.includes("preference=\"extensions.git4zotero.gitPath\""));
 const preferencesScript = await fs.readFile(path.join(root, "chrome/content/preferences.mjs"), "utf8");
 assert(preferencesScript.includes("window.Git4ZoteroPreferences"));
@@ -407,6 +425,8 @@ assert(preferencesScript.includes("scheduleInit"));
 assert(preferencesScript.includes("checkGitAvailability"));
 assert(preferencesScript.includes("checkOrphanHistory"));
 assert(preferencesScript.includes("cleanupOrphanHistory"));
+assert(preferencesScript.includes("copyDiagnostics"));
+assert(preferencesScript.includes("runHealthCheck"));
 assert(preferencesScript.includes("RepositoryCleanupService"));
 assert(preferencesScript.includes("gitInput.value = this.getSavedGitPath()"));
 assert(preferencesScript.includes("Git4ZoteroPreferenceL10n"));

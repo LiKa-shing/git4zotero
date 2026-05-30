@@ -34,6 +34,13 @@ import { resolveUILocale, setUILocale } from "../chrome/content/src/localization
 import { assertSafeCommitHash, GitBackend } from "../chrome/content/src/git-backend.mjs";
 import { PaperVersionMenu } from "../chrome/content/src/menu.mjs";
 import { normalizeJoinParts, ZoteroPlatform } from "../chrome/content/src/platform.mjs";
+import {
+  classifyError,
+  DiagnosticService,
+  ERROR_CATEGORIES,
+  LastErrorStore,
+  recordLastError
+} from "../chrome/content/src/diagnostics.mjs";
 import { PaperVersionPane } from "../chrome/content/src/ui.mjs";
 import { VersionService } from "../chrome/content/src/version-service.mjs";
 
@@ -47,10 +54,12 @@ assert.equal(resolveUILocale("fr-FR"), "en-US");
 setUILocale("en-US");
 assert.equal(UI_TEXT.menuRoot, "Paper Versions");
 assert.equal(UI_TEXT.preferences.testGit, "Test Git");
+assert.equal(UI_TEXT.preferences.copyDiagnostics, "Copy Diagnostics");
 assert(!/[\u4e00-\u9fff]/.test(JSON.stringify(UI_TEXT)));
 setUILocale("zh-TW");
 assert.equal(UI_TEXT.menuRoot, "論文版本");
 assert.equal(UI_TEXT.preferences.testGit, "測試 Git");
+assert.equal(UI_TEXT.preferences.copyDiagnostics, "複製診斷資訊");
 setUILocale("zh-CN");
 assert.equal(UI_TEXT.menuRoot, "论文版本");
 
@@ -2621,6 +2630,69 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
 }
 
 {
+  assert.equal(classifyError(new Error(UI_TEXT.menuMultiSelectUnsupported)).category, ERROR_CATEGORIES.userActionable);
+  assert.equal(classifyError(new Error(UI_TEXT.gitPathNotFound)).category, ERROR_CATEGORIES.git);
+  assert.equal(classifyError(new Error(UI_TEXT.restorePreflightUnwritable)).category, ERROR_CATEGORIES.fileState);
+  assert.equal(classifyError(new Error("Unexpected metadata shape")).category, ERROR_CATEGORIES.internal);
+
+  const prefs = new Map();
+  const diagnosticPlatform = {
+    Zotero: {
+      locale: "zh-CN",
+      getActiveZoteroPane: () => ({ getSelectedItems: () => [] }),
+      debug() {}
+    },
+    getPref: (key, fallback = "") => prefs.get(key) ?? fallback,
+    setPref: (key, value) => prefs.set(key, value),
+    redactPath: (value) => String(value ?? "").replace(/C:\\Users\\Tester/gi, "<HOME>"),
+    checkGitAvailability: async () => ({
+      available: true,
+      command: "C:\\Users\\Tester\\Git\\cmd\\git.exe",
+      version: "git version 2.44.0",
+      detail: "git version 2.44.0"
+    }),
+    getGitExecutable: () => "C:\\Users\\Tester\\Git\\cmd\\git.exe",
+    getPluginDataDirectory: () => "C:\\Users\\Tester\\Zotero\\git4zotero",
+    getPluginVersion: () => "0.2.2",
+    getAppVersion: () => "8.0-test",
+    getSystemInfo: () => "OS=WINNT",
+    getLocale: () => "zh-CN",
+    makeDirectory: async () => {},
+    writeTempProbeFile: async () => "C:\\Users\\Tester\\Zotero\\git4zotero\\git4zotero-diagnostic-write-test.txt",
+    exists: async (target) => target === "C:\\Users\\Tester\\Zotero\\git4zotero",
+    listDirectory: async () => [],
+    readText: async () => "",
+    join: (...parts) => parts.join("\\")
+  };
+  const lastErrorStore = new LastErrorStore(diagnosticPlatform);
+  const stored = lastErrorStore.write(new Error(UI_TEXT.gitUnavailableDetail), { operation: "test Git" });
+  assert.equal(stored.category, ERROR_CATEGORIES.git);
+  assert.equal(new LastErrorStore(diagnosticPlatform).read().operation, "test Git");
+  prefs.set(PREFS.lastError, "{broken");
+  assert.equal(new LastErrorStore(diagnosticPlatform).read(), null);
+  recordLastError(diagnosticPlatform, new Error("file is not writable"), { operation: "restore" });
+  assert.equal(JSON.parse(prefs.get(PREFS.lastError)).category, ERROR_CATEGORIES.fileState);
+
+  const diagnostics = new DiagnosticService({
+    platform: diagnosticPlatform,
+    cleanupService: {
+      scanOrphanRepositories: async () => ({ count: 0, repositories: [], skipped: [] })
+    },
+    metadataStore: {
+      getMetadataPath: (repoPath) => `${repoPath}\\.git4zotero\\versions.json`
+    },
+    pluginVersion: "0.2.2"
+  });
+  const report = await diagnostics.buildReport();
+  assert(report.includes("Plugin version: 0.2.2"));
+  assert(report.includes("<HOME>\\Git\\cmd\\git.exe"));
+  assert(!report.includes("C:\\Users\\Tester"));
+  const health = await diagnostics.runHealthCheck();
+  assert.equal(health.errorCount, 0);
+  assert.equal(health.checks.find((check) => check.id === "write-permission").status, "ok");
+}
+
+{
   const successPrefs = await runPreferencesScript({
     autoGitPath: "C:\\Program Files\\Git\\cmd\\git.exe",
     subprocessResult: { exitCode: 0, stdout: "git version 2.44.0\n", stderr: "" }
@@ -2682,6 +2754,19 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   await prefWindow.cleanupOrphanHistory();
   assert.equal(cleanupCalled, true);
   assert(orphanPrefs.elements["git4zotero-orphan-status"].textContent.includes("已清理 1 个已删除条目的版本历史"));
+
+  const diagnosticsPrefs = await runPreferencesScript({
+    autoGitPath: "C:\\Program Files\\Git\\cmd\\git.exe",
+    subprocessResult: { exitCode: 0, stdout: "git version 2.44.0\n", stderr: "" }
+  });
+  const diagnosticsWindow = diagnosticsPrefs.context.window.Git4ZoteroPreferences;
+  await diagnosticsWindow.copyDiagnostics();
+  assert(diagnosticsPrefs.elements["git4zotero-diagnostics-status"].textContent.includes("无法写入剪贴板"));
+  assert(diagnosticsPrefs.elements["git4zotero-diagnostics-output"].textContent.includes("git4zotero Diagnostics"));
+  await diagnosticsWindow.runHealthCheck();
+  assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("健康检查完成"));
+  assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("测试 Git"));
+  assert.equal(diagnosticsPrefs.elements["git4zotero-copy-diagnostics"].disabled, false);
 }
 
 let enabledMetadata = null;
@@ -3133,6 +3218,8 @@ async function runPreferencesScript({
   const timeouts = [];
   const prefs = new Map([[PREFS.gitPath, prefValue]]);
   const subprocessCalls = [];
+  const files = new Map();
+  const directories = new Set(["C:\\ZoteroProfile", "C:\\ZoteroProfile\\git4zotero"]);
   const elements = new Proxy({}, {
     get(target, id) {
       if (!target[id]) {
@@ -3155,6 +3242,24 @@ async function runPreferencesScript({
       importESModule(spec) {
         if (spec === "chrome://git4zotero/content/src/platform.mjs") {
           return { ZoteroPlatform };
+        }
+        if (spec === "chrome://git4zotero/content/src/diagnostics.mjs") {
+          return { classifyError, DiagnosticService, ERROR_CATEGORIES, LastErrorStore, recordLastError };
+        }
+        if (spec === "chrome://git4zotero/content/src/attachments.mjs") {
+          return { AttachmentFinder };
+        }
+        if (spec === "chrome://git4zotero/content/src/git-backend.mjs") {
+          return { GitBackend };
+        }
+        if (spec === "chrome://git4zotero/content/src/metadata.mjs") {
+          return { MetadataStore };
+        }
+        if (spec === "chrome://git4zotero/content/src/cleanup.mjs") {
+          return { RepositoryCleanupService, RepositoryIndexStore };
+        }
+        if (spec === "chrome://git4zotero/content/src/version-service.mjs") {
+          return { VersionService };
         }
         return {
           Subprocess: {
@@ -3192,7 +3297,36 @@ async function runPreferencesScript({
       }
     },
     IOUtils: {
-      exists: async (target) => target === autoGitPath
+      exists: async (target) => target === autoGitPath || files.has(target) || directories.has(target),
+      getChildren: async (target) => {
+        const prefix = `${target}\\`;
+        const children = new Set();
+        for (const dir of directories) {
+          if (dir.startsWith(prefix)) {
+            const rest = dir.slice(prefix.length);
+            if (rest && !rest.includes("\\")) {
+              children.add(`${prefix}${rest}`);
+            }
+          }
+        }
+        for (const file of files.keys()) {
+          if (file.startsWith(prefix)) {
+            const rest = file.slice(prefix.length);
+            if (rest && !rest.includes("\\")) {
+              children.add(`${prefix}${rest}`);
+            }
+          }
+        }
+        return [...children];
+      },
+      makeDirectory: async (target) => directories.add(target),
+      readUTF8: async (target) => files.get(target) ?? "",
+      remove: async (target) => files.delete(target),
+      writeUTF8: async (target, content) => {
+        const parent = target.replace(/\\[^\\]+$/, "");
+        directories.add(parent);
+        files.set(target, content);
+      }
     },
     PathUtils: null,
     window: {
@@ -3205,6 +3339,8 @@ async function runPreferencesScript({
     Zotero: {
       locale: "zh-CN",
       debug() {},
+      getActiveZoteroPane: () => ({ getSelectedItems: () => [] }),
+      Items: { get: () => null },
       Prefs: {
         get: (key) => prefs.get(key) ?? "",
         set: (key, value) => prefs.set(key, value)

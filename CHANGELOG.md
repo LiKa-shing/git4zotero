@@ -12,6 +12,22 @@
 
 - Nothing yet.
 
+## 0.2.3
+
+### 中文
+
+- 在设置页增加“复制诊断信息”，用于生成默认脱敏的插件版本、Zotero 版本、系统、locale、Git、数据目录、当前条目状态和最近错误报告。
+- 在设置页增加“运行健康检查”，覆盖 Git、数据目录、写权限、已删除条目历史和 metadata schema 检查。
+- 增加最近错误持久化记录，Zotero 重启后仍可复制最近一次错误信息。
+- 增加错误分级提示，区分用户可处理问题、Git 问题、文件状态问题和插件内部错误，并给出对应处理建议。
+
+### English
+
+- Added “Copy Diagnostics” in the preferences pane to generate a redacted report with plugin version, Zotero version, system, locale, Git, data directory, current item status, and the most recent error.
+- Added “Run Health Check” in the preferences pane for Git, data directory, write permission, deleted-item history, and metadata schema checks.
+- Added persistent recent-error recording so the latest error remains available after Zotero restarts.
+- Added categorized error guidance for user-actionable issues, Git issues, file-state issues, and internal plugin errors.
+
 ## 0.2.2
 
 ### 中文
