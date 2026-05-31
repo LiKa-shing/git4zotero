@@ -12,6 +12,7 @@ export const runtimeModuleOrder = [
   "chrome/content/src/content-diff.mjs",
   "chrome/content/src/metadata.mjs",
   "chrome/content/src/cleanup.mjs",
+  "chrome/content/src/archive.mjs",
   "chrome/content/src/git-backend.mjs",
   "chrome/content/src/platform.mjs",
   "chrome/content/src/diagnostics.mjs",
@@ -48,7 +49,7 @@ export async function buildRuntimeScript(root = process.cwd()) {
 
 export function transformModuleSource(source, relativePath = "module") {
   let transformed = source
-    .replace(/^\s*import[\s\S]*?;\r?\n/gm, "")
+    .replace(/^\s*import(?:\s+|\{)[\s\S]*?;\r?\n/gm, "")
     .replace(/^export\s+(?=(?:const|let|var|function|class)\s)/gm, "");
 
   if (/^\s*import\s/m.test(transformed)) {

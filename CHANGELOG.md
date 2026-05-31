@@ -6,11 +6,35 @@
 
 ### 中文
 
-- 暂无。
+- 暂无变更。
 
 ### English
 
-- Nothing yet.
+- No changes yet.
+
+## 0.2.4
+
+### 中文
+
+- 增加恢复前可解释安全检查：恢复前显示目标版本、完整 Git hash、当前文件 hash、目标版本 hash、备份路径、文件可读/可写状态和 Git 工作树状态。
+- 增强恢复执行保护：恢复时复用预检生成的备份路径，并在写入前重新校验当前文件 hash，避免确认后文件又被外部程序修改。
+- 扩展健康检查建议，针对 Git、数据目录、写权限、已删除条目历史、metadata schema 以及 Git/index/metadata 一致性给出诊断和建议，不自动修复。
+- 新增设置页“导出全部版本历史...”与“导入版本历史...”，用于备份、换电脑和迁移本地 git4zotero 版本仓库；导入只补充缺失仓库，不覆盖已有历史。
+- 新增设置页“首次使用向导”“打开数据目录”“复制 issue 模板”“打开 Git 安装指南”等低风险入口。
+- 右侧 `论文版本` 面板新增状态卡片，展示是否启用、Git 是否可用、最近版本、最近检查和未提交修改状态。
+- 创建版本前新增确认摘要，尤其对 `.doc` 明确提示仅做文件级跟踪，不解析正文差异。
+- README 增加首次使用、数据安全与恢复、导入/导出、诊断与健康检查和常见文件占用问题说明。
+
+### English
+
+- Added explainable restore preflight checks that show target version, full Git hash, current file hash, target file hash, backup path, file read/write status, and Git working tree status before restore.
+- Hardened restore execution by reusing the preflight backup path and re-checking the current file hash before writing, preventing accidental overwrite if the file changes after confirmation.
+- Expanded health-check suggestions for Git, data directory, write permission, deleted-item history, metadata schema, and Git/index/metadata consistency without automatic repair.
+- Added preference-pane “Export All Version History...” and “Import Version History...” actions for backup, computer migration, and local git4zotero repository migration; import only fills missing repositories and never overwrites existing history.
+- Added low-risk preference-pane actions: first-use guide, open data directory, copy issue template, and open Git install guide.
+- Added status cards to the right-side Paper Versions pane for enabled state, Git availability, latest version, latest check, and uncommitted-change state.
+- Added a clearer confirmation summary before creating a version, including explicit `.doc` file-level tracking guidance.
+- Expanded README coverage for first use, data safety and restore, import/export, diagnostics and health checks, and common file-lock issues.
 
 ## 0.2.3
 

@@ -22,6 +22,7 @@ const requiredFiles = [
   "bootstrap.js",
   "prefs.js",
   "README.md",
+  "README-en.md",
   "docs/INSTALL.md",
   "tsconfig.json",
   "locale/en-US/git4zotero.ftl",
@@ -38,6 +39,7 @@ const requiredFiles = [
   "chrome/content/icons/paper-version-96.png",
   "chrome/content/src/content-diff.mjs",
   "chrome/content/src/cleanup.mjs",
+  "chrome/content/src/archive.mjs",
   "chrome/content/src/diagnostics.mjs",
   "chrome/content/src/docx-reader.mjs",
   "chrome/content/src/localization.mjs",
@@ -75,7 +77,11 @@ const requiredChineseText = [
   "恢复旧版本前自动创建安全版本",
   "复制诊断信息",
   "运行健康检查",
-  "最近错误"
+  "最近错误",
+  "首次使用向导",
+  "导出全部版本历史",
+  "导入版本历史",
+  "恢复前安全检查"
 ];
 const legacyModulePattern = new RegExp("\\." + "jsm\\b");
 const oldPromiseName = "Blue" + "bird";
@@ -122,6 +128,8 @@ const releaseNotesScript = await fs.readFile(path.join(root, "scripts/create-rel
 const inspectXpiScript = await fs.readFile(path.join(root, "scripts/inspect-xpi.mjs"), "utf8");
 const ciWorkflow = await fs.readFile(path.join(root, ".github/workflows/ci.yml"), "utf8");
 const releaseWorkflow = await fs.readFile(path.join(root, ".github/workflows/release.yml"), "utf8");
+const readmeZh = await fs.readFile(path.join(root, "README.md"), "utf8");
+const readmeEn = await fs.readFile(path.join(root, "README-en.md"), "utf8");
 assert(!packageScript.includes("Compress-Archive"), "package script must not use Windows Compress-Archive packaging");
 assert(packageScript.includes("distDir, \".package\""), "package script must stage package contents under dist/.package");
 assert(packageScript.includes("const packageName = \"git4zotero.xpi\";"), "package script must emit the fixed XPI filename");
@@ -164,6 +172,27 @@ assert(!/git4zotero-\$VERSION\.xpi/.test(releaseWorkflow), "release workflow mus
 assert(releaseWorkflow.includes("node scripts/create-release-notes.mjs dist/release-notes.md"), "release workflow must generate release notes from CHANGELOG.md");
 assert(releaseWorkflow.includes("--notes-file \"dist/release-notes.md\""), "release workflow must publish CHANGELOG-based release notes");
 assert(!releaseWorkflow.includes("--generate-notes"), "release workflow must not rely on generic generated notes");
+assert(readmeZh.includes("chrome/content/icons/paper-version-96.png"), "Chinese README must display the plugin icon");
+assert(readmeZh.includes("alt=\"git4zotero icon\""), "Chinese README icon must use the expected alt text");
+assert(readmeZh.includes("github/release-date/LiKa-shing/git4zotero"), "Chinese README must include the release date badge");
+assert(readmeZh.includes("README-en.md"), "Chinese README must link to the English README");
+assert(readmeEn.includes("chrome/content/icons/paper-version-96.png"), "English README must display the plugin icon");
+assert(readmeEn.includes("alt=\"git4zotero icon\""), "English README icon must use the expected alt text");
+assert(readmeEn.includes("github/release-date/LiKa-shing/git4zotero"), "English README must include the release date badge");
+assert(readmeEn.includes("README.md"), "English README must link to the Chinese README");
+assert(readmeEn.includes("https://github.com/LiKa-shing/git4zotero/releases/latest/download/git4zotero.xpi"), "English README must link to the latest XPI");
+assert(readmeEn.includes("https://www.zotero.org/"), "English README must link to Zotero");
+assert(readmeEn.includes("https://git-scm.com/downloads"), "English README must link to Git downloads");
+assert(readmeEn.includes("docs/GIT-INSTALL-zh.md"), "English README must link to the Git installation guide");
+assert(readmeEn.includes("CONTRIBUTING.md"), "English README must link to contribution guidelines");
+assert(readmeEn.includes("docs/INSTALL.md"), "English README must link to development setup");
+assert(readmeEn.includes("LICENSE"), "English README must link to the license");
+assert(readmeEn.includes("Zotero `8.0` to `9.0.*`"), "English README must state the Zotero compatibility range");
+assert(readmeEn.includes("Supported formats: `.docx`, `.doc`"), "English README must state supported formats");
+assert(readmeEn.includes("Content-level `.docx` diff"), "English README must state docx content-level diff support");
+assert(readmeEn.includes("File-level `.doc` tracking"), "English README must state doc file-level tracking");
+assert(readmeEn.includes("Zotero profile `git4zotero` directory"), "English README must state the data directory");
+assert(readmeEn.includes("git4zotero-backup-<timestamp>.zip"), "English README must describe the backup archive name");
 
 const runtimeText = await buildRuntimeScript(root);
 new Function(runtimeText);
@@ -377,10 +406,21 @@ assert(cleanupModule.includes("metadataMatchesDeletedIDs"));
 assert(cleanupModule.includes("scanOrphanRepositories"));
 assert(cleanupModule.includes("cleanupOrphanRepositories"));
 
+const archiveModule = await fs.readFile(path.join(root, "chrome/content/src/archive.mjs"), "utf8");
+assert(archiveModule.includes("RepositoryArchiveService"));
+assert(archiveModule.includes("exportRepositoryArchive"));
+assert(archiveModule.includes("importRepositoryArchive"));
+assert(archiveModule.includes("export-manifest.json"));
+assert(archiveModule.includes("assertArchiveEntryName"));
+assert(archiveModule.includes("archiveInvalidEntry"));
+assert(!archiveModule.includes("removeDirectory"), "archive import/export must not delete repositories");
+
 const diagnosticsModuleText = await fs.readFile(path.join(root, "chrome/content/src/diagnostics.mjs"), "utf8");
 assert(diagnosticsModuleText.includes("DiagnosticService"));
 assert(diagnosticsModuleText.includes("buildReport"));
 assert(diagnosticsModuleText.includes("runHealthCheck"));
+assert(diagnosticsModuleText.includes("buildIssueTemplate"));
+assert(diagnosticsModuleText.includes("checkRepositoryConsistency"));
 assert(diagnosticsModuleText.includes("classifyError"));
 assert(diagnosticsModuleText.includes("LastErrorStore"));
 assert(diagnosticsModuleText.includes("scanOrphanRepositories"));
@@ -414,6 +454,11 @@ assert(preferencesXhtml.includes("检查已删除条目的历史"));
 assert(preferencesXhtml.includes("清理已删除条目的历史"));
 assert(preferencesXhtml.includes("复制诊断信息"));
 assert(preferencesXhtml.includes("运行健康检查"));
+assert(preferencesXhtml.includes("首次使用向导"));
+assert(preferencesXhtml.includes("打开数据目录"));
+assert(preferencesXhtml.includes("复制 issue 模板"));
+assert(preferencesXhtml.includes("导出全部版本历史"));
+assert(preferencesXhtml.includes("导入版本历史"));
 assert(!preferencesXhtml.includes("preference=\"extensions.git4zotero.gitPath\""));
 const preferencesScript = await fs.readFile(path.join(root, "chrome/content/preferences.mjs"), "utf8");
 assert(preferencesScript.includes("window.Git4ZoteroPreferences"));
@@ -426,7 +471,13 @@ assert(preferencesScript.includes("checkGitAvailability"));
 assert(preferencesScript.includes("checkOrphanHistory"));
 assert(preferencesScript.includes("cleanupOrphanHistory"));
 assert(preferencesScript.includes("copyDiagnostics"));
+assert(preferencesScript.includes("copyIssueTemplate"));
 assert(preferencesScript.includes("runHealthCheck"));
+assert(preferencesScript.includes("RepositoryArchiveService"));
+assert(preferencesScript.includes("exportHistoryArchive"));
+assert(preferencesScript.includes("importHistoryArchive"));
+assert(preferencesScript.includes("openDataDirectory"));
+assert(preferencesScript.includes("openGitGuide"));
 assert(preferencesScript.includes("RepositoryCleanupService"));
 assert(preferencesScript.includes("gitInput.value = this.getSavedGitPath()"));
 assert(preferencesScript.includes("Git4ZoteroPreferenceL10n"));

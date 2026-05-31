@@ -354,6 +354,31 @@ export class ZoteroPlatform {
     }
   }
 
+  async saveBinaryFile({ title = UI_TEXT.saveFileTitle, defaultFileName = "git4zotero-export.bin", bytes = new Uint8Array() } = {}) {
+    const fallbackPath = this.join(this.getPluginDataDirectory(), "exports", defaultFileName);
+    try {
+      const targetPath = await this.pickSavePath(title, defaultFileName);
+      if (!targetPath) {
+        return null;
+      }
+      await this.writeBytes(targetPath, bytes);
+      return targetPath;
+    }
+    catch (error) {
+      this.Zotero.debug?.(`git4zotero: binary save dialog unavailable, using fallback path: ${error?.stack || error}`);
+      await this.writeBytes(fallbackPath, bytes);
+      return fallbackPath;
+    }
+  }
+
+  async openBinaryFile({ title = UI_TEXT.archiveImportTitle } = {}) {
+    const path = await this.pickOpenPath(title);
+    if (!path) {
+      return null;
+    }
+    return { path, bytes: await this.readFileBytes(path) };
+  }
+
   async pickSavePath(title, defaultFileName) {
     const filePickerInterface = this.Ci?.nsIFilePicker;
     const picker = this.Cc?.["@mozilla.org/filepicker;1"]?.createInstance?.(filePickerInterface);
@@ -368,6 +393,9 @@ export class ZoteroPlatform {
     }
     else if (extension === ".txt") {
       picker.appendFilter?.("Text", "*.txt");
+    }
+    else if (extension === ".zip") {
+      picker.appendFilter?.("ZIP", "*.zip");
     }
     picker.appendFilters?.(filePickerInterface.filterAll);
 
@@ -392,6 +420,47 @@ export class ZoteroPlatform {
       return picker.show();
     }
     throw new Error(UI_TEXT.saveDialogUnsupported);
+  }
+
+  async pickOpenPath(title) {
+    const filePickerInterface = this.Ci?.nsIFilePicker;
+    const picker = this.Cc?.["@mozilla.org/filepicker;1"]?.createInstance?.(filePickerInterface);
+    if (!picker || !filePickerInterface) {
+      throw new Error(UI_TEXT.saveDialogUnavailable);
+    }
+    picker.init(null, title, filePickerInterface.modeOpen);
+    picker.appendFilter?.("ZIP", "*.zip");
+    picker.appendFilters?.(filePickerInterface.filterAll);
+    const result = await this.showFilePicker(picker);
+    if (result === filePickerInterface.returnCancel) {
+      return null;
+    }
+    const path = picker.file?.path || "";
+    if (!path) {
+      throw new Error(UI_TEXT.saveDialogNoPath);
+    }
+    return path;
+  }
+
+  openPath(path) {
+    const file = this.Cc?.["@mozilla.org/file/local;1"]?.createInstance?.(this.Ci?.nsIFile);
+    if (!file?.initWithPath) {
+      throw new Error(UI_TEXT.openPathUnavailable);
+    }
+    file.initWithPath(path);
+    if (typeof file.reveal === "function") {
+      file.reveal();
+      return;
+    }
+    file.launch?.();
+  }
+
+  openURL(url) {
+    if (this.Zotero?.launchURL) {
+      this.Zotero.launchURL(url);
+      return;
+    }
+    throw new Error(UI_TEXT.openPathUnavailable);
   }
 
   refreshItemPane() {
@@ -458,6 +527,11 @@ export class ZoteroPlatform {
     await this.requireIOUtils().writeUTF8(path, content);
   }
 
+  async writeBytes(path, bytes) {
+    await this.makeDirectory(this.dirname(path));
+    await this.requireIOUtils().write(path, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+  }
+
   async readFileBytes(path) {
     const bytes = await this.requireIOUtils().read(path);
     return bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -504,6 +578,11 @@ export class ZoteroPlatform {
 
   async stat(path) {
     return this.requireIOUtils().stat(path);
+  }
+
+  async isDirectory(path) {
+    const stat = await this.stat(path);
+    return stat?.type === "directory" || stat?.isDir === true || stat?.isDirectory === true;
   }
 
   async hashFile(path) {

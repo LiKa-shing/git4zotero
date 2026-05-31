@@ -151,10 +151,25 @@ const SCOPED_TIMELINE_STYLE = `
 
 .git4zotero-panel-root .git4zotero-timeline-body,
 .git4zotero-panel-root .git4zotero-change-list,
+.git4zotero-panel-root .git4zotero-status-cards,
 .git4zotero-panel-root .git4zotero-workflow {
   display: grid;
   gap: 6px;
   min-width: 0;
+}
+
+.git4zotero-panel-root .git4zotero-status-cards {
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+}
+
+.git4zotero-panel-root .git4zotero-status-card {
+  border: 1px solid ButtonBorder;
+  border-radius: 4px;
+  box-sizing: border-box;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px;
 }
 
 .git4zotero-panel-root .git4zotero-timeline-header {
@@ -422,6 +437,7 @@ export class PaperVersionPane {
     }
 
     panel.append(this.fileSummary(doc, state.attachment));
+    panel.append(this.statusCards(doc, state));
 
     if (!state.enabled) {
       this.setPanelDiagnostics(panel, { status: "disabled", versionCount, renderPhase: "state" });
@@ -509,6 +525,34 @@ export class PaperVersionPane {
       version.shortHash,
       this.formatDate(version.createdAt)
     ].filter(Boolean).join(" ");
+  }
+
+  statusCards(doc, state) {
+    const section = this.section(doc, UI_TEXT.statusCardsTitle);
+    const grid = this.el(doc, "div", "git4zotero-status-cards");
+    const workingTree = state.workingTree ?? state.lastCheck?.workingTree ?? null;
+    const cards = [
+      [UI_TEXT.stateEnabled, state.enabled ? UI_TEXT.stateEnabled : UI_TEXT.stateDisabled],
+      ["Git", state.git?.available ? UI_TEXT.stateGitAvailable : UI_TEXT.stateGitUnavailable],
+      [UI_TEXT.stateLatestVersion, this.latestVersionSummary(state.versions?.[0]) || UI_TEXT.emptyHistory],
+      [UI_TEXT.stateLastCheck, state.lastCheck?.checkedAt ? this.formatDate(state.lastCheck.checkedAt) : UI_TEXT.neverChecked],
+      [UI_TEXT.stateWorkingTree, workingTree?.clean === false ? UI_TEXT.stateDirty : (workingTree?.clean ? UI_TEXT.stateClean : UI_TEXT.stateUnchecked)]
+    ];
+    for (const [label, value] of cards) {
+      grid.append(this.statusCard(doc, label, value));
+    }
+    section.append(grid);
+    return section;
+  }
+
+  statusCard(doc, label, value) {
+    const card = this.el(doc, "div", "git4zotero-status-card");
+    const title = this.el(doc, "span", "git4zotero-version-meta");
+    title.textContent = label;
+    const body = this.el(doc, "strong");
+    body.textContent = value;
+    card.append(title, body);
+    return card;
   }
 
   workflow(doc, state) {

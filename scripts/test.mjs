@@ -19,6 +19,7 @@ import {
   createEmptyRepositoryIndex,
   isSafeRepoRelativePath
 } from "../chrome/content/src/cleanup.mjs";
+import { RepositoryArchiveService } from "../chrome/content/src/archive.mjs";
 import { PREFS, SECTION_ID, UI_TEXT } from "../chrome/content/src/constants.mjs";
 import { DocxReader } from "../chrome/content/src/docx-reader.mjs";
 import { inflateRaw } from "../chrome/content/src/vendor/zip-reader.mjs";
@@ -979,6 +980,95 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
   assert.equal(orphanScan.repositories[0].repoRelativePath, "library-1/item-ITEM");
 }
 
+{
+  let exportedZip = null;
+  const encoder = new TextEncoder();
+  const sourceFiles = new Map([
+    ["C:/Profile/git4zotero/index.json", encoder.encode("{\"repositories\":[]}")],
+    ["C:/Profile/git4zotero/library-1/item-ITEM/.git/config", encoder.encode("[core]\n")],
+    ["C:/Profile/git4zotero/library-1/item-ITEM/.git4zotero/versions.json", encoder.encode("{\"versions\":[]}")]
+  ]);
+  const sourceDirectories = new Set([
+    "C:/Profile/git4zotero",
+    "C:/Profile/git4zotero/library-1",
+    "C:/Profile/git4zotero/library-1/item-ITEM",
+    "C:/Profile/git4zotero/library-1/item-ITEM/.git",
+    "C:/Profile/git4zotero/library-1/item-ITEM/.git4zotero"
+  ]);
+  const sourcePlatform = {
+    getPluginDataDirectory: () => "C:/Profile/git4zotero",
+    getPluginVersion: () => "0.2.4",
+    join: (...parts) => parts.join("/"),
+    exists: async (target) => sourceFiles.has(target) || sourceDirectories.has(target),
+    isDirectory: async (target) => sourceDirectories.has(target),
+    readFileBytes: async (target) => sourceFiles.get(target),
+    listDirectory: async (target) => {
+      const prefix = `${target}/`;
+      const children = new Set();
+      for (const dir of sourceDirectories) {
+        if (dir.startsWith(prefix)) {
+          const rest = dir.slice(prefix.length);
+          if (rest && !rest.includes("/")) {
+            children.add(`${prefix}${rest}`);
+          }
+        }
+      }
+      for (const file of sourceFiles.keys()) {
+        if (file.startsWith(prefix)) {
+          const rest = file.slice(prefix.length);
+          if (rest && !rest.includes("/")) {
+            children.add(`${prefix}${rest}`);
+          }
+        }
+      }
+      return [...children];
+    },
+    saveBinaryFile: async ({ bytes }) => {
+      exportedZip = bytes;
+      return "C:/backup/git4zotero-backup.zip";
+    }
+  };
+  const archiveService = new RepositoryArchiveService({
+    platform: sourcePlatform,
+    cleanupService: { ensureIndex: async () => {} },
+    pluginVersion: "0.2.4"
+  });
+  const exportResult = await archiveService.exportRepositoryArchive();
+  assert.equal(exportResult.repositoryCount, 1);
+  assert(exportedZip instanceof Uint8Array);
+
+  const targetFiles = new Map();
+  const targetDirectories = new Set(["D:/Profile/git4zotero"]);
+  let ensureIndexCalls = 0;
+  const importPlatform = {
+    getPluginDataDirectory: () => "D:/Profile/git4zotero",
+    join: (...parts) => parts.join("/"),
+    exists: async (target) => targetFiles.has(target) || targetDirectories.has(target),
+    writeBytes: async (target, bytes) => {
+      let parent = target.replace(/\/[^/]+$/, "");
+      while (parent && !targetDirectories.has(parent)) {
+        targetDirectories.add(parent);
+        parent = parent.replace(/\/[^/]+$/, "");
+      }
+      targetFiles.set(target, bytes);
+    },
+    openBinaryFile: async () => ({ path: "C:/backup/git4zotero-backup.zip", bytes: exportedZip })
+  };
+  const importService = new RepositoryArchiveService({
+    platform: importPlatform,
+    cleanupService: { ensureIndex: async () => { ensureIndexCalls += 1; } },
+    pluginVersion: "0.2.4"
+  });
+  const importResult = await importService.importRepositoryArchive();
+  assert.equal(importResult.imported.length, 1);
+  assert.equal(importResult.skipped.length, 0);
+  assert.equal(ensureIndexCalls, 1);
+  assert(targetFiles.has("D:/Profile/git4zotero/library-1/item-ITEM/.git/config"));
+  const skipResult = await importService.importRepositoryArchive();
+  assert.equal(skipResult.imported.length, 0);
+  assert.equal(skipResult.skipped[0].reason, UI_TEXT.archiveImportSkippedExisting);
+}
+
 const disabledService = new VersionService({
   platform: {
     getRepoPath: () => "repo"
@@ -1380,7 +1470,7 @@ assert(timelineHarness.body.textContent.includes("工作流"));
 assert(timelineHarness.body.textContent.includes("Git 工作树"));
 const timelineText = timelineHarness.body.textContent;
 assert(timelineText.indexOf(UI_TEXT.versionHistory) < timelineText.indexOf("工作流"));
-assert(timelineText.indexOf(UI_TEXT.versionHistory) < timelineText.indexOf(UI_TEXT.lastCheck));
+assert(timelineText.indexOf(UI_TEXT.versionHistory) < timelineText.lastIndexOf(UI_TEXT.lastCheck));
 assert(timelineText.indexOf(UI_TEXT.versionHistory) < timelineText.indexOf(UI_TEXT.workingTree));
 assert(timelineText.includes(UI_TEXT.refreshPanel));
 const timelinePanel = findByClass(timelineHarness.body, "git4zotero-panel");
@@ -1501,6 +1591,9 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   await waitForScheduledPaneRender();
   assert.equal(panelStateCalls, 1);
   assert.equal(findAllByClass(body, "git4zotero-timeline-item").length, 5);
+  assert.equal(findAllByClass(body, "git4zotero-status-card").length, 5);
+  assert(body.textContent.includes(UI_TEXT.statusCardsTitle));
+  assert(body.textContent.includes(UI_TEXT.stateGitAvailable));
   assert(debugMessages.some((message) => message.includes("item pane self async render scheduled")));
   assert(debugMessages.some((message) => message.includes("item pane async render start source=zotero-onAsyncRender")));
   assert(debugMessages.some((message) => message.includes("item pane self async render stale before start")));
@@ -2008,6 +2101,43 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
 }
 
 {
+  const previewService = new VersionService({
+    platform: {
+      getRepoPath: () => "repo",
+      exists: async () => true,
+      join: (...parts) => parts.join("/"),
+      getPref: (_key, fallback) => fallback
+    },
+    attachmentFinder: {
+      findManageableAttachment: async () => ({ ...managedAttachment, fileName: "paper.doc", filePath: "paper.doc", extension: ".doc" })
+    },
+    gitBackend: {
+      checkAvailability: async () => ({ available: true, detail: "git version 2.44.0" }),
+      getWorkingTreeStatus: async () => ({ clean: false, entries: [" M tracked/paper.doc"], summary: " M tracked/paper.doc" })
+    },
+    metadataStore: {
+      read: async () => ({ ...createEmptyMetadata(), enabled: true, versions: [older] })
+    },
+    pluginVersion: "0.2.4",
+    contentAnalyzer: {
+      analyze: async () => ({
+        fileHash: "doc-file",
+        fileSize: 30,
+        contentHash: null,
+        contentSummary: { mode: "file-only", extension: ".doc" },
+        contentSnapshot: null,
+        changeSummary: { changeType: "file", summary: UI_TEXT.genericFileLevelSummary },
+        shouldCreateVersion: true
+      })
+    }
+  });
+  const preview = await previewService.buildCreateVersionPreview({});
+  assert.equal(preview.trackingMode, UI_TEXT.contentModeFileOnly);
+  assert.equal(preview.attachment.extension, ".doc");
+  assert.equal(preview.workingTree.clean, false);
+}
+
+{
   const writes = [];
   const copyCalls = [];
   const checkoutCalls = [];
@@ -2075,7 +2205,11 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       })
     }
   });
-  const result = await restoreService.restoreVersion({}, older);
+  const preflight = await restoreService.buildRestorePreflight({}, older, { stamp: "fixed-stamp" });
+  assert.equal(preflight.ok, true);
+  assert(preflight.backupPath.includes("fixed-stamp-current-paper.docx"));
+  assert(preflight.checks.some((check) => check.id === "backup-path"));
+  const result = await restoreService.restoreVersion({}, older, { preflight });
   assert.equal(result.restoredVersion.id, older.id);
   assert.equal(result.safetyVersion.kind, "safety");
   assert.deepEqual(checkoutCalls[0], ["repo", older.commitHash, older.trackedRelativePath]);
@@ -2687,9 +2821,14 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert(report.includes("Plugin version: 0.2.2"));
   assert(report.includes("<HOME>\\Git\\cmd\\git.exe"));
   assert(!report.includes("C:\\Users\\Tester"));
+  const issueTemplate = await diagnostics.buildIssueTemplate();
+  assert(issueTemplate.includes("## 复现步骤"));
+  assert(issueTemplate.includes("```text"));
+  assert(!issueTemplate.includes("C:\\Users\\Tester"));
   const health = await diagnostics.runHealthCheck();
   assert.equal(health.errorCount, 0);
   assert.equal(health.checks.find((check) => check.id === "write-permission").status, "ok");
+  assert.equal(health.checks.find((check) => check.id === "repository-consistency").status, "ok");
 }
 
 {
@@ -2766,6 +2905,27 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   await diagnosticsWindow.runHealthCheck();
   assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("健康检查完成"));
   assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("测试 Git"));
+  assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("检查 Git/index/metadata 一致性"));
+  diagnosticsWindow.openFirstUseGuide();
+  assert(diagnosticsPrefs.elements["git4zotero-first-use-output"].textContent.includes("git4zotero 首次使用向导"));
+  await diagnosticsWindow.copyIssueTemplate();
+  assert(diagnosticsPrefs.elements["git4zotero-diagnostics-output"].textContent.includes("## 复现步骤"));
+  diagnosticsWindow.archiveService = {
+    exportRepositoryArchive: async () => ({
+      path: "C:\\backup\\git4zotero-backup.zip",
+      repositoryCount: 2,
+      fileCount: 7
+    }),
+    importRepositoryArchive: async () => ({
+      imported: ["library-1/item-A"],
+      skipped: [{ repoRelativePath: "library-1/item-B" }],
+      failed: []
+    })
+  };
+  await diagnosticsWindow.exportHistoryArchive();
+  assert(diagnosticsPrefs.elements["git4zotero-archive-status"].textContent.includes("包含 2 个仓库"));
+  await diagnosticsWindow.importHistoryArchive();
+  assert(diagnosticsPrefs.elements["git4zotero-archive-status"].textContent.includes("导入 1 个，跳过 1 个"));
   assert.equal(diagnosticsPrefs.elements["git4zotero-copy-diagnostics"].disabled, false);
 }
 
@@ -3149,8 +3309,29 @@ function makeMenuHarness({ serviceOverrides = {}, platformOverrides = {} } = {})
     enableVersionManagement: async () => ({ attachment: managedAttachment }),
     disableVersionManagement: async () => {},
     checkCurrentChange: async () => ({ attachment: managedAttachment, changeSummary: { summary: "未检测到修改。" } }),
+    buildCreateVersionPreview: async () => ({
+      attachment: { ...managedAttachment, extension: ".docx" },
+      trackingMode: UI_TEXT.contentModeDocx,
+      fileHash: "file-hash",
+      workingTree: { clean: true, entries: [], summary: UI_TEXT.workingTreeClean },
+      changeSummary: { summary: "正文内容已修改。" },
+      shouldCreateVersion: true
+    }),
     createVersion: async () => older,
-    restoreVersion: async () => {},
+    getRestoreCandidates: async () => [older],
+    buildRestorePreflight: async () => ({
+      attachment: managedAttachment,
+      targetVersion: older,
+      currentFileHash: "current-hash",
+      targetFileHash: older.fileHash,
+      backupPath: "repo/.git4zotero/restore-backups/current-paper.docx",
+      checks: [{ id: "git", label: "Git", status: "ok", detail: "git version 2.44.0" }],
+      ok: true,
+      errorCount: 0,
+      warningCount: 0,
+      summary: UI_TEXT.restorePreflightOk
+    }),
+    restoreVersion: async () => ({ attachment: managedAttachment, restoredVersion: older, backupPath: "backup.docx" }),
     exportVersionSummary: async () => ({ path: "exports/history.md" }),
     getPanelState: async () => ({
       enabled: true,
@@ -3257,6 +3438,9 @@ async function runPreferencesScript({
         }
         if (spec === "chrome://git4zotero/content/src/cleanup.mjs") {
           return { RepositoryCleanupService, RepositoryIndexStore };
+        }
+        if (spec === "chrome://git4zotero/content/src/archive.mjs") {
+          return { RepositoryArchiveService };
         }
         if (spec === "chrome://git4zotero/content/src/version-service.mjs") {
           return { VersionService };

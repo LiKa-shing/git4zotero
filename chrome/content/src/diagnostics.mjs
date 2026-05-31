@@ -173,6 +173,33 @@ export class DiagnosticService {
     return lines.join("\n");
   }
 
+  async buildIssueTemplate() {
+    const report = await this.buildReport({ redactPaths: true });
+    return [
+      "## 问题描述 / Description",
+      "",
+      "<请简要描述遇到的问题 / Briefly describe the issue>",
+      "",
+      "## 复现步骤 / Steps to Reproduce",
+      "",
+      "1. ",
+      "2. ",
+      "3. ",
+      "",
+      "## 预期结果 / Expected Behavior",
+      "",
+      "",
+      "## 实际结果 / Actual Behavior",
+      "",
+      "",
+      "## 诊断信息 / Diagnostics",
+      "",
+      "```text",
+      report,
+      "```"
+    ].join("\n");
+  }
+
   async runHealthCheck() {
     const checks = [];
     checks.push(await this.checkGit());
@@ -180,6 +207,7 @@ export class DiagnosticService {
     checks.push(await this.checkWritePermission());
     checks.push(await this.checkDeletedHistory());
     checks.push(await this.checkMetadataSchema());
+    checks.push(await this.checkRepositoryConsistency());
     return {
       checks,
       okCount: checks.filter((check) => check.status === "ok").length,
@@ -198,7 +226,7 @@ export class DiagnosticService {
       detail: result.available
         ? this.text("healthGitAvailable", { detail: result.version || result.detail || result.command || "git" })
         : this.text("healthGitUnavailable", { detail: result.detail || result.error || UI_TEXT.gitUnavailableDetail }),
-      suggestion: result.available ? "" : UI_TEXT.errorGitSuggestion
+      suggestion: result.available ? "" : this.text("healthSuggestionGit")
     };
   }
 
@@ -220,7 +248,7 @@ export class DiagnosticService {
         label: this.text("healthCheckDataDirectory"),
         status: "error",
         detail: this.text("healthDataDirectoryFailed", { message: errorMessage(error) }),
-        suggestion: UI_TEXT.errorInternalSuggestion
+        suggestion: this.text("healthSuggestionDataDirectory")
       };
     }
   }
@@ -242,7 +270,7 @@ export class DiagnosticService {
         label: this.text("healthCheckWritePermission"),
         status: "error",
         detail: this.text("healthWritePermissionFailed", { message: errorMessage(error) }),
-        suggestion: UI_TEXT.errorFileStateSuggestion
+        suggestion: this.text("healthSuggestionWritePermission")
       };
     }
   }
@@ -267,7 +295,7 @@ export class DiagnosticService {
         detail: scan.count
           ? this.text("healthDeletedHistoryFound", { count: scan.count })
           : this.text("healthDeletedHistoryNone"),
-        suggestion: scan.count ? this.text("cleanDeletedHistory") : ""
+        suggestion: scan.count ? this.text("healthSuggestionDeletedHistory") : ""
       };
     }
     catch (error) {
@@ -276,7 +304,7 @@ export class DiagnosticService {
         label: this.text("healthCheckDeletedHistory"),
         status: "error",
         detail: errorMessage(error),
-        suggestion: UI_TEXT.errorInternalSuggestion
+        suggestion: this.text("healthSuggestionMetadata")
       };
     }
   }
@@ -329,7 +357,81 @@ export class DiagnosticService {
           details: issues.slice(0, 5).join("; ")
         })
         : this.text("healthMetadataSchemaOk", { count: checkedCount }),
-      suggestion: issues.length ? UI_TEXT.errorInternalSuggestion : ""
+      suggestion: issues.length ? this.text("healthSuggestionMetadata") : ""
+    };
+  }
+
+  async checkRepositoryConsistency() {
+    const dataDir = this.safePluginDataDirectory();
+    if (!dataDir || !(await this.safeExists(dataDir))) {
+      return {
+        id: "repository-consistency",
+        label: this.text("healthCheckRepositoryConsistency"),
+        status: "skipped",
+        detail: this.text("healthRepositoryConsistencySkipped"),
+        suggestion: ""
+      };
+    }
+
+    const issues = [];
+    let checkedCount = 0;
+    let index = null;
+    try {
+      await this.cleanupService?.ensureIndex?.();
+      index = await this.cleanupService?.indexStore?.read?.();
+    }
+    catch (error) {
+      issues.push(`index.json: ${errorMessage(error)}`);
+    }
+    const indexed = new Set((index?.repositories ?? []).map((entry) => entry.repoRelativePath).filter(Boolean));
+
+    for (const repoPath of await this.listRepositoryPaths(dataDir)) {
+      checkedCount += 1;
+      const relativePath = this.relativeRepoPath(dataDir, repoPath);
+      if (!isSafeRepoRelativePath(relativePath)) {
+        issues.push(`${relativePath}: unsafe repository path`);
+        continue;
+      }
+      if (indexed.size && !indexed.has(relativePath)) {
+        issues.push(`${relativePath}: missing from index.json`);
+      }
+      if (!(await this.safeExists(this.platform.join(repoPath, ".git")))) {
+        issues.push(`${relativePath}: missing .git directory`);
+      }
+      const metadataPath = this.metadataStore?.getMetadataPath
+        ? this.metadataStore.getMetadataPath(repoPath)
+        : this.platform.join(repoPath, ".git4zotero", "versions.json");
+      if (!(await this.safeExists(metadataPath))) {
+        issues.push(`${relativePath}: missing versions.json`);
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(await this.platform.readText(metadataPath));
+        const metadataVersions = Array.isArray(parsed.versions) ? parsed.versions : [];
+        if (!Array.isArray(parsed.versions)) {
+          issues.push(`${relativePath}: metadata versions is not an array`);
+        }
+        const invalidTracked = metadataVersions.filter((version) => version.trackedRelativePath && !safeTrackedRelativePath(version.trackedRelativePath));
+        if (invalidTracked.length) {
+          issues.push(`${relativePath}: ${invalidTracked.length} version(s) have invalid tracked path`);
+        }
+      }
+      catch (error) {
+        issues.push(`${relativePath}: ${errorMessage(error)}`);
+      }
+    }
+
+    return {
+      id: "repository-consistency",
+      label: this.text("healthCheckRepositoryConsistency"),
+      status: issues.length ? "warning" : "ok",
+      detail: issues.length
+        ? this.text("healthRepositoryConsistencyIssues", {
+          count: issues.length,
+          details: issues.slice(0, 5).join("; ")
+        })
+        : this.text("healthRepositoryConsistencyOk", { count: checkedCount }),
+      suggestion: issues.length ? this.text("healthSuggestionConsistency") : ""
     };
   }
 
@@ -496,6 +598,14 @@ function sanitizeStack(stack, platform) {
   }
   const redacted = platform?.redactPath ? platform.redactPath(stack) : String(stack);
   return redacted.split(/\r?\n/).slice(0, 12).join("\n");
+}
+
+function safeTrackedRelativePath(value) {
+  const normalized = String(value ?? "").trim().replace(/\\/g, "/");
+  return !!normalized
+    && !normalized.startsWith("/")
+    && !/^[A-Za-z]:\//.test(normalized)
+    && !normalized.split("/").includes("..");
 }
 
 function indentLines(lines) {

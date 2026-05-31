@@ -46,7 +46,7 @@
     <html:dl class="git4zotero-pref-facts">
       <html:div>
         <html:dt data-git4zotero-i18n="pluginVersion">插件版本</html:dt>
-        <html:dd>0.2.3</html:dd>
+        <html:dd>0.2.4</html:dd>
       </html:div>
       <html:div>
         <html:dt data-git4zotero-i18n="supportedFormats">支持格式</html:dt>
@@ -58,6 +58,46 @@
       </html:div>
     </html:dl>
     <html:p class="git4zotero-pref-help" data-git4zotero-i18n="trackingHelp">是否跟踪某个条目由条目列表右键菜单中的“论文版本”操作控制；右侧面板仅显示状态。</html:p>
+    <label><html:h3 data-git4zotero-i18n="firstUseTitle">首次使用向导</html:h3></label>
+    <html:p class="git4zotero-pref-help" data-git4zotero-i18n="firstUseDescription">适合第一次安装插件或第一次在新电脑上使用。向导只显示说明和检查结果，不会修改论文文件。</html:p>
+    <html:div class="git4zotero-pref-row git4zotero-pref-actions">
+      <html:button id="git4zotero-first-use-guide"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.openFirstUseGuide(event)"
+                    data-git4zotero-i18n="openFirstUseGuide">打开首次使用向导</html:button>
+    </html:div>
+    <html:pre id="git4zotero-first-use-output" class="git4zotero-pref-output" hidden="hidden"></html:pre>
+
+    <label><html:h3 data-git4zotero-i18n="lowRiskActionsTitle">低风险工具</html:h3></label>
+    <html:div class="git4zotero-pref-row git4zotero-pref-actions">
+      <html:button id="git4zotero-open-data-dir"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.openDataDirectory(event)"
+                    data-git4zotero-i18n="openDataDirectory">打开数据目录</html:button>
+      <html:button id="git4zotero-copy-issue-template"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.copyIssueTemplate(event)"
+                    data-git4zotero-i18n="copyIssueTemplate">复制 issue 模板</html:button>
+      <html:button id="git4zotero-open-git-guide"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.openGitGuide(event)"
+                    data-git4zotero-i18n="openGitGuide">打开 Git 安装指南</html:button>
+    </html:div>
+
+    <label><html:h3 data-git4zotero-i18n="archiveActionsTitle">版本历史备份与迁移</html:h3></label>
+    <html:p class="git4zotero-pref-help" data-git4zotero-i18n="archiveActionsDescription">导出/导入只处理 git4zotero 保存的本地版本历史，不包含 Zotero 原始附件文件。导入时只合并缺失仓库，不覆盖已有历史。</html:p>
+    <html:div class="git4zotero-pref-row git4zotero-pref-actions">
+      <html:button id="git4zotero-export-history"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.exportHistoryArchive(event)"
+                    data-git4zotero-i18n="exportAllHistory">导出全部版本历史...</html:button>
+      <html:button id="git4zotero-import-history"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.importHistoryArchive(event)"
+                    data-git4zotero-i18n="importHistory">导入版本历史...</html:button>
+    </html:div>
+    <html:p id="git4zotero-archive-status" class="git4zotero-pref-status" role="status" data-git4zotero-i18n="archiveStatusInitial">尚未导入或导出版本历史。</html:p>
+
     <label><html:h3 data-git4zotero-i18n="diagnosticsTitle">诊断与健康检查</html:h3></label>
     <html:p class="git4zotero-pref-help" data-git4zotero-i18n="diagnosticsDescription">复制诊断信息可用于提交 issue；健康检查只读取状态，不会自动修复或清理历史。</html:p>
     <html:div class="git4zotero-pref-row git4zotero-pref-actions">

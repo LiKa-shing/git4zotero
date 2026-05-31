@@ -176,6 +176,29 @@ export class VersionService {
     };
   }
 
+  async buildCreateVersionPreview(item) {
+    const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
+    const git = await this.requireGitAvailable();
+    const previousVersion = this.getLatestVersion(metadata);
+    const analysis = await this.contentAnalyzer.analyze(attachment.filePath, previousVersion);
+    let workingTree = null;
+    try {
+      workingTree = await this.gitBackend.getWorkingTreeStatus(repoPath);
+    }
+    catch (error) {
+      workingTree = { clean: false, entries: [], summary: error.message || String(error) };
+    }
+    return {
+      attachment,
+      repoPath,
+      git,
+      previousVersion,
+      workingTree,
+      trackingMode: attachment.extension === ".docx" ? UI_TEXT.contentModeDocx : UI_TEXT.contentModeFileOnly,
+      ...analysis
+    };
+  }
+
   async createVersion(item, note, options = {}) {
     const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
     const previousVersion = this.getLatestVersion(metadata);
@@ -252,7 +275,7 @@ export class VersionService {
     return record;
   }
 
-  async restoreVersion(item, versionRecord) {
+  async buildRestorePreflight(item, versionRecord, options = {}) {
     const { attachment, repoPath } = await this.requireEnabledAttachment(item);
     const trackedRelativePath = this.normalizeTrackedRelativePath(versionRecord.trackedRelativePath);
     if (!trackedRelativePath) {
@@ -263,7 +286,86 @@ export class VersionService {
       shortHash: versionRecord.shortHash ?? String(versionRecord.commitHash ?? "").slice(0, 8),
       trackedRelativePath
     };
-    await this.validateAttachmentBeforeRestore(attachment);
+    const paths = this.createRestorePaths({ attachment, repoPath, targetVersion, stamp: options.stamp });
+    const checks = [];
+    const add = (id, label, status, detail = "") => checks.push({ id, label, status, detail });
+    let currentFileHash = "";
+
+    if (!(await this.safeExists(attachment.filePath))) {
+      add("current-file", UI_TEXT.currentFile, "error", UI_TEXT.restorePreflightMissing);
+    }
+    else {
+      try {
+        currentFileHash = await this.platform.hashFile(attachment.filePath);
+        await this.platform.stat(attachment.filePath);
+        add("current-file", UI_TEXT.currentFile, "ok", `${attachment.fileName}${UI_TEXT.colon}${currentFileHash}`);
+      }
+      catch (error) {
+        add("current-file", UI_TEXT.currentFile, "error", `${UI_TEXT.restorePreflightUnreadable} ${error.message || String(error)}`);
+      }
+    }
+
+    const probePath = `${attachment.filePath}.git4zotero-write-test-${Date.now()}.tmp`;
+    try {
+      await this.platform.writeText(probePath, "git4zotero restore preflight");
+      add("writable", UI_TEXT.restorePreflightWritable, "ok", this.dirname(attachment.filePath));
+    }
+    catch (error) {
+      add("writable", UI_TEXT.restorePreflightWritable, "error", `${UI_TEXT.restorePreflightUnwritable} ${error.message || String(error)}`);
+    }
+    finally {
+      await this.removeFileQuietly(probePath);
+    }
+
+    const git = await this.gitBackend.checkAvailability();
+    add("git", "Git", git.available ? "ok" : "error", git.detail || git.error || UI_TEXT.gitUnavailableDetail);
+
+    try {
+      const gitDir = this.joinPath(repoPath, ".git");
+      add("git-repo", UI_TEXT.gitRepository, await this.safeExists(gitDir) ? "ok" : "error", await this.safeExists(gitDir) ? UI_TEXT.repositoryInitialized : UI_TEXT.repositoryGitDirMissing);
+      const workingTree = git.available ? await this.gitBackend.getWorkingTreeStatus(repoPath) : null;
+      if (workingTree) {
+        add("working-tree", UI_TEXT.workingTree, workingTree.clean ? "ok" : "warning", workingTree.summary || UI_TEXT.workingTreeClean);
+      }
+    }
+    catch (error) {
+      add("working-tree", UI_TEXT.workingTree, "error", `${UI_TEXT.gitStatusFailed} ${error.message || String(error)}`);
+    }
+
+    if (!targetVersion.fileHash) {
+      add("target-hash", UI_TEXT.restoreTargetHash, "warning", UI_TEXT.restoreTargetHashUnknown);
+    }
+    else {
+      add("target-hash", UI_TEXT.restoreTargetHash, "ok", targetVersion.fileHash);
+    }
+
+    add("backup-path", UI_TEXT.backupPathLabel, "ok", paths.backupPath);
+    const errorCount = checks.filter((check) => check.status === "error").length;
+    const warningCount = checks.filter((check) => check.status === "warning").length;
+    return {
+      attachment,
+      repoPath,
+      targetVersion,
+      currentFileHash,
+      targetFileHash: targetVersion.fileHash || "",
+      backupPath: paths.backupPath,
+      stagedPath: paths.stagedPath,
+      stamp: paths.stamp,
+      checks,
+      ok: errorCount === 0,
+      errorCount,
+      warningCount,
+      summary: errorCount
+        ? UI_TEXT.restorePreflightBlocked
+        : (warningCount ? UI_TEXT.restorePreflightWarning : UI_TEXT.restorePreflightOk)
+    };
+  }
+
+  async restoreVersion(item, versionRecord, options = {}) {
+    const preflight = options.preflight ?? await this.buildRestorePreflight(item, versionRecord);
+    const { attachment, repoPath, targetVersion } = preflight;
+    this.assertRestorePreflightAllowed(preflight);
+    await this.validateRestorePreflight(preflight);
     await this.requireGitAvailable();
     const safetyEnabled = this.platform.getPref(PREFS.autoSafetyVersion, true);
     let safetyVersion = null;
@@ -292,7 +394,8 @@ export class VersionService {
       attachment,
       repoPath,
       sourcePath,
-      targetVersion
+      targetVersion,
+      preflight
     });
 
     const metadata = await this.metadataStore.read(repoPath);
@@ -404,42 +507,43 @@ export class VersionService {
     return { trackedRelativePath, trackedFileName };
   }
 
-  async validateAttachmentBeforeRestore(attachment) {
-    if (!(await this.safeExists(attachment.filePath))) {
-      throw new Error(UI_TEXT.restorePreflightMissing);
-    }
-
-    try {
-      await this.platform.hashFile(attachment.filePath);
-      await this.platform.stat(attachment.filePath);
-    }
-    catch (error) {
-      throw new Error(`${UI_TEXT.restorePreflightUnreadable} ${error.message || String(error)}`);
-    }
-
-    const probePath = `${attachment.filePath}.git4zotero-write-test-${Date.now()}.tmp`;
-    try {
-      await this.platform.writeText(probePath, "git4zotero restore preflight");
-    }
-    catch (error) {
-      throw new Error(`${UI_TEXT.restorePreflightUnwritable} ${error.message || String(error)}`);
-    }
-    finally {
-      await this.removeFileQuietly(probePath);
+  assertRestorePreflightAllowed(preflight) {
+    if (!preflight?.ok) {
+      throw new Error(`${UI_TEXT.restorePreflightBlocked}\n${formatPreflightChecks(preflight?.checks ?? [])}`);
     }
   }
 
-  async restoreFileWithRollback({ attachment, repoPath, sourcePath, targetVersion }) {
+  async validateRestorePreflight(preflight) {
+    if (!(await this.safeExists(preflight.attachment.filePath))) {
+      throw new Error(UI_TEXT.restorePreflightMissing);
+    }
+    const currentHash = await this.platform.hashFile(preflight.attachment.filePath);
+    if (preflight.currentFileHash && currentHash !== preflight.currentFileHash) {
+      throw new Error(UI_TEXT.restorePreflightChanged);
+    }
+  }
+
+  createRestorePaths({ attachment, repoPath, targetVersion, stamp = null }) {
+    const finalStamp = stamp || `${Date.now()}-${sanitizeForPath(targetVersion.shortHash || "version")}`;
+    const safeFileName = sanitizeForPath(attachment.fileName);
+    const restoreDir = this.joinPath(repoPath, ".git4zotero", "restore-backups");
+    return {
+      stamp: finalStamp,
+      backupPath: this.joinPath(restoreDir, `${finalStamp}-current-${safeFileName}`),
+      stagedPath: this.joinPath(restoreDir, `${finalStamp}-restore-${safeFileName}`)
+    };
+  }
+
+  async restoreFileWithRollback({ attachment, repoPath, sourcePath, targetVersion, preflight = null }) {
     if (!(await this.safeExists(sourcePath))) {
       throw new Error(formatText("restoreSourceMissing", { path: sourcePath }));
     }
 
     const sourceHash = await this.platform.hashFile(sourcePath);
-    const stamp = `${Date.now()}-${sanitizeForPath(targetVersion.shortHash || "version")}`;
-    const safeFileName = sanitizeForPath(attachment.fileName);
-    const restoreDir = this.joinPath(repoPath, ".git4zotero", "restore-backups");
-    const backupPath = this.joinPath(restoreDir, `${stamp}-current-${safeFileName}`);
-    const stagedPath = this.joinPath(restoreDir, `${stamp}-restore-${safeFileName}`);
+    const paths = preflight?.backupPath && preflight?.stagedPath
+      ? { backupPath: preflight.backupPath, stagedPath: preflight.stagedPath }
+      : this.createRestorePaths({ attachment, repoPath, targetVersion });
+    const { backupPath, stagedPath } = paths;
 
     await this.platform.copyFile(attachment.filePath, backupPath);
     await this.platform.copyFile(sourcePath, stagedPath);
@@ -657,6 +761,13 @@ export class VersionService {
       return this.platform.join(basePath, ...parts);
     }
     return [basePath, ...parts].join("/");
+  }
+
+  dirname(path) {
+    if (typeof this.platform.dirname === "function") {
+      return this.platform.dirname(path);
+    }
+    return String(path).replace(/[\\/][^\\/]*$/, "");
   }
 
   mergeHistoryWithMetadata(history, metadata, attachment) {
@@ -987,4 +1098,13 @@ function formatByteSize(size) {
     return `${(size / 1024).toFixed(1)} KB`;
   }
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatPreflightChecks(checks) {
+  return (checks ?? [])
+    .map((check) => {
+      const mark = check.status === "ok" ? "OK" : (check.status === "warning" ? "WARN" : "ERROR");
+      return `- [${mark}] ${check.label}${UI_TEXT.colon}${check.detail || ""}`;
+    })
+    .join("\n");
 }

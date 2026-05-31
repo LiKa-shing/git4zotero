@@ -621,6 +621,13 @@ export class PaperVersionMenu {
     if (note === null) {
       return;
     }
+    const preview = await this.service.buildCreateVersionPreview(item);
+    if (!preview.shouldCreateVersion) {
+      throw new Error(UI_TEXT.createPreviewNoChanges);
+    }
+    if (!this.platform.confirm(UI_TEXT.createPreviewTitle, this.formatCreatePreview(preview))) {
+      return;
+    }
     const version = await this.service.createVersion(item, note);
     this.platform.alert(
       UI_TEXT.createVersion,
@@ -663,11 +670,16 @@ export class PaperVersionMenu {
       return;
     }
 
-    if (!this.platform.confirm(UI_TEXT.restoreConfirmTitle, UI_TEXT.restoreConfirmMessage)) {
+    const preflight = await this.service.buildRestorePreflight(item, targetVersion);
+    if (!preflight.ok) {
+      this.platform.alert(UI_TEXT.restorePreflightTitle, this.formatRestorePreflight(preflight, { blocked: true }));
+      return;
+    }
+    if (!this.platform.confirm(UI_TEXT.restorePreflightTitle, this.formatRestorePreflight(preflight))) {
       return;
     }
 
-    const result = await this.service.restoreVersion(item, targetVersion);
+    const result = await this.service.restoreVersion(item, targetVersion, { preflight });
     const safetyStatus = result?.safetyVersion
       ? formatText("restoreSafetyCreated", { hash: result.safetyVersion.shortHash })
       : UI_TEXT.restoreSafetySkipped;
@@ -841,6 +853,59 @@ export class PaperVersionMenu {
       ? `\n- ${formatText("omittedParagraphChangesDialog", { count: changeSummary.omittedChanges })}`
       : "";
     return `\n\n${UI_TEXT.concreteChanges}${UI_TEXT.colon}\n${lines.join("\n")}${omitted}`;
+  }
+
+  formatCreatePreview(preview) {
+    const workingTree = preview.workingTree?.clean === false
+      ? UI_TEXT.stateDirty
+      : (preview.workingTree?.clean ? UI_TEXT.stateClean : UI_TEXT.stateUnchecked);
+    const lines = [
+      UI_TEXT.createPreviewConfirmMessage,
+      "",
+      `${UI_TEXT.fileNameLabel}${UI_TEXT.colon}${preview.attachment?.fileName || UI_TEXT.unknown}`,
+      `${UI_TEXT.trackingModeLabel}${UI_TEXT.colon}${preview.trackingMode || UI_TEXT.contentModeFileOnly}`,
+      `${UI_TEXT.changeSummaryLabel}${UI_TEXT.colon}${preview.changeSummary?.summary || UI_TEXT.actionCompleted}`,
+      `${UI_TEXT.restoreTargetHash}${UI_TEXT.colon}${preview.fileHash || UI_TEXT.unknown}`,
+      `${UI_TEXT.workingTree}${UI_TEXT.colon}${preview.workingTree?.summary || workingTree}`
+    ];
+    if (preview.attachment?.extension === ".doc") {
+      lines.push("", UI_TEXT.createPreviewDocWarning);
+    }
+    const details = this.formatChangeDetails(preview.changeSummary);
+    if (details) {
+      lines.push(details.trimEnd());
+    }
+    lines.push("", UI_TEXT.createPreviewProceed);
+    return lines.filter((line) => line !== undefined && line !== null).join("\n");
+  }
+
+  formatRestorePreflight(preflight, { blocked = false } = {}) {
+    const version = preflight.targetVersion ?? {};
+    const lines = [
+      UI_TEXT.restorePreflightConfirmIntro,
+      "",
+      `${UI_TEXT.restoreTargetVersion}${UI_TEXT.colon}${version.note || version.shortHash || UI_TEXT.unknown}`,
+      `${UI_TEXT.gitHashLabel}${UI_TEXT.colon}${version.commitHash || UI_TEXT.unknown}`,
+      `${UI_TEXT.currentFile}${UI_TEXT.colon}${preflight.attachment?.fileName || UI_TEXT.unknown}`,
+      `${UI_TEXT.restoreTargetHash}${UI_TEXT.colon}${preflight.targetFileHash || UI_TEXT.restoreTargetHashUnknown}`,
+      `${UI_TEXT.backupPathLabel}${UI_TEXT.colon}${preflight.backupPath || UI_TEXT.unknown}`,
+      ""
+    ];
+    if (preflight.errorCount) {
+      lines.push(formatText("restorePreflightErrors", { count: preflight.errorCount }));
+    }
+    if (preflight.warningCount) {
+      lines.push(formatText("restorePreflightWarnings", { count: preflight.warningCount }));
+    }
+    lines.push(preflight.summary || UI_TEXT.restorePreflightOk, "");
+    for (const check of preflight.checks ?? []) {
+      const mark = check.status === "ok" ? "OK" : (check.status === "warning" ? "WARN" : "ERROR");
+      lines.push(`- [${mark}] ${check.label}${UI_TEXT.colon}${check.detail || ""}`);
+    }
+    if (!blocked) {
+      lines.push("", UI_TEXT.restorePreflightProceed);
+    }
+    return lines.join("\n");
   }
 
   formatParagraphChange(change) {
