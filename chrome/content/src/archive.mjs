@@ -16,7 +16,7 @@ export class RepositoryArchiveService {
     this.pluginVersion = pluginVersion;
   }
 
-  async exportRepositoryArchive() {
+  async exportRepositoryArchive(options = {}) {
     const dataDir = this.platform.getPluginDataDirectory();
     await this.cleanupService?.ensureIndex?.();
     const entries = await this.collectArchiveEntries(dataDir);
@@ -35,6 +35,7 @@ export class RepositoryArchiveService {
     const path = await this.platform.saveBinaryFile({
       title: UI_TEXT.archiveExportTitle,
       defaultFileName,
+      initialDirectory: options.initialDirectory || "",
       bytes: createStoredZip(entries)
     });
     return {

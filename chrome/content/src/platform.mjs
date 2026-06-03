@@ -354,10 +354,21 @@ export class ZoteroPlatform {
     }
   }
 
-  async saveBinaryFile({ title = UI_TEXT.saveFileTitle, defaultFileName = "git4zotero-export.bin", bytes = new Uint8Array() } = {}) {
-    const fallbackPath = this.join(this.getPluginDataDirectory(), "exports", defaultFileName);
+  async saveBinaryFile({
+    title = UI_TEXT.saveFileTitle,
+    defaultFileName = "git4zotero-export.bin",
+    bytes = new Uint8Array(),
+    initialDirectory = ""
+  } = {}) {
+    const exportDirectory = normalizeExecutablePath(initialDirectory);
+    if (exportDirectory) {
+      await this.assertDirectoryAvailable(exportDirectory);
+    }
+    const fallbackPath = exportDirectory
+      ? this.join(exportDirectory, defaultFileName)
+      : this.join(this.getPluginDataDirectory(), "exports", defaultFileName);
     try {
-      const targetPath = await this.pickSavePath(title, defaultFileName);
+      const targetPath = await this.pickSavePath(title, defaultFileName, exportDirectory);
       if (!targetPath) {
         return null;
       }
@@ -365,6 +376,9 @@ export class ZoteroPlatform {
       return targetPath;
     }
     catch (error) {
+      if (exportDirectory && !this.isSaveDialogFallbackError(error)) {
+        throw error;
+      }
       this.Zotero.debug?.(`git4zotero: binary save dialog unavailable, using fallback path: ${error?.stack || error}`);
       await this.writeBytes(fallbackPath, bytes);
       return fallbackPath;
@@ -379,7 +393,7 @@ export class ZoteroPlatform {
     return { path, bytes: await this.readFileBytes(path) };
   }
 
-  async pickSavePath(title, defaultFileName) {
+  async pickSavePath(title, defaultFileName, initialDirectory = "") {
     const filePickerInterface = this.Ci?.nsIFilePicker;
     const picker = this.Cc?.["@mozilla.org/filepicker;1"]?.createInstance?.(filePickerInterface);
     if (!picker || !filePickerInterface) {
@@ -387,6 +401,9 @@ export class ZoteroPlatform {
     }
     picker.init(null, title, filePickerInterface.modeSave);
     picker.defaultString = defaultFileName;
+    if (initialDirectory) {
+      picker.displayDirectory = this.createLocalFile(initialDirectory);
+    }
     const extension = getExtension(defaultFileName);
     if (extension === ".md") {
       picker.appendFilter?.("Markdown", "*.md");
@@ -442,12 +459,26 @@ export class ZoteroPlatform {
     return path;
   }
 
-  openPath(path) {
-    const file = this.Cc?.["@mozilla.org/file/local;1"]?.createInstance?.(this.Ci?.nsIFile);
-    if (!file?.initWithPath) {
-      throw new Error(UI_TEXT.openPathUnavailable);
+  async pickDirectory(title) {
+    const filePickerInterface = this.Ci?.nsIFilePicker;
+    const picker = this.Cc?.["@mozilla.org/filepicker;1"]?.createInstance?.(filePickerInterface);
+    if (!picker || !filePickerInterface) {
+      throw new Error(UI_TEXT.saveDialogUnavailable);
     }
-    file.initWithPath(path);
+    picker.init(null, title, filePickerInterface.modeGetFolder);
+    const result = await this.showFilePicker(picker);
+    if (result === filePickerInterface.returnCancel) {
+      return null;
+    }
+    const path = picker.file?.path || "";
+    if (!path) {
+      throw new Error(UI_TEXT.saveDialogNoPath);
+    }
+    return path;
+  }
+
+  openPath(path) {
+    const file = this.createLocalFile(path);
     if (typeof file.reveal === "function") {
       file.reveal();
       return;
@@ -583,6 +614,33 @@ export class ZoteroPlatform {
   async isDirectory(path) {
     const stat = await this.stat(path);
     return stat?.type === "directory" || stat?.isDir === true || stat?.isDirectory === true;
+  }
+
+  async assertDirectoryAvailable(path) {
+    if (!(await this.exists(path))) {
+      throw new Error(formatText("archiveExportDirectoryUnavailable", { path }));
+    }
+    if (!(await this.isDirectory(path))) {
+      throw new Error(formatText("archiveExportDirectoryNotFolder", { path }));
+    }
+  }
+
+  isSaveDialogFallbackError(error) {
+    const message = String(error?.message || error || "");
+    return [
+      UI_TEXT.saveDialogUnavailable,
+      UI_TEXT.saveDialogNoPath,
+      UI_TEXT.saveDialogUnsupported
+    ].some((value) => message.includes(value));
+  }
+
+  createLocalFile(path) {
+    const file = this.Cc?.["@mozilla.org/file/local;1"]?.createInstance?.(this.Ci?.nsIFile);
+    if (!file?.initWithPath) {
+      throw new Error(UI_TEXT.openPathUnavailable);
+    }
+    file.initWithPath(path);
+    return file;
   }
 
   async hashFile(path) {

@@ -46,7 +46,7 @@
     <html:dl class="git4zotero-pref-facts">
       <html:div>
         <html:dt data-git4zotero-i18n="pluginVersion">插件版本</html:dt>
-        <html:dd>0.2.4</html:dd>
+        <html:dd>0.2.5</html:dd>
       </html:div>
       <html:div>
         <html:dt data-git4zotero-i18n="supportedFormats">支持格式</html:dt>
@@ -67,6 +67,61 @@
                     data-git4zotero-i18n="openFirstUseGuide">打开首次使用向导</html:button>
     </html:div>
     <html:pre id="git4zotero-first-use-output" class="git4zotero-pref-output" hidden="hidden"></html:pre>
+    <html:div id="git4zotero-first-use-dialog"
+              class="git4zotero-guide-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="git4zotero-guide-title"
+              hidden="hidden">
+      <html:div id="git4zotero-guide-backdrop"
+                class="git4zotero-guide-backdrop"></html:div>
+      <html:section class="git4zotero-guide-panel">
+        <html:header class="git4zotero-guide-header">
+          <html:div>
+            <html:h3 id="git4zotero-guide-title"
+                     data-git4zotero-i18n="firstUseGuideTitle">git4zotero 首次使用向导</html:h3>
+            <html:p class="git4zotero-pref-help"
+                    data-git4zotero-i18n="firstUseGuideSubtitle">按步骤检查必要环境，并可直接执行安全配置和诊断操作。</html:p>
+          </html:div>
+          <html:button id="git4zotero-guide-close"
+                       class="git4zotero-guide-close"
+                       type="button"
+                       data-git4zotero-i18n="guideClose">关闭</html:button>
+        </html:header>
+        <html:div class="git4zotero-guide-layout">
+          <html:ol id="git4zotero-guide-step-list"
+                   class="git4zotero-guide-step-list"></html:ol>
+          <html:div class="git4zotero-guide-content">
+            <html:div class="git4zotero-guide-step-header">
+              <html:h4 id="git4zotero-guide-step-title">Git 准备</html:h4>
+              <html:span id="git4zotero-guide-step-status"
+                         class="git4zotero-guide-status">待检查</html:span>
+            </html:div>
+            <html:p id="git4zotero-guide-step-detail"
+                    class="git4zotero-guide-detail"></html:p>
+            <html:div class="git4zotero-guide-actions">
+              <html:button id="git4zotero-guide-primary-action"
+                            type="button"></html:button>
+              <html:button id="git4zotero-guide-secondary-action"
+                            type="button"></html:button>
+              <html:button id="git4zotero-guide-tertiary-action"
+                            type="button"></html:button>
+            </html:div>
+          </html:div>
+        </html:div>
+        <html:footer class="git4zotero-guide-footer">
+          <html:button id="git4zotero-guide-prev"
+                       type="button"
+                       data-git4zotero-i18n="guidePrevious">上一步</html:button>
+          <html:button id="git4zotero-guide-next"
+                       type="button"
+                       data-git4zotero-i18n="guideNext">下一步</html:button>
+          <html:button id="git4zotero-guide-done"
+                       type="button"
+                       data-git4zotero-i18n="guideFinish">完成</html:button>
+        </html:footer>
+      </html:section>
+    </html:div>
 
     <label><html:h3 data-git4zotero-i18n="lowRiskActionsTitle">低风险工具</html:h3></label>
     <html:div class="git4zotero-pref-row git4zotero-pref-actions">
@@ -86,6 +141,24 @@
 
     <label><html:h3 data-git4zotero-i18n="archiveActionsTitle">版本历史备份与迁移</html:h3></label>
     <html:p class="git4zotero-pref-help" data-git4zotero-i18n="archiveActionsDescription">导出/导入只处理 git4zotero 保存的本地版本历史，不包含 Zotero 原始附件文件。导入时只合并缺失仓库，不覆盖已有历史。</html:p>
+    <html:label for="git4zotero-archive-export-directory" data-git4zotero-i18n="archiveExportDirectoryLabel">迁移导出目录</html:label>
+    <html:div class="git4zotero-pref-row git4zotero-pref-path-row">
+      <html:input id="git4zotero-archive-export-directory"
+                  type="text"
+                  readonly="readonly"
+                  placeholder="未指定，使用系统保存对话框默认位置"
+                  data-git4zotero-i18n-placeholder="archiveExportDirectoryPlaceholder" />
+      <html:button id="git4zotero-choose-archive-export-directory"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.chooseArchiveExportDirectory(event)"
+                    data-git4zotero-i18n="archiveExportDirectoryChoose">选择目录...</html:button>
+      <html:button id="git4zotero-clear-archive-export-directory"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.clearArchiveExportDirectory(event)"
+                    data-git4zotero-i18n="archiveExportDirectoryClear">清空</html:button>
+    </html:div>
+    <html:p class="git4zotero-pref-help" data-git4zotero-i18n="archiveExportDirectoryHelp">只影响“导出全部版本历史”的默认保存位置；不影响导入位置，也不改变 Zotero 原始附件或插件数据目录。</html:p>
+    <html:p class="git4zotero-pref-help"><html:span data-git4zotero-i18n="archiveExportDirectoryCurrent">当前迁移导出目录</html:span><html:span data-git4zotero-i18n="colon">：</html:span><html:code id="git4zotero-current-archive-export-directory">未指定，使用系统保存对话框默认位置</html:code></html:p>
     <html:div class="git4zotero-pref-row git4zotero-pref-actions">
       <html:button id="git4zotero-export-history"
                     type="button"

@@ -6,11 +6,15 @@
 
 ### 中文
 
-- 暂无变更。
+- 新增迁移导出目录设置：可在设置页指定“导出全部版本历史...”的默认保存目录，迁移备份时保存对话框会优先打开该目录。
+- 将首次使用向导升级为设置页内交互式弹窗：按 Git 准备、数据目录、迁移备份、论文条目和排错准备分步显示状态，并提供可执行检查与配置按钮。
+- 将插件版本提升至 0.2.5，用于本轮交互式新用户引导与迁移导出目录配置改进。
 
 ### English
 
-- No changes yet.
+- Added a migration export directory setting: the preferences pane can now set the default save directory for “Export All Version History...”, so migration backups open the save dialog in that directory first.
+- Upgraded the first-use guide to an interactive preferences-pane modal: it now walks through Git setup, data directory, migration backup, manuscript item, and troubleshooting steps with status checks and action buttons.
+- Bumped the plugin version to 0.2.5 for this round of interactive onboarding and migration export directory improvements.
 
 ## 0.2.4
 

@@ -33,6 +33,47 @@ var Git4ZoteroPreferenceL10n = (() => {
     openFirstUseGuide: "打开首次使用向导",
     firstUseGuideTitle: "git4zotero 首次使用向导",
     firstUseGuideBody: "1. 安装并测试 Git：本插件只用 Git 在本机保存版本历史，不要求你会写代码。\n2. 数据目录：版本历史保存在 Zotero 配置目录下的 git4zotero 文件夹，不上传云端。\n3. 启用版本管理：在 Zotero 条目列表中右键论文条目或附件，选择“论文版本 → 启用版本管理”。\n4. 保存后创建版本：先在 Word/WPS/LibreOffice 中保存论文，再右键选择“检查修改”和“创建版本...”。\n5. 格式差异：.docx 支持正文级差异；.doc 只能做文件级跟踪。",
+    firstUseGuideSubtitle: "按步骤检查必要环境，并可直接执行安全配置和诊断操作。",
+    guideClose: "关闭",
+    guidePrevious: "上一步",
+    guideNext: "下一步",
+    guideFinish: "完成",
+    guideStatusOk: "正常",
+    guideStatusWarning: "需处理",
+    guideStatusError: "错误",
+    guideStatusPending: "待检查",
+    guideStatusChecking: "检查中",
+    guideGitStepTitle: "Git 准备",
+    guideGitStepDescription: "确认 Git 可执行文件路径和可用状态。git4zotero 只使用本机 Git 保存版本历史。",
+    guideGitChecking: "正在检测 Git：{path}",
+    guideGitReady: "Git 可用：{detail}\n当前 Git 路径：{path}",
+    guideGitMissing: "Git 暂不可用：{detail}\n当前 Git 路径：{path}",
+    guideDataStepTitle: "数据目录",
+    guideDataStepDescription: "确认插件数据目录位置和写入权限。版本历史保存在这里，不改变 Zotero 原始附件。",
+    guideDataReady: "插件数据目录：{path}",
+    guideDataFailed: "无法读取插件数据目录：{message}",
+    guideDataWriteChecking: "正在检查数据目录写权限...",
+    guideDataWriteReady: "写权限正常：{path}",
+    guideDataWriteFailed: "写权限检查失败：{message}",
+    guideDataActionCheckWrite: "检查写权限",
+    guideArchiveStepTitle: "迁移备份",
+    guideArchiveStepDescription: "配置“导出全部版本历史...”的默认目录；这不影响导入位置、Zotero 原始附件或插件数据目录。",
+    guideArchiveReady: "迁移导出目录：{path}",
+    guideArchiveUnset: "未指定迁移导出目录；导出时将使用系统保存对话框默认位置。",
+    guideArchiveUnavailable: "迁移导出目录不可用：{message}",
+    guideArchiveActionChoose: "选择目录",
+    guideItemStepTitle: "论文条目",
+    guideItemStepDescription: "检查当前 Zotero 选择是否为单个含 .docx/.doc 附件的条目。向导只检测状态，不启用或创建版本。",
+    guideItemNoSelection: "当前未选择条目。请在 Zotero 条目列表中选择一个论文条目或附件。",
+    guideItemMultiSelection: "当前选择了 {count} 个条目。请只选择一个条目或附件。",
+    guideItemNoAttachment: "当前选择未找到可管理的 .docx/.doc 附件。",
+    guideItemReady: "当前选择可管理：{fileName}",
+    guideItemActionRefresh: "刷新当前选择状态",
+    guideTroubleshootingStepTitle: "排错准备",
+    guideTroubleshootingStepDescription: "生成健康检查和诊断信息，方便定位 Git、数据目录和版本仓库问题。",
+    guideTroubleshootingReady: "可运行健康检查，或复制脱敏诊断信息和 issue 模板。",
+    guideTroubleshootingHealthReady: "健康检查状态：\n{summary}",
+    guideActionFailed: "操作失败：{message}",
     lowRiskActionsTitle: "低风险工具",
     openDataDirectory: "打开数据目录",
     copyIssueTemplate: "复制 issue 模板",
@@ -45,6 +86,15 @@ var Git4ZoteroPreferenceL10n = (() => {
     gitGuideOpenFailed: "无法打开 Git 安装指南：{message}",
     archiveActionsTitle: "版本历史备份与迁移",
     archiveActionsDescription: "导出/导入只处理 git4zotero 保存的本地版本历史，不包含 Zotero 原始附件文件。导入时只合并缺失仓库，不覆盖已有历史。",
+    archiveExportDirectoryLabel: "迁移导出目录",
+    archiveExportDirectoryHelp: "只影响“导出全部版本历史”的默认保存位置；不影响导入位置，也不改变 Zotero 原始附件或插件数据目录。",
+    archiveExportDirectoryPlaceholder: "未指定，使用系统保存对话框默认位置",
+    archiveExportDirectoryCurrent: "当前迁移导出目录",
+    archiveExportDirectoryChoose: "选择目录...",
+    archiveExportDirectoryClear: "清空",
+    archiveExportDirectoryChooseTitle: "选择迁移导出目录",
+    archiveExportDirectorySaved: "迁移导出目录已保存：{path}",
+    archiveExportDirectoryCleared: "已清空迁移导出目录，将使用系统保存对话框默认位置。",
     exportAllHistory: "导出全部版本历史...",
     importHistory: "导入版本历史...",
     archiveStatusInitial: "尚未导入或导出版本历史。",
@@ -157,6 +207,47 @@ var Git4ZoteroPreferenceL10n = (() => {
       openFirstUseGuide: "開啟首次使用向導",
       firstUseGuideTitle: "git4zotero 首次使用向導",
       firstUseGuideBody: "1. 安裝並測試 Git：本插件只用 Git 在本機儲存版本歷史，不要求你會寫程式。\n2. 資料目錄：版本歷史儲存在 Zotero 設定目錄下的 git4zotero 資料夾，不上傳雲端。\n3. 啟用版本管理：在 Zotero 條目清單中右鍵論文條目或附件，選擇「論文版本 → 啟用版本管理」。\n4. 儲存後建立版本：先在 Word/WPS/LibreOffice 中儲存論文，再右鍵選擇「檢查修改」和「建立版本...」。\n5. 格式差異：.docx 支援正文級差異；.doc 只能做檔案級追蹤。",
+      firstUseGuideSubtitle: "按步驟檢查必要環境，並可直接執行安全設定和診斷操作。",
+      guideClose: "關閉",
+      guidePrevious: "上一步",
+      guideNext: "下一步",
+      guideFinish: "完成",
+      guideStatusOk: "正常",
+      guideStatusWarning: "需處理",
+      guideStatusError: "錯誤",
+      guideStatusPending: "待檢查",
+      guideStatusChecking: "檢查中",
+      guideGitStepTitle: "Git 準備",
+      guideGitStepDescription: "確認 Git 可執行檔路徑和可用狀態。git4zotero 只使用本機 Git 儲存版本歷史。",
+      guideGitChecking: "正在偵測 Git：{path}",
+      guideGitReady: "Git 可用：{detail}\n目前 Git 路徑：{path}",
+      guideGitMissing: "Git 暫不可用：{detail}\n目前 Git 路徑：{path}",
+      guideDataStepTitle: "資料目錄",
+      guideDataStepDescription: "確認插件資料目錄位置和寫入權限。版本歷史儲存在這裡，不改變 Zotero 原始附件。",
+      guideDataReady: "插件資料目錄：{path}",
+      guideDataFailed: "無法讀取插件資料目錄：{message}",
+      guideDataWriteChecking: "正在檢查資料目錄寫入權限...",
+      guideDataWriteReady: "寫入權限正常：{path}",
+      guideDataWriteFailed: "寫入權限檢查失敗：{message}",
+      guideDataActionCheckWrite: "檢查寫入權限",
+      guideArchiveStepTitle: "遷移備份",
+      guideArchiveStepDescription: "設定「匯出全部版本歷史...」的預設目錄；這不影響匯入位置、Zotero 原始附件或插件資料目錄。",
+      guideArchiveReady: "遷移匯出目錄：{path}",
+      guideArchiveUnset: "未指定遷移匯出目錄；匯出時將使用系統儲存對話框預設位置。",
+      guideArchiveUnavailable: "遷移匯出目錄不可用：{message}",
+      guideArchiveActionChoose: "選擇目錄",
+      guideItemStepTitle: "論文條目",
+      guideItemStepDescription: "檢查目前 Zotero 選擇是否為單個含 .docx/.doc 附件的條目。向導只偵測狀態，不啟用或建立版本。",
+      guideItemNoSelection: "目前未選擇條目。請在 Zotero 條目清單中選擇一個論文條目或附件。",
+      guideItemMultiSelection: "目前選擇了 {count} 個條目。請只選擇一個條目或附件。",
+      guideItemNoAttachment: "目前選擇未找到可管理的 .docx/.doc 附件。",
+      guideItemReady: "目前選擇可管理：{fileName}",
+      guideItemActionRefresh: "重新整理目前選擇狀態",
+      guideTroubleshootingStepTitle: "排錯準備",
+      guideTroubleshootingStepDescription: "產生健康檢查和診斷資訊，方便定位 Git、資料目錄和版本倉庫問題。",
+      guideTroubleshootingReady: "可執行健康檢查，或複製脫敏診斷資訊和 issue 範本。",
+      guideTroubleshootingHealthReady: "健康檢查狀態：\n{summary}",
+      guideActionFailed: "操作失敗：{message}",
       lowRiskActionsTitle: "低風險工具",
       openDataDirectory: "開啟資料目錄",
       copyIssueTemplate: "複製 issue 範本",
@@ -169,6 +260,15 @@ var Git4ZoteroPreferenceL10n = (() => {
       gitGuideOpenFailed: "無法開啟 Git 安裝指南：{message}",
       archiveActionsTitle: "版本歷史備份與遷移",
       archiveActionsDescription: "匯出/匯入只處理 git4zotero 儲存的本機版本歷史，不包含 Zotero 原始附件檔案。匯入時只合併缺失倉庫，不覆蓋既有歷史。",
+      archiveExportDirectoryLabel: "遷移匯出目錄",
+      archiveExportDirectoryHelp: "只影響「匯出全部版本歷史」的預設儲存位置；不影響匯入位置，也不改變 Zotero 原始附件或插件資料目錄。",
+      archiveExportDirectoryPlaceholder: "未指定，使用系統儲存對話框預設位置",
+      archiveExportDirectoryCurrent: "目前遷移匯出目錄",
+      archiveExportDirectoryChoose: "選擇目錄...",
+      archiveExportDirectoryClear: "清空",
+      archiveExportDirectoryChooseTitle: "選擇遷移匯出目錄",
+      archiveExportDirectorySaved: "遷移匯出目錄已儲存：{path}",
+      archiveExportDirectoryCleared: "已清空遷移匯出目錄，將使用系統儲存對話框預設位置。",
       exportAllHistory: "匯出全部版本歷史...",
       importHistory: "匯入版本歷史...",
       archiveStatusInitial: "尚未匯入或匯出版本歷史。",
@@ -279,6 +379,47 @@ var Git4ZoteroPreferenceL10n = (() => {
       openFirstUseGuide: "Open First-Use Guide",
       firstUseGuideTitle: "git4zotero First-Use Guide",
       firstUseGuideBody: "1. Install and test Git: this plugin only uses Git to save local version history; you do not need to write code.\n2. Data directory: version history is stored in the git4zotero folder under your Zotero profile and is not uploaded to the cloud.\n3. Enable version management: in the Zotero item list, right-click the manuscript item or attachment and choose \"Paper Versions -> Enable Version Management\".\n4. Create versions after saving: save the manuscript in Word/WPS/LibreOffice, then right-click and choose \"Check Changes\" and \"Create Version...\".\n5. Format limits: .docx supports content-level diffs; .doc is file-level tracking only.",
+      firstUseGuideSubtitle: "Check the required environment step by step and run safe setup or diagnostic actions directly.",
+      guideClose: "Close",
+      guidePrevious: "Previous",
+      guideNext: "Next",
+      guideFinish: "Finish",
+      guideStatusOk: "OK",
+      guideStatusWarning: "Needs attention",
+      guideStatusError: "Error",
+      guideStatusPending: "Pending",
+      guideStatusChecking: "Checking",
+      guideGitStepTitle: "Git Setup",
+      guideGitStepDescription: "Confirm the Git executable path and availability. git4zotero only uses local Git to save version history.",
+      guideGitChecking: "Checking Git: {path}",
+      guideGitReady: "Git is available: {detail}\nCurrent Git path: {path}",
+      guideGitMissing: "Git is not available yet: {detail}\nCurrent Git path: {path}",
+      guideDataStepTitle: "Data Directory",
+      guideDataStepDescription: "Confirm the plugin data directory and write permission. Version history is stored here without changing original Zotero attachments.",
+      guideDataReady: "Plugin data directory: {path}",
+      guideDataFailed: "Could not read the plugin data directory: {message}",
+      guideDataWriteChecking: "Checking data directory write permission...",
+      guideDataWriteReady: "Write permission is available: {path}",
+      guideDataWriteFailed: "Write permission check failed: {message}",
+      guideDataActionCheckWrite: "Check Write Permission",
+      guideArchiveStepTitle: "Migration Backup",
+      guideArchiveStepDescription: "Configure the default directory for \"Export All Version History...\"; this does not affect imports, original Zotero attachments, or the plugin data directory.",
+      guideArchiveReady: "Migration export directory: {path}",
+      guideArchiveUnset: "No migration export directory is set; exports will use the system save dialog default.",
+      guideArchiveUnavailable: "Migration export directory is unavailable: {message}",
+      guideArchiveActionChoose: "Choose Directory",
+      guideItemStepTitle: "Manuscript Item",
+      guideItemStepDescription: "Check whether the current Zotero selection is a single item with a .docx/.doc attachment. The guide only detects state; it does not enable or create versions.",
+      guideItemNoSelection: "No item is selected. Select one manuscript item or attachment in the Zotero item list.",
+      guideItemMultiSelection: "{count} items are selected. Select only one item or attachment.",
+      guideItemNoAttachment: "The current selection has no manageable .docx/.doc attachment.",
+      guideItemReady: "Current selection is manageable: {fileName}",
+      guideItemActionRefresh: "Refresh Selection Status",
+      guideTroubleshootingStepTitle: "Troubleshooting",
+      guideTroubleshootingStepDescription: "Generate health checks and diagnostics to locate Git, data directory, and version repository issues.",
+      guideTroubleshootingReady: "You can run a health check, or copy redacted diagnostics and the issue template.",
+      guideTroubleshootingHealthReady: "Health check status:\n{summary}",
+      guideActionFailed: "Action failed: {message}",
       lowRiskActionsTitle: "Low-Risk Tools",
       openDataDirectory: "Open Data Directory",
       copyIssueTemplate: "Copy Issue Template",
@@ -291,6 +432,15 @@ var Git4ZoteroPreferenceL10n = (() => {
       gitGuideOpenFailed: "Could not open the Git install guide: {message}",
       archiveActionsTitle: "Version History Backup and Migration",
       archiveActionsDescription: "Export/import handles only local version history saved by git4zotero and does not include Zotero's original attachment files. Import only merges missing repositories and never overwrites existing history.",
+      archiveExportDirectoryLabel: "Migration export directory",
+      archiveExportDirectoryHelp: "Only affects the default save location for Export All Version History; it does not affect imports, original Zotero attachments, or the plugin data directory.",
+      archiveExportDirectoryPlaceholder: "Not set; use the system save dialog default",
+      archiveExportDirectoryCurrent: "Current migration export directory",
+      archiveExportDirectoryChoose: "Choose Directory...",
+      archiveExportDirectoryClear: "Clear",
+      archiveExportDirectoryChooseTitle: "Choose Migration Export Directory",
+      archiveExportDirectorySaved: "Migration export directory saved: {path}",
+      archiveExportDirectoryCleared: "Migration export directory cleared; the system save dialog default will be used.",
       exportAllHistory: "Export All Version History...",
       importHistory: "Import Version History...",
       archiveStatusInitial: "Version history has not been imported or exported yet.",
@@ -415,6 +565,55 @@ var Git4ZoteroPreferenceL10n = (() => {
   return { apply, current, format, resolve };
 })();
 
+const FIRST_USE_GUIDE_STEPS = Object.freeze([
+  {
+    id: "git",
+    titleKey: "guideGitStepTitle",
+    descriptionKey: "guideGitStepDescription",
+    actions: [
+      { id: "test-git", labelKey: "testGit" },
+      { id: "open-git-guide", labelKey: "openGitGuide" }
+    ]
+  },
+  {
+    id: "data",
+    titleKey: "guideDataStepTitle",
+    descriptionKey: "guideDataStepDescription",
+    actions: [
+      { id: "open-data-directory", labelKey: "openDataDirectory" },
+      { id: "check-write-permission", labelKey: "guideDataActionCheckWrite" }
+    ]
+  },
+  {
+    id: "archive",
+    titleKey: "guideArchiveStepTitle",
+    descriptionKey: "guideArchiveStepDescription",
+    actions: [
+      { id: "choose-archive-directory", labelKey: "guideArchiveActionChoose" },
+      { id: "clear-archive-directory", labelKey: "archiveExportDirectoryClear" },
+      { id: "export-history-archive", labelKey: "exportAllHistory" }
+    ]
+  },
+  {
+    id: "item",
+    titleKey: "guideItemStepTitle",
+    descriptionKey: "guideItemStepDescription",
+    actions: [
+      { id: "refresh-item-selection", labelKey: "guideItemActionRefresh" }
+    ]
+  },
+  {
+    id: "troubleshooting",
+    titleKey: "guideTroubleshootingStepTitle",
+    descriptionKey: "guideTroubleshootingStepDescription",
+    actions: [
+      { id: "run-health-check", labelKey: "runHealthCheck" },
+      { id: "copy-diagnostics", labelKey: "copyDiagnostics" },
+      { id: "copy-issue-template", labelKey: "copyIssueTemplate" }
+    ]
+  }
+]);
+
 var Git4ZoteroPreferences = {
   initialized: false,
   testing: false,
@@ -424,6 +623,8 @@ var Git4ZoteroPreferences = {
   diagnosticService: null,
   archiveService: null,
   lastOrphanScan: null,
+  guideStepIndex: 0,
+  guideStepStates: null,
 
   init(event = null) {
     if (this.initialized) {
@@ -444,6 +645,7 @@ var Git4ZoteroPreferences = {
     }
     this.refreshResolvedGit();
     this.refreshSavedGit();
+    this.refreshArchiveExportDirectory();
     this.refreshDataDirectory();
     this.setStatus(this.getStatusText() || this.text("gitStatusInitial"), "");
     this.refreshLastErrorStatus();
@@ -487,6 +689,13 @@ var Git4ZoteroPreferences = {
     document.getElementById("git4zotero-import-history")?.addEventListener("click", (clickEvent) => {
       this.importHistoryArchive(clickEvent);
     });
+    document.getElementById("git4zotero-choose-archive-export-directory")?.addEventListener("click", (clickEvent) => {
+      this.chooseArchiveExportDirectory(clickEvent);
+    });
+    document.getElementById("git4zotero-clear-archive-export-directory")?.addEventListener("click", (clickEvent) => {
+      this.clearArchiveExportDirectory(clickEvent);
+    });
+    this.bindFirstUseGuideControls();
 
     this.defer(() => this.refreshResolvedGit());
   },
@@ -669,11 +878,470 @@ var Git4ZoteroPreferences = {
     }
   },
 
-  openFirstUseGuide(event = null) {
+  async openFirstUseGuide(event = null) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     this.init(event);
-    this.setFirstUseOutput(`${this.text("firstUseGuideTitle")}\n\n${this.text("firstUseGuideBody")}`, false);
+    this.setFirstUseOutput("", true);
+    this.guideStepIndex = 0;
+    this.ensureFirstUseGuideState();
+    this.setFirstUseGuideDialogVisible(true);
+    this.renderFirstUseGuide();
+    await this.refreshFirstUseGuideState();
+  },
+
+  closeFirstUseGuide(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    this.setFirstUseGuideDialogVisible(false);
+  },
+
+  async showFirstUseGuideStep(index, event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    this.init(event);
+    const maxIndex = FIRST_USE_GUIDE_STEPS.length - 1;
+    this.guideStepIndex = Math.max(0, Math.min(Number(index) || 0, maxIndex));
+    this.renderFirstUseGuide();
+    await this.refreshFirstUseGuideState(FIRST_USE_GUIDE_STEPS[this.guideStepIndex]?.id);
+  },
+
+  bindFirstUseGuideControls() {
+    document.getElementById("git4zotero-guide-close")?.addEventListener("click", (clickEvent) => {
+      this.closeFirstUseGuide(clickEvent);
+    });
+    document.getElementById("git4zotero-guide-backdrop")?.addEventListener("click", (clickEvent) => {
+      this.closeFirstUseGuide(clickEvent);
+    });
+    document.getElementById("git4zotero-guide-prev")?.addEventListener("click", (clickEvent) => {
+      this.showFirstUseGuideStep(this.guideStepIndex - 1, clickEvent);
+    });
+    document.getElementById("git4zotero-guide-next")?.addEventListener("click", (clickEvent) => {
+      this.showFirstUseGuideStep(this.guideStepIndex + 1, clickEvent);
+    });
+    document.getElementById("git4zotero-guide-done")?.addEventListener("click", (clickEvent) => {
+      this.closeFirstUseGuide(clickEvent);
+    });
+
+    for (const id of [
+      "git4zotero-guide-primary-action",
+      "git4zotero-guide-secondary-action",
+      "git4zotero-guide-tertiary-action"
+    ]) {
+      document.getElementById(id)?.addEventListener("click", (clickEvent) => {
+        const actionID = clickEvent?.target?.dataset?.action || clickEvent?.target?.getAttribute?.("data-action");
+        this.runFirstUseGuideAction(actionID, clickEvent);
+      });
+    }
+  },
+
+  ensureFirstUseGuideState() {
+    if (!this.guideStepStates) {
+      this.guideStepStates = {};
+    }
+    for (const step of FIRST_USE_GUIDE_STEPS) {
+      if (!this.guideStepStates[step.id]) {
+        this.guideStepStates[step.id] = {
+          status: "pending",
+          detail: ""
+        };
+      }
+    }
+  },
+
+  setFirstUseGuideDialogVisible(visible) {
+    const dialog = document.getElementById("git4zotero-first-use-dialog");
+    if (!dialog) {
+      return;
+    }
+    this.setElementHidden(dialog, !visible);
+  },
+
+  isFirstUseGuideOpen() {
+    const dialog = document.getElementById("git4zotero-first-use-dialog");
+    return !!dialog && !dialog.hidden;
+  },
+
+  renderFirstUseGuide() {
+    this.ensureFirstUseGuideState();
+    const step = FIRST_USE_GUIDE_STEPS[this.guideStepIndex] || FIRST_USE_GUIDE_STEPS[0];
+    const state = this.guideStepStates[step.id] || { status: "pending", detail: "" };
+    this.renderFirstUseGuideStepList();
+
+    const title = document.getElementById("git4zotero-guide-step-title");
+    if (title) {
+      title.textContent = this.text(step.titleKey);
+    }
+
+    const status = document.getElementById("git4zotero-guide-step-status");
+    if (status) {
+      status.textContent = this.text(`guideStatus${this.capitalizeStatus(state.status)}`);
+      status.dataset.tone = this.guideToneForStatus(state.status);
+    }
+
+    const detail = document.getElementById("git4zotero-guide-step-detail");
+    if (detail) {
+      const description = this.text(step.descriptionKey);
+      detail.textContent = state.detail ? `${description}\n\n${state.detail}` : description;
+    }
+
+    this.renderFirstUseGuideActions(step);
+    this.renderFirstUseGuideNavigation();
+  },
+
+  renderFirstUseGuideStepList() {
+    const list = document.getElementById("git4zotero-guide-step-list");
+    if (!list) {
+      return;
+    }
+    this.clearChildren(list);
+    FIRST_USE_GUIDE_STEPS.forEach((step, index) => {
+      const state = this.guideStepStates[step.id] || { status: "pending" };
+      const item = this.createHTMLElement("li");
+      const button = this.createHTMLElement("button");
+      const name = this.createHTMLElement("span");
+      const badge = this.createHTMLElement("span");
+
+      button.type = "button";
+      button.className = "git4zotero-guide-step-button";
+      button.setAttribute?.("aria-current", index === this.guideStepIndex ? "step" : "false");
+      button.addEventListener?.("click", (clickEvent) => {
+        this.showFirstUseGuideStep(index, clickEvent);
+      });
+      name.className = "git4zotero-guide-step-name";
+      name.textContent = this.text(step.titleKey);
+      badge.className = "git4zotero-guide-step-badge";
+      badge.textContent = this.text(`guideStatus${this.capitalizeStatus(state.status)}`);
+      badge.dataset.tone = this.guideToneForStatus(state.status);
+      button.append?.(name, badge);
+      item.append?.(button);
+      list.append?.(item);
+    });
+  },
+
+  renderFirstUseGuideActions(step) {
+    const buttonIDs = [
+      "git4zotero-guide-primary-action",
+      "git4zotero-guide-secondary-action",
+      "git4zotero-guide-tertiary-action"
+    ];
+    buttonIDs.forEach((id, index) => {
+      const button = document.getElementById(id);
+      if (!button) {
+        return;
+      }
+      const action = step.actions[index];
+      this.setElementHidden(button, !action);
+      button.disabled = false;
+      if (action) {
+        button.textContent = this.text(action.labelKey);
+        button.dataset.action = action.id;
+        button.setAttribute?.("data-action", action.id);
+      }
+      else {
+        button.textContent = "";
+        button.dataset.action = "";
+        button.removeAttribute?.("data-action");
+      }
+    });
+  },
+
+  renderFirstUseGuideNavigation() {
+    const prev = document.getElementById("git4zotero-guide-prev");
+    const next = document.getElementById("git4zotero-guide-next");
+    const done = document.getElementById("git4zotero-guide-done");
+    if (prev) {
+      prev.disabled = this.guideStepIndex <= 0;
+    }
+    if (next) {
+      this.setElementHidden(next, this.guideStepIndex >= FIRST_USE_GUIDE_STEPS.length - 1);
+    }
+    if (done) {
+      this.setElementHidden(done, this.guideStepIndex < FIRST_USE_GUIDE_STEPS.length - 1);
+    }
+  },
+
+  async refreshFirstUseGuideState(stepID = null) {
+    this.ensureFirstUseGuideState();
+    const steps = stepID
+      ? FIRST_USE_GUIDE_STEPS.filter((step) => step.id === stepID)
+      : FIRST_USE_GUIDE_STEPS;
+    for (const step of steps) {
+      if (step.id === "git") {
+        await this.refreshGuideGitState();
+      }
+      else if (step.id === "data") {
+        this.refreshGuideDataState();
+      }
+      else if (step.id === "archive") {
+        await this.refreshGuideArchiveState();
+      }
+      else if (step.id === "item") {
+        await this.refreshGuideItemState();
+      }
+      else if (step.id === "troubleshooting") {
+        this.refreshGuideTroubleshootingState();
+      }
+    }
+    this.renderFirstUseGuide();
+  },
+
+  async refreshGuideGitState() {
+    const path = this.getGitExecutable();
+    this.setFirstUseGuideStepState("git", "checking", this.text("guideGitChecking", { path }));
+    try {
+      const result = await this.getPlatform().checkGitAvailability(this.getGitInputValue(), { persist: false });
+      this.setFirstUseGuideStepState(
+        "git",
+        result.available ? "ok" : "error",
+        result.available
+          ? this.text("guideGitReady", { detail: result.detail || result.version || "", path: result.command || path })
+          : this.text("guideGitMissing", { detail: result.error || result.detail || this.text("gitPathCheckHint"), path: result.command || path })
+      );
+    }
+    catch (error) {
+      this.setFirstUseGuideStepState("git", "error", this.text("guideGitMissing", {
+        detail: error.message || String(error),
+        path
+      }));
+    }
+  },
+
+  refreshGuideDataState() {
+    try {
+      const dataDir = this.getPlatform().getPluginDataDirectory();
+      this.setFirstUseGuideStepState("data", "ok", this.text("guideDataReady", { path: dataDir }));
+    }
+    catch (error) {
+      this.setFirstUseGuideStepState("data", "error", this.text("guideDataFailed", { message: error.message || String(error) }));
+    }
+  },
+
+  async refreshGuideArchiveState() {
+    const directory = this.getArchiveExportDirectory();
+    if (!directory) {
+      this.setFirstUseGuideStepState("archive", "warning", this.text("guideArchiveUnset"));
+      return;
+    }
+    try {
+      const platform = this.getPlatform();
+      if (typeof platform.assertDirectoryAvailable === "function") {
+        await platform.assertDirectoryAvailable(directory);
+      }
+      this.setFirstUseGuideStepState("archive", "ok", this.text("guideArchiveReady", { path: directory }));
+    }
+    catch (error) {
+      this.setFirstUseGuideStepState("archive", "error", this.text("guideArchiveUnavailable", { message: error.message || String(error) }));
+    }
+  },
+
+  async refreshGuideItemState() {
+    const items = this.getSelectedItemsForGuide();
+    if (!items.length) {
+      this.setFirstUseGuideStepState("item", "warning", this.text("guideItemNoSelection"));
+      return;
+    }
+    if (items.length > 1) {
+      this.setFirstUseGuideStepState("item", "warning", this.text("guideItemMultiSelection", { count: items.length }));
+      return;
+    }
+    try {
+      const attachment = await this.findManageableAttachmentForGuide(items[0]);
+      if (!attachment) {
+        this.setFirstUseGuideStepState("item", "warning", this.text("guideItemNoAttachment"));
+        return;
+      }
+      this.setFirstUseGuideStepState("item", "ok", this.text("guideItemReady", { fileName: attachment.fileName || attachment.filePath || "" }));
+    }
+    catch (error) {
+      this.setFirstUseGuideStepState("item", "error", this.text("guideActionFailed", { message: error.message || String(error) }));
+    }
+  },
+
+  refreshGuideTroubleshootingState() {
+    const healthStatus = document.getElementById("git4zotero-health-status");
+    const healthText = healthStatus?.textContent?.trim?.() || "";
+    if (healthText && healthText !== this.text("healthInitial") && healthText !== this.text("healthRunning")) {
+      this.setFirstUseGuideStepState("troubleshooting", this.guideStatusFromTone(healthStatus?.dataset?.tone), this.text("guideTroubleshootingHealthReady", { summary: healthText }));
+      return;
+    }
+    this.setFirstUseGuideStepState("troubleshooting", "pending", this.text("guideTroubleshootingReady"));
+  },
+
+  async runFirstUseGuideAction(actionID, event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (!actionID) {
+      return;
+    }
+    this.init(event);
+    this.setFirstUseGuideActionsDisabled(true);
+    try {
+      if (actionID === "test-git") {
+        await this.testGit();
+        this.syncGuideStateFromStatusElement("git", "git4zotero-git-status");
+      }
+      else if (actionID === "open-git-guide") {
+        this.openGitGuide();
+        this.syncGuideStateFromStatusElement("troubleshooting", "git4zotero-diagnostics-status");
+      }
+      else if (actionID === "open-data-directory") {
+        await this.openDataDirectory();
+        this.syncGuideStateFromStatusElement("data", "git4zotero-diagnostics-status");
+      }
+      else if (actionID === "check-write-permission") {
+        await this.checkGuideWritePermission();
+      }
+      else if (actionID === "choose-archive-directory") {
+        await this.chooseArchiveExportDirectory();
+        await this.refreshGuideArchiveState();
+      }
+      else if (actionID === "clear-archive-directory") {
+        this.clearArchiveExportDirectory();
+        await this.refreshGuideArchiveState();
+      }
+      else if (actionID === "export-history-archive") {
+        await this.exportHistoryArchive();
+        this.syncGuideStateFromStatusElement("archive", "git4zotero-archive-status");
+      }
+      else if (actionID === "refresh-item-selection") {
+        await this.refreshGuideItemState();
+      }
+      else if (actionID === "run-health-check") {
+        await this.runHealthCheck();
+        this.refreshGuideTroubleshootingState();
+      }
+      else if (actionID === "copy-diagnostics") {
+        await this.copyDiagnostics();
+        this.syncGuideStateFromStatusElement("troubleshooting", "git4zotero-diagnostics-status");
+      }
+      else if (actionID === "copy-issue-template") {
+        await this.copyIssueTemplate();
+        this.syncGuideStateFromStatusElement("troubleshooting", "git4zotero-diagnostics-status");
+      }
+    }
+    catch (error) {
+      const currentStep = FIRST_USE_GUIDE_STEPS[this.guideStepIndex] || FIRST_USE_GUIDE_STEPS[0];
+      this.setFirstUseGuideStepState(currentStep.id, "error", this.text("guideActionFailed", { message: error.message || String(error) }));
+    }
+    finally {
+      this.setFirstUseGuideActionsDisabled(false);
+      this.renderFirstUseGuide();
+    }
+  },
+
+  async checkGuideWritePermission() {
+    this.setFirstUseGuideStepState("data", "checking", this.text("guideDataWriteChecking"));
+    try {
+      const platform = this.getPlatform();
+      const probePath = await platform.writeTempProbeFile();
+      this.setFirstUseGuideStepState("data", "ok", this.text("guideDataWriteReady", { path: probePath }));
+    }
+    catch (error) {
+      this.recordPreferenceError(error, "check data directory write permission");
+      this.setFirstUseGuideStepState("data", "error", this.text("guideDataWriteFailed", { message: error.message || String(error) }));
+    }
+  },
+
+  setFirstUseGuideStepState(stepID, status, detail) {
+    this.ensureFirstUseGuideState();
+    this.guideStepStates[stepID] = {
+      status: status || "pending",
+      detail: detail || ""
+    };
+    if (this.isFirstUseGuideOpen()) {
+      this.renderFirstUseGuide();
+    }
+  },
+
+  syncGuideStateFromStatusElement(stepID, elementID) {
+    const element = document.getElementById(elementID);
+    const detail = element?.textContent?.trim?.() || "";
+    this.setFirstUseGuideStepState(stepID, this.guideStatusFromTone(element?.dataset?.tone), detail);
+  },
+
+  setFirstUseGuideActionsDisabled(disabled) {
+    for (const id of [
+      "git4zotero-guide-primary-action",
+      "git4zotero-guide-secondary-action",
+      "git4zotero-guide-tertiary-action"
+    ]) {
+      const button = document.getElementById(id);
+      if (button && !button.hidden) {
+        button.disabled = disabled;
+      }
+    }
+  },
+
+  getSelectedItemsForGuide() {
+    try {
+      const pane = Zotero.getActiveZoteroPane?.();
+      const selected = pane?.getSelectedItems?.() || [];
+      return Array.isArray(selected) ? selected.filter(Boolean) : [];
+    }
+    catch (_error) {
+      return [];
+    }
+  },
+
+  async findManageableAttachmentForGuide(item) {
+    const attachmentModule = ChromeUtils.importESModule("chrome://git4zotero/content/src/attachments.mjs");
+    const finder = new attachmentModule.AttachmentFinder({ Zotero });
+    return finder.findManageableAttachment(item);
+  },
+
+  createHTMLElement(tagName) {
+    if (typeof document.createElementNS === "function") {
+      return document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
+    }
+    return document.createElement(tagName);
+  },
+
+  clearChildren(element) {
+    if (typeof element.replaceChildren === "function") {
+      element.replaceChildren();
+      return;
+    }
+    element.textContent = "";
+  },
+
+  setElementHidden(element, hidden) {
+    if (!element) {
+      return;
+    }
+    element.hidden = !!hidden;
+    if (hidden) {
+      element.setAttribute?.("hidden", "hidden");
+    }
+    else {
+      element.removeAttribute?.("hidden");
+    }
+  },
+
+  guideStatusFromTone(tone) {
+    if (tone === "success") {
+      return "ok";
+    }
+    if (tone === "error") {
+      return "error";
+    }
+    if (tone === "warning") {
+      return "warning";
+    }
+    return "pending";
+  },
+
+  guideToneForStatus(status) {
+    if (status === "ok") {
+      return "success";
+    }
+    if (status === "error") {
+      return "error";
+    }
+    if (status === "warning") {
+      return "warning";
+    }
+    return "";
   },
 
   async openDataDirectory(event = null) {
@@ -734,6 +1402,41 @@ var Git4ZoteroPreferences = {
     }
   },
 
+  async chooseArchiveExportDirectory(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    this.init(event);
+    this.setArchiveButtonsDisabled(true);
+    try {
+      const directory = await this.getPlatform().pickDirectory(this.text("archiveExportDirectoryChooseTitle"));
+      if (!directory) {
+        this.setArchiveStatus(this.text("archiveCanceled"), "");
+        return;
+      }
+      this.setArchiveExportDirectoryValue(directory);
+      Zotero.Prefs.set("extensions.git4zotero.archiveExportDirectory", directory);
+      this.refreshArchiveExportDirectory();
+      this.setArchiveStatus(this.text("archiveExportDirectorySaved", { path: directory }), "success");
+    }
+    catch (error) {
+      this.recordPreferenceError(error, "choose archive export directory");
+      this.setArchiveStatus(this.text("archiveExportFailed", { message: error.message || String(error) }), "error");
+    }
+    finally {
+      this.setArchiveButtonsDisabled(false);
+    }
+  },
+
+  clearArchiveExportDirectory(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    this.init(event);
+    this.setArchiveExportDirectoryValue("");
+    Zotero.Prefs.set("extensions.git4zotero.archiveExportDirectory", "");
+    this.refreshArchiveExportDirectory();
+    this.setArchiveStatus(this.text("archiveExportDirectoryCleared"), "success");
+  },
+
   async exportHistoryArchive(event = null) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
@@ -741,7 +1444,9 @@ var Git4ZoteroPreferences = {
     this.setArchiveButtonsDisabled(true);
     this.setArchiveStatus(this.text("archiveExporting"), "");
     try {
-      const result = await this.getArchiveService().exportRepositoryArchive();
+      const result = await this.getArchiveService().exportRepositoryArchive({
+        initialDirectory: this.getArchiveExportDirectory()
+      });
       if (!result?.path) {
         this.setArchiveStatus(this.text("archiveCanceled"), "");
         return;
@@ -880,6 +1585,11 @@ var Git4ZoteroPreferences = {
       && doc.getElementById("git4zotero-orphan-status")
       && doc.getElementById("git4zotero-diagnostics-status")
       && doc.getElementById("git4zotero-health-status")
+      && doc.getElementById("git4zotero-first-use-dialog")
+      && doc.getElementById("git4zotero-guide-step-list")
+      && doc.getElementById("git4zotero-guide-step-title")
+      && doc.getElementById("git4zotero-archive-export-directory")
+      && doc.getElementById("git4zotero-current-archive-export-directory")
       && doc.getElementById("git4zotero-archive-status")
     );
   },
@@ -925,6 +1635,18 @@ var Git4ZoteroPreferences = {
     return this.normalizeExecutablePath(Zotero.Prefs.get("extensions.git4zotero.gitPath", true));
   },
 
+  getArchiveExportDirectory() {
+    const input = document.getElementById("git4zotero-archive-export-directory");
+    return this.normalizeExecutablePath(input?.value ?? Zotero.Prefs.get("extensions.git4zotero.archiveExportDirectory", true));
+  },
+
+  setArchiveExportDirectoryValue(value) {
+    const input = document.getElementById("git4zotero-archive-export-directory");
+    if (input) {
+      input.value = this.normalizeExecutablePath(value);
+    }
+  },
+
   normalizeExecutablePath(value) {
     const trimmed = String(value || "").trim();
     if (trimmed.length >= 2) {
@@ -948,6 +1670,15 @@ var Git4ZoteroPreferences = {
     const saved = document.getElementById("git4zotero-saved-git");
     if (saved) {
       saved.textContent = this.getSavedGitPath() || this.text("notSaved");
+    }
+  },
+
+  refreshArchiveExportDirectory() {
+    const directory = this.normalizeExecutablePath(Zotero.Prefs.get("extensions.git4zotero.archiveExportDirectory", true));
+    this.setArchiveExportDirectoryValue(directory);
+    const current = document.getElementById("git4zotero-current-archive-export-directory");
+    if (current) {
+      current.textContent = directory || this.text("archiveExportDirectoryPlaceholder");
     }
   },
 
@@ -1060,7 +1791,12 @@ var Git4ZoteroPreferences = {
   },
 
   setArchiveButtonsDisabled(disabled) {
-    for (const id of ["git4zotero-export-history", "git4zotero-import-history"]) {
+    for (const id of [
+      "git4zotero-export-history",
+      "git4zotero-import-history",
+      "git4zotero-choose-archive-export-directory",
+      "git4zotero-clear-archive-export-directory"
+    ]) {
       const button = document.getElementById(id);
       if (button) {
         button.disabled = disabled;
@@ -1112,6 +1848,12 @@ var Git4ZoteroPreferences = {
     }
     if (status === "error") {
       return "Error";
+    }
+    if (status === "pending") {
+      return "Pending";
+    }
+    if (status === "checking") {
+      return "Checking";
     }
     return "Skipped";
   },

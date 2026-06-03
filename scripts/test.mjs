@@ -982,6 +982,7 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
 
 {
   let exportedZip = null;
+  const saveRequests = [];
   const encoder = new TextEncoder();
   const sourceFiles = new Map([
     ["C:/Profile/git4zotero/index.json", encoder.encode("{\"repositories\":[]}")],
@@ -1023,7 +1024,9 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
       }
       return [...children];
     },
-    saveBinaryFile: async ({ bytes }) => {
+    saveBinaryFile: async (request) => {
+      saveRequests.push(request);
+      const { bytes } = request;
       exportedZip = bytes;
       return "C:/backup/git4zotero-backup.zip";
     }
@@ -1033,9 +1036,11 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
     cleanupService: { ensureIndex: async () => {} },
     pluginVersion: "0.2.4"
   });
-  const exportResult = await archiveService.exportRepositoryArchive();
+  const exportResult = await archiveService.exportRepositoryArchive({ initialDirectory: "C:/backup" });
   assert.equal(exportResult.repositoryCount, 1);
   assert(exportedZip instanceof Uint8Array);
+  assert.equal(saveRequests.at(-1).initialDirectory, "C:/backup");
+  assert(saveRequests.at(-1).defaultFileName.startsWith("git4zotero-backup-"));
 
   const targetFiles = new Map();
   const targetDirectories = new Set(["D:/Profile/git4zotero"]);
@@ -1067,6 +1072,80 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
   const skipResult = await importService.importRepositoryArchive();
   assert.equal(skipResult.imported.length, 0);
   assert.equal(skipResult.skipped[0].reason, UI_TEXT.archiveImportSkippedExisting);
+}
+
+{
+  const binary = new Uint8Array([1, 2, 3]);
+  let pickedInitialDirectory = "unset";
+  const defaultSavePlatform = Object.create(ZoteroPlatform.prototype);
+  Object.assign(defaultSavePlatform, {
+    Zotero: { debug() {} },
+    getPluginDataDirectory: () => "C:/Profile/git4zotero",
+    join: (...parts) => parts.join("/"),
+    pickSavePath: async (_title, _defaultFileName, initialDirectory) => {
+      pickedInitialDirectory = initialDirectory;
+      return "C:/Chosen/git4zotero-backup.zip";
+    },
+    writeBytes: async () => {}
+  });
+  assert.equal(
+    await defaultSavePlatform.saveBinaryFile({ defaultFileName: "git4zotero-backup.zip", bytes: binary }),
+    "C:/Chosen/git4zotero-backup.zip"
+  );
+  assert.equal(pickedInitialDirectory, "");
+
+  const configuredSavePlatform = Object.create(ZoteroPlatform.prototype);
+  const configuredWrites = [];
+  Object.assign(configuredSavePlatform, {
+    Zotero: { debug() {} },
+    getPluginDataDirectory: () => "C:/Profile/git4zotero",
+    join: (...parts) => parts.join("/"),
+    exists: async (target) => target === "C:/Backup",
+    isDirectory: async (target) => target === "C:/Backup",
+    pickSavePath: async () => {
+      throw new Error(UI_TEXT.saveDialogUnavailable);
+    },
+    writeBytes: async (target, bytes) => {
+      configuredWrites.push({ target, bytes });
+    }
+  });
+  assert.equal(
+    await configuredSavePlatform.saveBinaryFile({
+      defaultFileName: "git4zotero-backup.zip",
+      bytes: binary,
+      initialDirectory: "C:/Backup"
+    }),
+    "C:/Backup/git4zotero-backup.zip"
+  );
+  assert.equal(configuredWrites[0].target, "C:/Backup/git4zotero-backup.zip");
+
+  const invalidDirectoryPlatform = Object.create(ZoteroPlatform.prototype);
+  let invalidPickCalls = 0;
+  let invalidWriteCalls = 0;
+  Object.assign(invalidDirectoryPlatform, {
+    Zotero: { debug() {} },
+    getPluginDataDirectory: () => "C:/Profile/git4zotero",
+    join: (...parts) => parts.join("/"),
+    exists: async () => false,
+    isDirectory: async () => false,
+    pickSavePath: async () => {
+      invalidPickCalls += 1;
+      return "unused";
+    },
+    writeBytes: async () => {
+      invalidWriteCalls += 1;
+    }
+  });
+  await assert.rejects(
+    () => invalidDirectoryPlatform.saveBinaryFile({
+      defaultFileName: "git4zotero-backup.zip",
+      bytes: binary,
+      initialDirectory: "C:/Missing"
+    }),
+    /迁移导出目录不可用/
+  );
+  assert.equal(invalidPickCalls, 0);
+  assert.equal(invalidWriteCalls, 0);
 }
 
 const disabledService = new VersionService({
@@ -2850,6 +2929,24 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(savedPrefs.elements["git4zotero-git-path"].value, "C:\\Saved\\Git\\cmd\\git.exe");
   assert.equal(savedPrefs.elements["git4zotero-current-git"].textContent, "C:\\Saved\\Git\\cmd\\git.exe");
 
+  const archivePathPrefs = await runPreferencesScript({
+    archiveExportDirectory: "D:\\MigrationBackups"
+  });
+  const archivePathWindow = archivePathPrefs.context.window.Git4ZoteroPreferences;
+  assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "D:\\MigrationBackups");
+  assert.equal(archivePathPrefs.elements["git4zotero-current-archive-export-directory"].textContent, "D:\\MigrationBackups");
+  archivePathWindow.getPlatform = () => ({
+    pickDirectory: async () => "D:\\ChosenBackups"
+  });
+  await archivePathWindow.chooseArchiveExportDirectory();
+  assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\ChosenBackups");
+  assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "D:\\ChosenBackups");
+  assert(archivePathPrefs.elements["git4zotero-archive-status"].textContent.includes("迁移导出目录已保存"));
+  archivePathWindow.clearArchiveExportDirectory();
+  assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "");
+  assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "");
+  assert(archivePathPrefs.elements["git4zotero-current-archive-export-directory"].textContent.includes("未指定"));
+
   const failedPrefs = await runPreferencesScript({
     prefValue: "C:\\Old\\git.exe",
     subprocessResult: { exitCode: 1, stdout: "", stderr: "not found" }
@@ -2906,16 +3003,30 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("健康检查完成"));
   assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("测试 Git"));
   assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("检查 Git/index/metadata 一致性"));
-  diagnosticsWindow.openFirstUseGuide();
-  assert(diagnosticsPrefs.elements["git4zotero-first-use-output"].textContent.includes("git4zotero 首次使用向导"));
+  await diagnosticsWindow.openFirstUseGuide();
+  assert.equal(diagnosticsPrefs.elements["git4zotero-first-use-dialog"].hidden, false);
+  assert.equal(diagnosticsPrefs.elements["git4zotero-first-use-output"].hidden, true);
+  assert.equal(diagnosticsPrefs.elements["git4zotero-guide-step-title"].textContent, "Git 准备");
+  assert(diagnosticsPrefs.elements["git4zotero-guide-step-detail"].textContent.includes("Git 可用"));
+  await diagnosticsWindow.showFirstUseGuideStep(1);
+  assert.equal(diagnosticsPrefs.elements["git4zotero-guide-step-title"].textContent, "数据目录");
+  assert.equal(diagnosticsPrefs.elements["git4zotero-guide-prev"].disabled, false);
+  diagnosticsWindow.closeFirstUseGuide();
+  assert.equal(diagnosticsPrefs.elements["git4zotero-first-use-dialog"].hidden, true);
   await diagnosticsWindow.copyIssueTemplate();
   assert(diagnosticsPrefs.elements["git4zotero-diagnostics-output"].textContent.includes("## 复现步骤"));
+  diagnosticsPrefs.prefs.set(PREFS.archiveExportDirectory, "D:\\ArchiveTarget");
+  diagnosticsPrefs.elements["git4zotero-archive-export-directory"].value = "D:\\ArchiveTarget";
+  let archiveExportInitialDirectory = "";
   diagnosticsWindow.archiveService = {
-    exportRepositoryArchive: async () => ({
-      path: "C:\\backup\\git4zotero-backup.zip",
-      repositoryCount: 2,
-      fileCount: 7
-    }),
+    exportRepositoryArchive: async (options = {}) => {
+      archiveExportInitialDirectory = options.initialDirectory;
+      return {
+        path: "C:\\backup\\git4zotero-backup.zip",
+        repositoryCount: 2,
+        fileCount: 7
+      };
+    },
     importRepositoryArchive: async () => ({
       imported: ["library-1/item-A"],
       skipped: [{ repoRelativePath: "library-1/item-B" }],
@@ -2923,10 +3034,139 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
     })
   };
   await diagnosticsWindow.exportHistoryArchive();
+  assert.equal(archiveExportInitialDirectory, "D:\\ArchiveTarget");
   assert(diagnosticsPrefs.elements["git4zotero-archive-status"].textContent.includes("包含 2 个仓库"));
   await diagnosticsWindow.importHistoryArchive();
   assert(diagnosticsPrefs.elements["git4zotero-archive-status"].textContent.includes("导入 1 个，跳过 1 个"));
   assert.equal(diagnosticsPrefs.elements["git4zotero-copy-diagnostics"].disabled, false);
+}
+
+{
+  const guidePrefs = await runPreferencesScript({
+    subprocessResult: { exitCode: 0, stdout: "git version 2.44.0\n", stderr: "" }
+  });
+  const guideWindow = guidePrefs.context.window.Git4ZoteroPreferences;
+  const platformActions = [];
+  let archiveExportInitialDirectory = null;
+  guideWindow.getPlatform = () => ({
+    assertDirectoryAvailable: async (path) => {
+      if (path === "D:\\Missing") {
+        throw new Error("missing directory");
+      }
+    },
+    checkGitAvailability: async (_value, options = {}) => {
+      if (options.persist) {
+        guidePrefs.prefs.set(PREFS.gitPath, "C:\\Git\\cmd\\git.exe");
+      }
+      return {
+        available: true,
+        command: "C:\\Git\\cmd\\git.exe",
+        detail: "git version 2.44.0",
+        version: "git version 2.44.0"
+      };
+    },
+    copyTextToClipboard: (text) => platformActions.push(["copy", String(text).slice(0, 20)]),
+    getPluginDataDirectory: () => "C:\\ZoteroProfile\\git4zotero",
+    makeDirectory: async (path) => platformActions.push(["makeDirectory", path]),
+    openPath: (path) => platformActions.push(["openPath", path]),
+    openURL: (url) => platformActions.push(["openURL", url]),
+    pickDirectory: async () => "D:\\GuideExports",
+    writeTempProbeFile: async () => "C:\\ZoteroProfile\\git4zotero\\git4zotero-diagnostic-write-test.txt"
+  });
+  guideWindow.diagnosticService = {
+    buildIssueTemplate: async () => "## 复现步骤\n- Step",
+    buildReport: async () => "git4zotero Diagnostics\nPlugin version: 0.2.5",
+    runHealthCheck: async () => ({
+      checks: [{ label: "测试 Git", status: "ok", detail: "git version 2.44.0" }],
+      errorCount: 0,
+      okCount: 1,
+      skippedCount: 0,
+      warningCount: 0
+    })
+  };
+  guideWindow.archiveService = {
+    exportRepositoryArchive: async (options = {}) => {
+      archiveExportInitialDirectory = options.initialDirectory;
+      return {
+        path: "D:\\GuideExports\\git4zotero-backup.zip",
+        repositoryCount: 1,
+        fileCount: 3
+      };
+    },
+    importRepositoryArchive: async () => null
+  };
+
+  await guideWindow.openFirstUseGuide();
+  assert.equal(guidePrefs.elements["git4zotero-first-use-dialog"].hidden, false);
+  assert.equal(guidePrefs.elements["git4zotero-guide-step-title"].textContent, "Git 准备");
+  assert.equal(guideWindow.guideStepStates.git.status, "ok");
+  await guideWindow.runFirstUseGuideAction("test-git");
+  assert(guidePrefs.elements["git4zotero-git-status"].textContent.includes("Git 可用"));
+  assert.equal(guideWindow.guideStepStates.git.status, "ok");
+  assert.equal(guidePrefs.prefs.get(PREFS.gitPath), "C:\\Git\\cmd\\git.exe");
+
+  await guideWindow.runFirstUseGuideAction("open-git-guide");
+  assert(platformActions.some((action) => action[0] === "openURL" && action[1].includes("GIT-INSTALL-zh.md")));
+
+  await guideWindow.showFirstUseGuideStep(1);
+  assert.equal(guidePrefs.elements["git4zotero-guide-step-title"].textContent, "数据目录");
+  await guideWindow.runFirstUseGuideAction("open-data-directory");
+  assert(platformActions.some((action) => action[0] === "openPath" && action[1] === "C:\\ZoteroProfile\\git4zotero"));
+  await guideWindow.runFirstUseGuideAction("check-write-permission");
+  assert(guideWindow.guideStepStates.data.detail.includes("写权限正常"));
+
+  await guideWindow.showFirstUseGuideStep(2);
+  assert.equal(guidePrefs.elements["git4zotero-guide-step-title"].textContent, "迁移备份");
+  assert.equal(guideWindow.guideStepStates.archive.status, "warning");
+  await guideWindow.runFirstUseGuideAction("choose-archive-directory");
+  assert.equal(guidePrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\GuideExports");
+  assert.equal(guideWindow.guideStepStates.archive.status, "ok");
+  guidePrefs.prefs.set(PREFS.archiveExportDirectory, "D:\\Missing");
+  guidePrefs.elements["git4zotero-archive-export-directory"].value = "D:\\Missing";
+  await guideWindow.refreshGuideArchiveState();
+  assert.equal(guideWindow.guideStepStates.archive.status, "error");
+  await guideWindow.runFirstUseGuideAction("clear-archive-directory");
+  assert.equal(guidePrefs.prefs.get(PREFS.archiveExportDirectory), "");
+  await guideWindow.runFirstUseGuideAction("export-history-archive");
+  assert.equal(archiveExportInitialDirectory, "");
+  assert(guideWindow.guideStepStates.archive.detail.includes("包含 1 个仓库"));
+
+  await guideWindow.showFirstUseGuideStep(3);
+  assert.equal(guideWindow.guideStepStates.item.status, "warning");
+  assert(guideWindow.guideStepStates.item.detail.includes("当前未选择条目"));
+  guidePrefs.context.Zotero.getActiveZoteroPane = () => ({ getSelectedItems: () => [{ id: 1 }, { id: 2 }] });
+  await guideWindow.runFirstUseGuideAction("refresh-item-selection");
+  assert(guideWindow.guideStepStates.item.detail.includes("选择了 2 个条目"));
+  const emptyParent = { id: 10, key: "EMPTY", libraryID: 1, isAttachment: () => false, getAttachments: () => [] };
+  guidePrefs.context.Zotero.getActiveZoteroPane = () => ({ getSelectedItems: () => [emptyParent] });
+  await guideWindow.runFirstUseGuideAction("refresh-item-selection");
+  assert(guideWindow.guideStepStates.item.detail.includes("未找到可管理"));
+  const parent = { id: 20, key: "PARENT", libraryID: 1, isAttachment: () => false, getAttachments: () => [21] };
+  const attachment = {
+    id: 21,
+    key: "ATTACH",
+    libraryID: 1,
+    parentItemID: 20,
+    isAttachment: () => true,
+    getFilePathAsync: async () => "C:\\papers\\draft.docx"
+  };
+  guidePrefs.context.Zotero.Items.get = (id) => id === 21 ? attachment : parent;
+  guidePrefs.context.Zotero.getActiveZoteroPane = () => ({ getSelectedItems: () => [parent] });
+  await guideWindow.runFirstUseGuideAction("refresh-item-selection");
+  assert.equal(guideWindow.guideStepStates.item.status, "ok");
+  assert(guideWindow.guideStepStates.item.detail.includes("draft.docx"));
+
+  await guideWindow.showFirstUseGuideStep(4);
+  assert.equal(guidePrefs.elements["git4zotero-guide-next"].hidden, true);
+  assert.equal(guidePrefs.elements["git4zotero-guide-done"].hidden, false);
+  await guideWindow.runFirstUseGuideAction("run-health-check");
+  assert.equal(guideWindow.guideStepStates.troubleshooting.status, "ok");
+  await guideWindow.runFirstUseGuideAction("copy-diagnostics");
+  assert(guidePrefs.elements["git4zotero-diagnostics-status"].textContent.includes("诊断信息已复制"));
+  await guideWindow.runFirstUseGuideAction("copy-issue-template");
+  assert(guidePrefs.elements["git4zotero-diagnostics-status"].textContent.includes("issue 模板已复制"));
+  guideWindow.closeFirstUseGuide();
+  assert.equal(guidePrefs.elements["git4zotero-first-use-dialog"].hidden, true);
 }
 
 let enabledMetadata = null;
@@ -3388,7 +3628,66 @@ function makeMenuHarness({ serviceOverrides = {}, platformOverrides = {} } = {})
   };
 }
 
+function makePreferenceElement(id = "", tagName = "div") {
+  return {
+    attributes: new Map(),
+    childNodes: [],
+    className: "",
+    dataset: {},
+    disabled: false,
+    hidden: false,
+    id,
+    listeners: {},
+    ownerDocument: null,
+    tagName,
+    textContent: "",
+    type: "",
+    value: "",
+    addEventListener(type, handler) {
+      this.listeners[type] = handler;
+    },
+    append(...children) {
+      this.childNodes.push(...children);
+    },
+    getAttribute(name) {
+      if (name === "id") {
+        return this.id;
+      }
+      if (name === "class") {
+        return this.className;
+      }
+      return this.attributes.get(name) ?? null;
+    },
+    removeAttribute(name) {
+      this.attributes.delete(name);
+      if (name === "hidden") {
+        this.hidden = false;
+      }
+      if (name === "class") {
+        this.className = "";
+      }
+    },
+    replaceChildren(...children) {
+      this.childNodes = [...children];
+      this.textContent = "";
+    },
+    setAttribute(name, value) {
+      this.attributes.set(name, String(value));
+      if (name === "hidden") {
+        this.hidden = true;
+      }
+      if (name === "class") {
+        this.className = String(value);
+      }
+      if (name === "id") {
+        this.id = String(value);
+      }
+    }
+  };
+}
+
 async function runPreferencesScript({
+  archiveExportDirectory = "",
   autoGitPath = "",
   missingInitially = false,
   prefValue = "",
@@ -3397,23 +3696,17 @@ async function runPreferencesScript({
 } = {}) {
   let elementsReady = !missingInitially;
   const timeouts = [];
-  const prefs = new Map([[PREFS.gitPath, prefValue]]);
+  const prefs = new Map([
+    [PREFS.gitPath, prefValue],
+    [PREFS.archiveExportDirectory, archiveExportDirectory]
+  ]);
   const subprocessCalls = [];
   const files = new Map();
   const directories = new Set(["C:\\ZoteroProfile", "C:\\ZoteroProfile\\git4zotero"]);
   const elements = new Proxy({}, {
     get(target, id) {
       if (!target[id]) {
-        target[id] = {
-          addEventListener(type, handler) {
-            this.listeners[type] = handler;
-          },
-          dataset: {},
-          disabled: false,
-          listeners: {},
-          textContent: "",
-          value: ""
-        };
+        target[id] = makePreferenceElement(id);
       }
       return target[id];
     }
@@ -3465,6 +3758,8 @@ async function runPreferencesScript({
     console,
     document: {
       addEventListener() {},
+      createElement: (tagName) => makePreferenceElement("", tagName),
+      createElementNS: (_namespace, tagName) => makePreferenceElement("", tagName),
       getElementById(id) {
         return elementsReady ? elements[id] : null;
       },
