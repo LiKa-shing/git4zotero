@@ -62,13 +62,6 @@ var Git4ZoteroPreferenceL10n = (() => {
     guideArchiveUnset: "未指定迁移导出目录；导出时将使用系统保存对话框默认位置。",
     guideArchiveUnavailable: "迁移导出目录不可用：{message}",
     guideArchiveActionChoose: "选择目录",
-    guideItemStepTitle: "论文条目",
-    guideItemStepDescription: "检查当前 Zotero 选择是否为单个含 .docx/.doc 附件的条目。向导只检测状态，不启用或创建版本。",
-    guideItemNoSelection: "当前未选择条目。请在 Zotero 条目列表中选择一个论文条目或附件。",
-    guideItemMultiSelection: "当前选择了 {count} 个条目。请只选择一个条目或附件。",
-    guideItemNoAttachment: "当前选择未找到可管理的 .docx/.doc 附件。",
-    guideItemReady: "当前选择可管理：{fileName}",
-    guideItemActionRefresh: "刷新当前选择状态",
     guideTroubleshootingStepTitle: "排错准备",
     guideTroubleshootingStepDescription: "生成健康检查和诊断信息，方便定位 Git、数据目录和版本仓库问题。",
     guideTroubleshootingReady: "可运行健康检查，或复制脱敏诊断信息和 issue 模板。",
@@ -236,13 +229,6 @@ var Git4ZoteroPreferenceL10n = (() => {
       guideArchiveUnset: "未指定遷移匯出目錄；匯出時將使用系統儲存對話框預設位置。",
       guideArchiveUnavailable: "遷移匯出目錄不可用：{message}",
       guideArchiveActionChoose: "選擇目錄",
-      guideItemStepTitle: "論文條目",
-      guideItemStepDescription: "檢查目前 Zotero 選擇是否為單個含 .docx/.doc 附件的條目。向導只偵測狀態，不啟用或建立版本。",
-      guideItemNoSelection: "目前未選擇條目。請在 Zotero 條目清單中選擇一個論文條目或附件。",
-      guideItemMultiSelection: "目前選擇了 {count} 個條目。請只選擇一個條目或附件。",
-      guideItemNoAttachment: "目前選擇未找到可管理的 .docx/.doc 附件。",
-      guideItemReady: "目前選擇可管理：{fileName}",
-      guideItemActionRefresh: "重新整理目前選擇狀態",
       guideTroubleshootingStepTitle: "排錯準備",
       guideTroubleshootingStepDescription: "產生健康檢查和診斷資訊，方便定位 Git、資料目錄和版本倉庫問題。",
       guideTroubleshootingReady: "可執行健康檢查，或複製脫敏診斷資訊和 issue 範本。",
@@ -408,13 +394,6 @@ var Git4ZoteroPreferenceL10n = (() => {
       guideArchiveUnset: "No migration export directory is set; exports will use the system save dialog default.",
       guideArchiveUnavailable: "Migration export directory is unavailable: {message}",
       guideArchiveActionChoose: "Choose Directory",
-      guideItemStepTitle: "Manuscript Item",
-      guideItemStepDescription: "Check whether the current Zotero selection is a single item with a .docx/.doc attachment. The guide only detects state; it does not enable or create versions.",
-      guideItemNoSelection: "No item is selected. Select one manuscript item or attachment in the Zotero item list.",
-      guideItemMultiSelection: "{count} items are selected. Select only one item or attachment.",
-      guideItemNoAttachment: "The current selection has no manageable .docx/.doc attachment.",
-      guideItemReady: "Current selection is manageable: {fileName}",
-      guideItemActionRefresh: "Refresh Selection Status",
       guideTroubleshootingStepTitle: "Troubleshooting",
       guideTroubleshootingStepDescription: "Generate health checks and diagnostics to locate Git, data directory, and version repository issues.",
       guideTroubleshootingReady: "You can run a health check, or copy redacted diagnostics and the issue template.",
@@ -595,14 +574,6 @@ const FIRST_USE_GUIDE_STEPS = Object.freeze([
     ]
   },
   {
-    id: "item",
-    titleKey: "guideItemStepTitle",
-    descriptionKey: "guideItemStepDescription",
-    actions: [
-      { id: "refresh-item-selection", labelKey: "guideItemActionRefresh" }
-    ]
-  },
-  {
     id: "troubleshooting",
     titleKey: "guideTroubleshootingStepTitle",
     descriptionKey: "guideTroubleshootingStepDescription",
@@ -655,46 +626,6 @@ var Git4ZoteroPreferences = {
       this.refreshSavedGit();
     });
 
-    const testButton = document.getElementById("git4zotero-test-git");
-    testButton?.addEventListener("click", () => {
-      this.testGit();
-    });
-    document.getElementById("git4zotero-check-orphans")?.addEventListener("click", (clickEvent) => {
-      this.checkOrphanHistory(clickEvent);
-    });
-    document.getElementById("git4zotero-clean-orphans")?.addEventListener("click", (clickEvent) => {
-      this.cleanupOrphanHistory(clickEvent);
-    });
-    document.getElementById("git4zotero-copy-diagnostics")?.addEventListener("click", (clickEvent) => {
-      this.copyDiagnostics(clickEvent);
-    });
-    document.getElementById("git4zotero-run-health-check")?.addEventListener("click", (clickEvent) => {
-      this.runHealthCheck(clickEvent);
-    });
-    document.getElementById("git4zotero-first-use-guide")?.addEventListener("click", (clickEvent) => {
-      this.openFirstUseGuide(clickEvent);
-    });
-    document.getElementById("git4zotero-open-data-dir")?.addEventListener("click", (clickEvent) => {
-      this.openDataDirectory(clickEvent);
-    });
-    document.getElementById("git4zotero-copy-issue-template")?.addEventListener("click", (clickEvent) => {
-      this.copyIssueTemplate(clickEvent);
-    });
-    document.getElementById("git4zotero-open-git-guide")?.addEventListener("click", (clickEvent) => {
-      this.openGitGuide(clickEvent);
-    });
-    document.getElementById("git4zotero-export-history")?.addEventListener("click", (clickEvent) => {
-      this.exportHistoryArchive(clickEvent);
-    });
-    document.getElementById("git4zotero-import-history")?.addEventListener("click", (clickEvent) => {
-      this.importHistoryArchive(clickEvent);
-    });
-    document.getElementById("git4zotero-choose-archive-export-directory")?.addEventListener("click", (clickEvent) => {
-      this.chooseArchiveExportDirectory(clickEvent);
-    });
-    document.getElementById("git4zotero-clear-archive-export-directory")?.addEventListener("click", (clickEvent) => {
-      this.clearArchiveExportDirectory(clickEvent);
-    });
     this.bindFirstUseGuideControls();
 
     this.defer(() => this.refreshResolvedGit());
@@ -1076,9 +1007,6 @@ var Git4ZoteroPreferences = {
       else if (step.id === "archive") {
         await this.refreshGuideArchiveState();
       }
-      else if (step.id === "item") {
-        await this.refreshGuideItemState();
-      }
       else if (step.id === "troubleshooting") {
         this.refreshGuideTroubleshootingState();
       }
@@ -1135,29 +1063,6 @@ var Git4ZoteroPreferences = {
     }
   },
 
-  async refreshGuideItemState() {
-    const items = this.getSelectedItemsForGuide();
-    if (!items.length) {
-      this.setFirstUseGuideStepState("item", "warning", this.text("guideItemNoSelection"));
-      return;
-    }
-    if (items.length > 1) {
-      this.setFirstUseGuideStepState("item", "warning", this.text("guideItemMultiSelection", { count: items.length }));
-      return;
-    }
-    try {
-      const attachment = await this.findManageableAttachmentForGuide(items[0]);
-      if (!attachment) {
-        this.setFirstUseGuideStepState("item", "warning", this.text("guideItemNoAttachment"));
-        return;
-      }
-      this.setFirstUseGuideStepState("item", "ok", this.text("guideItemReady", { fileName: attachment.fileName || attachment.filePath || "" }));
-    }
-    catch (error) {
-      this.setFirstUseGuideStepState("item", "error", this.text("guideActionFailed", { message: error.message || String(error) }));
-    }
-  },
-
   refreshGuideTroubleshootingState() {
     const healthStatus = document.getElementById("git4zotero-health-status");
     const healthText = healthStatus?.textContent?.trim?.() || "";
@@ -1203,9 +1108,6 @@ var Git4ZoteroPreferences = {
       else if (actionID === "export-history-archive") {
         await this.exportHistoryArchive();
         this.syncGuideStateFromStatusElement("archive", "git4zotero-archive-status");
-      }
-      else if (actionID === "refresh-item-selection") {
-        await this.refreshGuideItemState();
       }
       else if (actionID === "run-health-check") {
         await this.runHealthCheck();
@@ -1271,23 +1173,6 @@ var Git4ZoteroPreferences = {
         button.disabled = disabled;
       }
     }
-  },
-
-  getSelectedItemsForGuide() {
-    try {
-      const pane = Zotero.getActiveZoteroPane?.();
-      const selected = pane?.getSelectedItems?.() || [];
-      return Array.isArray(selected) ? selected.filter(Boolean) : [];
-    }
-    catch (_error) {
-      return [];
-    }
-  },
-
-  async findManageableAttachmentForGuide(item) {
-    const attachmentModule = ChromeUtils.importESModule("chrome://git4zotero/content/src/attachments.mjs");
-    const finder = new attachmentModule.AttachmentFinder({ Zotero });
-    return finder.findManageableAttachment(item);
   },
 
   createHTMLElement(tagName) {

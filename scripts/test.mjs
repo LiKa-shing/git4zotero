@@ -3048,6 +3048,24 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   const guideWindow = guidePrefs.context.window.Git4ZoteroPreferences;
   const platformActions = [];
   let archiveExportInitialDirectory = null;
+  for (const staticButtonID of [
+    "git4zotero-test-git",
+    "git4zotero-check-orphans",
+    "git4zotero-clean-orphans",
+    "git4zotero-copy-diagnostics",
+    "git4zotero-run-health-check",
+    "git4zotero-first-use-guide",
+    "git4zotero-open-data-dir",
+    "git4zotero-copy-issue-template",
+    "git4zotero-open-git-guide",
+    "git4zotero-export-history",
+    "git4zotero-import-history",
+    "git4zotero-choose-archive-export-directory",
+    "git4zotero-clear-archive-export-directory"
+  ]) {
+    assert.equal(guidePrefs.elements[staticButtonID].listeners.click, undefined, `${staticButtonID} must rely on its inline onclick handler`);
+  }
+  assert.equal(typeof guidePrefs.elements["git4zotero-guide-primary-action"].listeners.click, "function");
   guideWindow.getPlatform = () => ({
     assertDirectoryAvailable: async (path) => {
       if (path === "D:\\Missing") {
@@ -3096,9 +3114,31 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
     importRepositoryArchive: async () => null
   };
 
+  guideWindow.openGitGuide();
+  assert.equal(platformActions.filter((action) => action[0] === "openURL").length, 1);
+
   await guideWindow.openFirstUseGuide();
   assert.equal(guidePrefs.elements["git4zotero-first-use-dialog"].hidden, false);
   assert.equal(guidePrefs.elements["git4zotero-guide-step-title"].textContent, "Git 准备");
+  assert(!guidePrefs.elements["git4zotero-guide-step-list"].textContent.includes("论文条目"));
+  assert(!guidePrefs.elements["git4zotero-guide-step-list"].textContent.includes("Manuscript Item"));
+  assert.equal(guideWindow.guideStepStates.item, undefined);
+  const guideActionIDs = new Set();
+  for (let stepIndex = 0; stepIndex < 4; stepIndex += 1) {
+    await guideWindow.showFirstUseGuideStep(stepIndex);
+    for (const buttonID of [
+      "git4zotero-guide-primary-action",
+      "git4zotero-guide-secondary-action",
+      "git4zotero-guide-tertiary-action"
+    ]) {
+      const actionID = guidePrefs.elements[buttonID].dataset.action;
+      if (actionID) {
+        guideActionIDs.add(actionID);
+      }
+    }
+  }
+  assert(!guideActionIDs.has("refresh-item-selection"));
+  await guideWindow.showFirstUseGuideStep(0);
   assert.equal(guideWindow.guideStepStates.git.status, "ok");
   await guideWindow.runFirstUseGuideAction("test-git");
   assert(guidePrefs.elements["git4zotero-git-status"].textContent.includes("Git 可用"));
@@ -3106,6 +3146,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(guidePrefs.prefs.get(PREFS.gitPath), "C:\\Git\\cmd\\git.exe");
 
   await guideWindow.runFirstUseGuideAction("open-git-guide");
+  assert.equal(platformActions.filter((action) => action[0] === "openURL").length, 2);
   assert(platformActions.some((action) => action[0] === "openURL" && action[1].includes("GIT-INSTALL-zh.md")));
 
   await guideWindow.showFirstUseGuideStep(1);
@@ -3132,31 +3173,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert(guideWindow.guideStepStates.archive.detail.includes("包含 1 个仓库"));
 
   await guideWindow.showFirstUseGuideStep(3);
-  assert.equal(guideWindow.guideStepStates.item.status, "warning");
-  assert(guideWindow.guideStepStates.item.detail.includes("当前未选择条目"));
-  guidePrefs.context.Zotero.getActiveZoteroPane = () => ({ getSelectedItems: () => [{ id: 1 }, { id: 2 }] });
-  await guideWindow.runFirstUseGuideAction("refresh-item-selection");
-  assert(guideWindow.guideStepStates.item.detail.includes("选择了 2 个条目"));
-  const emptyParent = { id: 10, key: "EMPTY", libraryID: 1, isAttachment: () => false, getAttachments: () => [] };
-  guidePrefs.context.Zotero.getActiveZoteroPane = () => ({ getSelectedItems: () => [emptyParent] });
-  await guideWindow.runFirstUseGuideAction("refresh-item-selection");
-  assert(guideWindow.guideStepStates.item.detail.includes("未找到可管理"));
-  const parent = { id: 20, key: "PARENT", libraryID: 1, isAttachment: () => false, getAttachments: () => [21] };
-  const attachment = {
-    id: 21,
-    key: "ATTACH",
-    libraryID: 1,
-    parentItemID: 20,
-    isAttachment: () => true,
-    getFilePathAsync: async () => "C:\\papers\\draft.docx"
-  };
-  guidePrefs.context.Zotero.Items.get = (id) => id === 21 ? attachment : parent;
-  guidePrefs.context.Zotero.getActiveZoteroPane = () => ({ getSelectedItems: () => [parent] });
-  await guideWindow.runFirstUseGuideAction("refresh-item-selection");
-  assert.equal(guideWindow.guideStepStates.item.status, "ok");
-  assert(guideWindow.guideStepStates.item.detail.includes("draft.docx"));
-
-  await guideWindow.showFirstUseGuideStep(4);
+  assert.equal(guidePrefs.elements["git4zotero-guide-step-title"].textContent, "排错准备");
   assert.equal(guidePrefs.elements["git4zotero-guide-next"].hidden, true);
   assert.equal(guidePrefs.elements["git4zotero-guide-done"].hidden, false);
   await guideWindow.runFirstUseGuideAction("run-health-check");

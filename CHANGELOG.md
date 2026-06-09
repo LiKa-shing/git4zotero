@@ -12,6 +12,18 @@
 
 - No changes yet.
 
+## 0.3.0
+
+### 中文
+
+- 修复设置页静态按钮重复绑定导致“打开 Git 安装指南”可能打开两个浏览器标签页的问题。
+- 移除首次使用向导中的“论文条目”步骤，保留 Git、数据目录、迁移备份和排错准备四个环境配置与诊断步骤。
+
+### English
+
+- Fixed duplicate static preference button binding that could make “Open Git Install Guide” open two browser tabs.
+- Removed the “Manuscript Item” step from the first-use guide while keeping the Git, data directory, migration backup, and troubleshooting setup steps.
+
 ## 0.2.5
 
 ### 中文
