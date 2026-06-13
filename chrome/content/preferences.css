@@ -52,7 +52,7 @@
 }
 
 .git4zotero-pref-path-row {
-  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  grid-template-columns: minmax(0, 1fr) max-content max-content max-content;
 }
 
 .git4zotero-pref-checkbox {
@@ -111,6 +111,55 @@
   overflow-wrap: anywhere;
 }
 
+.git4zotero-about-section {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
+.git4zotero-about-section h2 {
+  margin-bottom: 8px;
+}
+
+.git4zotero-about-links {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  line-height: 1.35;
+  margin: 0 0 4px;
+}
+
+.git4zotero-about-link {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--accent-blue, LinkText);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  min-height: 0 !important;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+}
+
+.git4zotero-about-link:hover,
+.git4zotero-about-link:focus-visible {
+  color: var(--accent-blue-pressed, LinkText);
+  text-decoration-thickness: 2px;
+}
+
+.git4zotero-about-separator {
+  color: var(--fill-secondary, GrayText);
+}
+
+.git4zotero-about-meta {
+  color: var(--fill-primary, CanvasText);
+  line-height: 1.4;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
 .git4zotero-pref-help code {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
@@ -132,32 +181,46 @@
 
 .git4zotero-guide-dialog {
   align-items: center;
+  color-scheme: light dark;
   display: flex;
   inset: 0;
   justify-content: center;
   padding: 24px;
   position: fixed;
   z-index: 1000;
+  --git4zotero-guide-bg: Canvas;
+  --git4zotero-guide-text: CanvasText;
+  --git4zotero-guide-muted: GrayText;
+  --git4zotero-guide-border: ButtonBorder;
+  --git4zotero-guide-button-bg: ButtonFace;
+  --git4zotero-guide-button-text: ButtonText;
+  --git4zotero-guide-accent: #1565c0;
+  --git4zotero-guide-success: #167c3c;
+  --git4zotero-guide-warning: #8a5a00;
+  --git4zotero-guide-error: #b3261e;
 }
 
 .git4zotero-guide-backdrop {
-  background: rgba(0, 0, 0, 0.36);
+  background: rgba(0, 0, 0, 0.42);
   inset: 0;
   position: absolute;
 }
 
 .git4zotero-guide-panel {
-  background: var(--material-background, #fff);
-  border: 1px solid var(--color-border, #d0d7de);
-  border-radius: 6px;
+  background: var(--material-background, var(--git4zotero-guide-bg));
+  border: 1px solid var(--color-border, var(--git4zotero-guide-border));
+  border-radius: 8px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
   box-sizing: border-box;
-  color: var(--fill-primary, #1f2328);
-  max-height: min(720px, calc(100vh - 48px));
-  max-width: 780px;
-  min-width: min(720px, calc(100vw - 48px));
-  overflow: auto;
+  color: var(--fill-primary, var(--git4zotero-guide-text));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 520px;
+  max-height: calc(100vh - 48px);
+  max-width: calc(100vw - 48px);
+  overflow: hidden;
   position: relative;
+  width: 760px;
 }
 
 .git4zotero-guide-header,
@@ -170,7 +233,12 @@
 }
 
 .git4zotero-guide-header {
-  border-bottom: 1px solid var(--color-border, #d0d7de);
+  border-bottom: 1px solid var(--color-border, var(--git4zotero-guide-border));
+  min-height: 74px;
+}
+
+.git4zotero-guide-header > div {
+  min-width: 0;
 }
 
 .git4zotero-guide-header h3 {
@@ -181,23 +249,46 @@
 .git4zotero-guide-footer button,
 .git4zotero-guide-actions button,
 .git4zotero-guide-step-button {
+  background: var(--button-bg, var(--git4zotero-guide-button-bg));
+  border: 1px solid var(--color-border, var(--git4zotero-guide-border));
+  border-radius: 6px;
+  color: var(--button-text-color, var(--git4zotero-guide-button-text));
   font: inherit;
   min-height: 30px;
+  padding: 4px 10px;
+}
+
+.git4zotero-guide-close:hover,
+.git4zotero-guide-footer button:hover,
+.git4zotero-guide-actions button:hover,
+.git4zotero-guide-step-button:hover {
+  background: color-mix(in srgb, Highlight 10%, var(--git4zotero-guide-button-bg));
+}
+
+.git4zotero-guide-close:disabled,
+.git4zotero-guide-footer button:disabled,
+.git4zotero-guide-actions button:disabled {
+  color: var(--git4zotero-guide-muted);
+  opacity: 0.7;
 }
 
 .git4zotero-guide-layout {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  min-height: 260px;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .git4zotero-guide-step-list {
-  border-right: 1px solid var(--color-border, #d0d7de);
+  border-right: 1px solid var(--color-border, var(--git4zotero-guide-border));
   box-sizing: border-box;
   display: grid;
   gap: 4px;
+  grid-auto-rows: max-content;
   list-style: none;
   margin: 0;
+  min-height: 0;
+  overflow: auto;
   padding: 12px;
 }
 
@@ -221,15 +312,21 @@
 }
 
 .git4zotero-guide-step-button[aria-current="step"] {
-  background: var(--material-secondary-background, #eef3f8);
-  border-color: var(--color-border, #d0d7de);
+  background: color-mix(in srgb, var(--git4zotero-guide-accent) 18%, var(--git4zotero-guide-bg));
+  border-color: color-mix(in srgb, var(--git4zotero-guide-accent) 58%, var(--git4zotero-guide-border));
+  color: var(--git4zotero-guide-text);
 }
 
 .git4zotero-guide-step-name {
+  color: var(--git4zotero-guide-text);
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .git4zotero-guide-content {
+  box-sizing: border-box;
+  min-height: 0;
+  overflow: auto;
   padding: 16px;
 }
 
@@ -243,13 +340,16 @@
 .git4zotero-guide-step-header h4 {
   font-size: 1.02em;
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .git4zotero-guide-status,
 .git4zotero-guide-step-badge {
-  border: 1px solid var(--color-border, #d0d7de);
+  background: var(--git4zotero-guide-bg);
+  border: 1px solid var(--color-border, var(--git4zotero-guide-border));
   border-radius: 999px;
-  color: var(--fill-secondary, #5f6368);
+  color: var(--git4zotero-guide-muted);
   display: inline-block;
   font-size: 0.88em;
   line-height: 1.2;
@@ -259,26 +359,44 @@
 
 .git4zotero-guide-status[data-tone="success"],
 .git4zotero-guide-step-badge[data-tone="success"] {
-  border-color: #8bc89f;
-  color: #167c3c;
+  background: color-mix(in srgb, var(--git4zotero-guide-success) 14%, var(--git4zotero-guide-bg));
+  border-color: color-mix(in srgb, var(--git4zotero-guide-success) 58%, var(--git4zotero-guide-border));
+  color: var(--git4zotero-guide-success);
 }
 
 .git4zotero-guide-status[data-tone="warning"],
 .git4zotero-guide-step-badge[data-tone="warning"] {
-  border-color: #d7b56d;
-  color: #8a5a00;
+  background: color-mix(in srgb, var(--git4zotero-guide-warning) 16%, var(--git4zotero-guide-bg));
+  border-color: color-mix(in srgb, var(--git4zotero-guide-warning) 62%, var(--git4zotero-guide-border));
+  color: var(--git4zotero-guide-warning);
 }
 
 .git4zotero-guide-status[data-tone="error"],
 .git4zotero-guide-step-badge[data-tone="error"] {
-  border-color: #e0a19b;
-  color: #b3261e;
+  background: color-mix(in srgb, var(--git4zotero-guide-error) 14%, var(--git4zotero-guide-bg));
+  border-color: color-mix(in srgb, var(--git4zotero-guide-error) 58%, var(--git4zotero-guide-border));
+  color: var(--git4zotero-guide-error);
+}
+
+.git4zotero-guide-status[data-tone="checking"],
+.git4zotero-guide-step-badge[data-tone="checking"] {
+  background: color-mix(in srgb, var(--git4zotero-guide-accent) 14%, var(--git4zotero-guide-bg));
+  border-color: color-mix(in srgb, var(--git4zotero-guide-accent) 58%, var(--git4zotero-guide-border));
+  color: var(--git4zotero-guide-accent);
+}
+
+.git4zotero-guide-status[data-tone="pending"],
+.git4zotero-guide-step-badge[data-tone="pending"] {
+  background: color-mix(in srgb, var(--git4zotero-guide-muted) 10%, var(--git4zotero-guide-bg));
+  border-color: color-mix(in srgb, var(--git4zotero-guide-muted) 42%, var(--git4zotero-guide-border));
+  color: var(--git4zotero-guide-muted);
 }
 
 .git4zotero-guide-detail {
-  color: var(--fill-secondary, #5f6368);
+  color: var(--fill-secondary, var(--git4zotero-guide-muted));
   line-height: 1.5;
   margin: 12px 0 0;
+  overflow-wrap: anywhere;
   white-space: pre-line;
 }
 
@@ -295,27 +413,43 @@
 }
 
 .git4zotero-guide-footer {
-  border-top: 1px solid var(--color-border, #d0d7de);
+  border-top: 1px solid var(--color-border, var(--git4zotero-guide-border));
   justify-content: flex-end;
+  min-height: 70px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .git4zotero-pref-status[data-tone="success"] {
+    color: color-mix(in srgb, #6fdc8c 86%, CanvasText);
+  }
+
+  .git4zotero-pref-status[data-tone="error"] {
+    color: color-mix(in srgb, #ff8a80 86%, CanvasText);
+  }
+
+  .git4zotero-pref-status[data-tone="warning"] {
+    color: color-mix(in srgb, #f2cc60 88%, CanvasText);
+  }
+
+  .git4zotero-guide-dialog {
+    --git4zotero-guide-accent: #8ab4f8;
+    --git4zotero-guide-success: #6fdc8c;
+    --git4zotero-guide-warning: #f2cc60;
+    --git4zotero-guide-error: #ff8a80;
+  }
+
+  .git4zotero-guide-panel {
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.46);
+  }
 }
 
 @media (max-width: 760px) {
   .git4zotero-guide-dialog {
-    align-items: stretch;
     padding: 12px;
   }
 
   .git4zotero-guide-panel {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .git4zotero-guide-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .git4zotero-guide-step-list {
-    border-bottom: 1px solid var(--color-border, #d0d7de);
-    border-right: 0;
+    max-height: calc(100vh - 24px);
+    max-width: calc(100vw - 24px);
   }
 }

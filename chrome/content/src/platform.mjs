@@ -15,15 +15,25 @@ const POSIX_GIT_CANDIDATES = [
 ];
 
 export class ZoteroPlatform {
-  constructor({ Zotero, Services, Cc, Ci, ChromeUtils, IOUtils, PathUtils }) {
+  constructor({ Zotero, Services, Cc, Ci, ChromeUtils, IOUtils, PathUtils, window = null }) {
     this.Zotero = Zotero;
-    this.Services = Services;
+    this.ChromeUtils = ChromeUtils;
+    this.Services = Services || this.importServices();
     this.Cc = Cc;
     this.Ci = Ci;
-    this.ChromeUtils = ChromeUtils;
     this.IOUtils = IOUtils ?? globalThis.IOUtils;
     this.PathUtils = PathUtils ?? globalThis.PathUtils;
+    this.window = window;
     this.Subprocess = null;
+  }
+
+  importServices() {
+    try {
+      return this.ChromeUtils?.importESModule?.("resource://gre/modules/Services.sys.mjs")?.Services || null;
+    }
+    catch (_error) {
+      return null;
+    }
   }
 
   getPref(key, fallback = undefined) {
@@ -193,6 +203,24 @@ export class ZoteroPlatform {
     ];
   }
 
+  getPowerShellExecutableCandidates() {
+    const windowsDir = this.getWindowsDirectory();
+    return [
+      {
+        command: this.join(windowsDir, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+        mustExist: true
+      },
+      {
+        command: this.join(windowsDir, "Sysnative", "WindowsPowerShell", "v1.0", "powershell.exe"),
+        mustExist: true
+      },
+      {
+        command: "powershell.exe",
+        mustExist: false
+      }
+    ];
+  }
+
   formatGitAvailabilityError(error, resolution = {}) {
     const raw = error?.message || String(error || "");
     const command = resolution.command || GIT_COMMAND;
@@ -340,7 +368,7 @@ export class ZoteroPlatform {
   async saveTextFile({ title = UI_TEXT.saveFileTitle, defaultFileName = "git4zotero-export.txt", content = "" } = {}) {
     const fallbackPath = this.join(this.getPluginDataDirectory(), "exports", defaultFileName);
     try {
-      const targetPath = await this.pickSavePath(title, defaultFileName);
+      const targetPath = await this.pickSavePath(title, defaultFileName, "");
       if (!targetPath) {
         return null;
       }
@@ -363,12 +391,13 @@ export class ZoteroPlatform {
     const exportDirectory = normalizeExecutablePath(initialDirectory);
     if (exportDirectory) {
       await this.assertDirectoryAvailable(exportDirectory);
+      const targetPath = this.join(exportDirectory, defaultFileName);
+      await this.writeBytes(targetPath, bytes);
+      return targetPath;
     }
-    const fallbackPath = exportDirectory
-      ? this.join(exportDirectory, defaultFileName)
-      : this.join(this.getPluginDataDirectory(), "exports", defaultFileName);
+    const fallbackPath = this.join(this.getPluginDataDirectory(), "exports", defaultFileName);
     try {
-      const targetPath = await this.pickSavePath(title, defaultFileName, exportDirectory);
+      const targetPath = await this.pickSavePath(title, defaultFileName, "");
       if (!targetPath) {
         return null;
       }
@@ -376,9 +405,6 @@ export class ZoteroPlatform {
       return targetPath;
     }
     catch (error) {
-      if (exportDirectory && !this.isSaveDialogFallbackError(error)) {
-        throw error;
-      }
       this.Zotero.debug?.(`git4zotero: binary save dialog unavailable, using fallback path: ${error?.stack || error}`);
       await this.writeBytes(fallbackPath, bytes);
       return fallbackPath;
@@ -394,12 +420,7 @@ export class ZoteroPlatform {
   }
 
   async pickSavePath(title, defaultFileName, initialDirectory = "") {
-    const filePickerInterface = this.Ci?.nsIFilePicker;
-    const picker = this.Cc?.["@mozilla.org/filepicker;1"]?.createInstance?.(filePickerInterface);
-    if (!picker || !filePickerInterface) {
-      throw new Error(UI_TEXT.saveDialogUnavailable);
-    }
-    picker.init(null, title, filePickerInterface.modeSave);
+    const { filePickerInterface, picker } = this.createInitializedFilePicker(title, this.Ci?.nsIFilePicker?.modeSave);
     picker.defaultString = defaultFileName;
     if (initialDirectory) {
       picker.displayDirectory = this.createLocalFile(initialDirectory);
@@ -440,12 +461,7 @@ export class ZoteroPlatform {
   }
 
   async pickOpenPath(title) {
-    const filePickerInterface = this.Ci?.nsIFilePicker;
-    const picker = this.Cc?.["@mozilla.org/filepicker;1"]?.createInstance?.(filePickerInterface);
-    if (!picker || !filePickerInterface) {
-      throw new Error(UI_TEXT.saveDialogUnavailable);
-    }
-    picker.init(null, title, filePickerInterface.modeOpen);
+    const { filePickerInterface, picker } = this.createInitializedFilePicker(title, this.Ci?.nsIFilePicker?.modeOpen);
     picker.appendFilter?.("ZIP", "*.zip");
     picker.appendFilters?.(filePickerInterface.filterAll);
     const result = await this.showFilePicker(picker);
@@ -459,13 +475,104 @@ export class ZoteroPlatform {
     return path;
   }
 
-  async pickDirectory(title) {
-    const filePickerInterface = this.Ci?.nsIFilePicker;
-    const picker = this.Cc?.["@mozilla.org/filepicker;1"]?.createInstance?.(filePickerInterface);
-    if (!picker || !filePickerInterface) {
-      throw new Error(UI_TEXT.saveDialogUnavailable);
+  async pickDirectoryViaSaveDialog(title, defaultFileName = ".git4zotero-select-folder") {
+    const nativeDirectory = await this.tryPickDirectoryWithNativeDialog(title);
+    if (nativeDirectory !== undefined) {
+      return nativeDirectory;
     }
-    picker.init(null, title, filePickerInterface.modeGetFolder);
+
+    const pickedPath = await this.pickSavePath(title, defaultFileName);
+    return pickedPath ? this.dirname(pickedPath) : null;
+  }
+
+  async tryPickDirectoryWithNativeDialog(title) {
+    if (!this.isWindows()) {
+      return undefined;
+    }
+
+    const scripts = this.createWindowsFolderPickerScripts(title);
+    let lastError = null;
+    for (const script of scripts) {
+      for (const candidate of this.getPowerShellExecutableCandidates()) {
+        try {
+          if (candidate.mustExist && !(await this.safeExists(candidate.command))) {
+            continue;
+          }
+
+          const result = await this.runProcess(candidate.command, [
+            "-NoProfile",
+            "-STA",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script
+          ]);
+          if (result.exitCode === 2) {
+            return null;
+          }
+          if (result.exitCode === 0) {
+            const selected = normalizeExecutablePath(result.stdout.split(/\r?\n/).find((line) => line.trim()) || "");
+            if (selected) {
+              return selected;
+            }
+          }
+          lastError = new Error((result.stderr || result.stdout || UI_TEXT.saveDialogNoPath).trim());
+        }
+        catch (error) {
+          lastError = error;
+          this.Zotero.debug?.(`git4zotero: native Windows folder picker failed: ${error?.stack || error}`);
+        }
+      }
+    }
+
+    const detail = lastError?.message || String(lastError || "");
+    throw new Error(detail ? `${UI_TEXT.windowsFolderPickerUnavailable} ${detail}` : UI_TEXT.windowsFolderPickerUnavailable);
+  }
+
+  createWindowsFolderPickerScripts(title) {
+    const description = escapePowerShellSingleQuotedString(title || UI_TEXT.saveFileTitle);
+    return [
+      this.createWindowsFormsFolderPickerScript(description),
+      this.createWindowsShellFolderPickerScript(description)
+    ];
+  }
+
+  createWindowsFormsFolderPickerScript(description) {
+    return [
+      "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false",
+      "Add-Type -AssemblyName System.Windows.Forms",
+      "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
+      `$dialog.Description = '${description}'`,
+      "$dialog.ShowNewFolderButton = $true",
+      "try {",
+      "  $result = $dialog.ShowDialog()",
+      "  if ($result -eq [System.Windows.Forms.DialogResult]::OK -and -not [string]::IsNullOrWhiteSpace($dialog.SelectedPath)) {",
+      "    Write-Output $dialog.SelectedPath",
+      "    exit 0",
+      "  }",
+      "  exit 2",
+      "}",
+      "finally {",
+      "  if ($dialog) { $dialog.Dispose() }",
+      "}"
+    ].join("\n");
+  }
+
+  createWindowsShellFolderPickerScript(description) {
+    return [
+      "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false",
+      "$shell = New-Object -ComObject Shell.Application",
+      `$folder = $shell.BrowseForFolder(0, '${description}', 0)`,
+      "if ($folder -and $folder.Self -and -not [string]::IsNullOrWhiteSpace($folder.Self.Path)) {",
+      "  Write-Output $folder.Self.Path",
+      "  exit 0",
+      "}",
+      "exit 2"
+    ].join("\n");
+  }
+
+  async pickDirectory(title) {
+    const { filePickerInterface, picker } = this.createInitializedFilePicker(title, this.Ci?.nsIFilePicker?.modeGetFolder);
     const result = await this.showFilePicker(picker);
     if (result === filePickerInterface.returnCancel) {
       return null;
@@ -475,6 +582,134 @@ export class ZoteroPlatform {
       throw new Error(UI_TEXT.saveDialogNoPath);
     }
     return path;
+  }
+
+  createInitializedFilePicker(title, mode) {
+    const filePickerInterface = this.Ci?.nsIFilePicker;
+    if (!filePickerInterface || mode === undefined || mode === null) {
+      throw new Error(UI_TEXT.saveDialogUnavailable);
+    }
+
+    const errors = [];
+    for (const parent of this.getFilePickerParentCandidates()) {
+      const picker = this.Cc?.["@mozilla.org/filepicker;1"]?.createInstance?.(filePickerInterface);
+      if (!picker?.init) {
+        throw new Error(UI_TEXT.saveDialogUnavailable);
+      }
+
+      try {
+        picker.init(parent, title, mode);
+        return { filePickerInterface, parent, picker };
+      }
+      catch (error) {
+        if (!this.isFilePickerInitError(error)) {
+          throw error;
+        }
+        errors.push(error);
+        this.Zotero.debug?.(`git4zotero: file picker init failed, trying another parent: ${error?.stack || error}`);
+      }
+    }
+
+    const detail = errors
+      .map((error) => error?.message || String(error || ""))
+      .filter(Boolean)
+      .join("; ");
+    throw new Error(detail ? `${UI_TEXT.saveDialogUnavailable} ${detail}` : UI_TEXT.saveDialogUnavailable);
+  }
+
+  getFilePickerParentCandidates() {
+    const candidates = [];
+    const addCandidate = (candidate) => {
+      if (candidate === undefined) {
+        return;
+      }
+      candidate = this.resolveFilePickerParentCandidate(candidate);
+      if (candidate && typeof candidate === "object" && candidate.closed === true) {
+        return;
+      }
+      if (!candidates.includes(candidate)) {
+        candidates.push(candidate);
+      }
+    };
+    const addCandidateFrom = (getter) => {
+      try {
+        addCandidate(getter());
+      }
+      catch (_error) {
+        // Ignore unavailable parent sources.
+      }
+    };
+
+    addCandidateFrom(() => this.window?.browsingContext?.topChromeWindow);
+    addCandidateFrom(() => this.window?.ownerGlobal);
+    addCandidateFrom(() => this.window?.document?.defaultView);
+    addCandidateFrom(() => this.window?.top);
+    addCandidateFrom(() => this.Zotero?.getMainWindow?.());
+
+    addCandidateFrom(() => {
+      const mainWindows = this.Zotero?.getMainWindows?.();
+      if (typeof mainWindows?.[Symbol.iterator] === "function") {
+        return [...mainWindows][0];
+      }
+      return mainWindows?.[0];
+    });
+
+    addCandidateFrom(() => this.Services?.ww?.activeWindow);
+    addCandidateFrom(() => this.Services?.focus?.activeWindow);
+
+    for (const windowType of ["zotero:main", "navigator:browser", "zotero:preferences", null]) {
+      addCandidateFrom(() => this.Services?.wm?.getMostRecentWindow?.(windowType));
+    }
+
+    addCandidateFrom(() => {
+      const enumerator = this.Services?.wm?.getEnumerator?.(null);
+      if (!enumerator?.hasMoreElements) {
+        return undefined;
+      }
+      while (enumerator.hasMoreElements()) {
+        const candidate = enumerator.getNext?.();
+        if (candidate) {
+          return candidate;
+        }
+      }
+      return undefined;
+    });
+    addCandidate(null);
+
+    return candidates;
+  }
+
+  resolveFilePickerParentCandidate(candidate) {
+    if (!candidate || typeof candidate !== "object") {
+      return candidate;
+    }
+    for (const getter of [
+      () => candidate.ownerGlobal,
+      () => candidate.document?.defaultView,
+      () => candidate.contentWindow,
+      () => candidate.ownerDocument?.defaultView,
+      () => candidate.window
+    ]) {
+      try {
+        const resolved = getter();
+        if (resolved && resolved !== candidate) {
+          return resolved;
+        }
+      }
+      catch (_error) {
+        // Ignore cross-compartment or detached window wrappers.
+      }
+    }
+    return candidate;
+  }
+
+  isFilePickerInitError(error) {
+    const message = String(error?.message || error || "");
+    const name = String(error?.name || "");
+    const result = error?.result ?? error?.code;
+    return result === 0x80070057
+      || /NS_ERROR_ILLEGAL_VALUE/i.test(name)
+      || /NS_ERROR_ILLEGAL_VALUE|0x80070057|nsIFilePicker\.init/i.test(message);
   }
 
   openPath(path) {
@@ -720,6 +955,10 @@ function replacePathPrefix(value, prefix, replacement) {
   }
   const escaped = normalizedPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return String(value).replace(new RegExp(escaped, "gi"), replacement);
+}
+
+function escapePowerShellSingleQuotedString(value) {
+  return String(value ?? "").replace(/'/g, "''");
 }
 
 export function normalizeJoinParts(parts) {

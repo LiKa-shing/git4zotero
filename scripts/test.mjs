@@ -563,9 +563,12 @@ assert.throws(() => assertSafeCommitHash("../HEAD"));
 {
   const writes = [];
   const directories = [];
+  const parentWindow = { name: "preferences" };
+  parentWindow.top = parentWindow;
   const picker = {
     file: { path: "C:\\Exports\\summary.md" },
-    init(_parent, title, mode) {
+    init(parent, title, mode) {
+      assert.equal(parent, parentWindow);
       assert.equal(title, UI_TEXT.menuExportSummary);
       assert.equal(mode, 1);
     },
@@ -607,7 +610,8 @@ assert.throws(() => assertSafeCommitHash("../HEAD"));
       makeDirectory: async (target) => directories.push(target),
       writeUTF8: async (target, content) => writes.push([target, content])
     },
-    PathUtils: null
+    PathUtils: null,
+    window: parentWindow
   });
   const savedPath = await platform.saveTextFile({
     title: UI_TEXT.menuExportSummary,
@@ -617,6 +621,355 @@ assert.throws(() => assertSafeCommitHash("../HEAD"));
   assert.equal(savedPath, "C:\\Exports\\summary.md");
   assert.deepEqual(writes, [["C:\\Exports\\summary.md", "# Summary\n"]]);
   assert.deepEqual(directories, ["C:\\Exports"]);
+}
+
+{
+  const parentWindow = { name: "preferences" };
+  parentWindow.top = parentWindow;
+  let initParent = null;
+  let initTitle = "";
+  let initMode = null;
+  const picker = {
+    file: { path: "D:\\MigrationBackups\\.git4zotero-select-folder" },
+    init(parent, title, mode) {
+      initParent = parent;
+      initTitle = title;
+      initMode = mode;
+    },
+    appendFilters(filter) {
+      assert.equal(filter, 99);
+    },
+    open(resolve) {
+      resolve(0);
+    }
+  };
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: { prompt: {} },
+    Cc: {
+      "@mozilla.org/filepicker;1": {
+        createInstance: () => picker
+      }
+    },
+    Ci: {
+      nsIFile: function nsIFile() {},
+      nsIFilePicker: {
+        modeSave: 1,
+        returnCancel: 2,
+        filterAll: 99
+      }
+    },
+    ChromeUtils: {},
+    window: parentWindow
+  });
+  const selectedDirectory = await platform.pickDirectoryViaSaveDialog("选择迁移导出目录");
+  assert.equal(initParent, parentWindow);
+  assert.equal(initTitle, "选择迁移导出目录");
+  assert.equal(initMode, 1);
+  assert.equal(picker.defaultString, ".git4zotero-select-folder");
+  assert.equal(selectedDirectory, "D:\\MigrationBackups");
+}
+
+{
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: { appinfo: { OS: "WINNT" }, prompt: {} },
+    Cc: {},
+    Ci: {},
+    ChromeUtils: {}
+  });
+  const processCalls = [];
+  platform.getPowerShellExecutableCandidates = () => [{ command: "powershell.exe", mustExist: false }];
+  platform.runProcess = async (command, args) => {
+    processCalls.push({ command, args });
+    return { exitCode: 0, stdout: "D:\\NativeChosen\r\n", stderr: "" };
+  };
+  platform.pickSavePath = async () => {
+    throw new Error("nsIFilePicker should not be used when native Windows folder picker succeeds");
+  };
+  const selectedDirectory = await platform.pickDirectoryViaSaveDialog("选择迁移导出目录");
+  assert.equal(selectedDirectory, "D:\\NativeChosen");
+  assert.equal(processCalls[0].command, "powershell.exe");
+  assert(processCalls[0].args.includes("-STA"));
+  assert(processCalls[0].args.at(-1).includes("FolderBrowserDialog"));
+  assert(processCalls[0].args.at(-1).includes("选择迁移导出目录"));
+  assert(processCalls[0].args.at(-1).includes("System.Windows.Forms"));
+}
+
+{
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: { appinfo: { OS: "WINNT" }, prompt: {} },
+    Cc: {},
+    Ci: {},
+    ChromeUtils: {}
+  });
+  platform.getPowerShellExecutableCandidates = () => [{ command: "powershell.exe", mustExist: false }];
+  platform.runProcess = async () => ({ exitCode: 2, stdout: "", stderr: "" });
+  platform.pickSavePath = async () => {
+    throw new Error("cancelled native Windows folder picker should not fall through to nsIFilePicker");
+  };
+  const selectedDirectory = await platform.pickDirectoryViaSaveDialog("选择迁移导出目录");
+  assert.equal(selectedDirectory, null);
+}
+
+{
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: { appinfo: { OS: "WINNT" }, prompt: {} },
+    Cc: {},
+    Ci: {},
+    ChromeUtils: {}
+  });
+  platform.getPowerShellExecutableCandidates = () => [{ command: "powershell.exe", mustExist: false }];
+  const scriptsRun = [];
+  platform.runProcess = async (_command, args) => {
+    scriptsRun.push(args.at(-1));
+    if (scriptsRun.length === 1) {
+      return { exitCode: 1, stdout: "", stderr: "forms unavailable" };
+    }
+    return { exitCode: 0, stdout: "D:\\ShellChosen\r\n", stderr: "" };
+  };
+  platform.pickSavePath = async () => {
+    throw new Error("Windows folder picker should use Shell.Application fallback before nsIFilePicker");
+  };
+  const selectedDirectory = await platform.pickDirectoryViaSaveDialog("选择 O'Hare 目录");
+  assert.equal(selectedDirectory, "D:\\ShellChosen");
+  assert.equal(scriptsRun.length, 2);
+  assert(scriptsRun[0].includes("FolderBrowserDialog"));
+  assert(scriptsRun[1].includes("Shell.Application"));
+  assert(platform.createWindowsFolderPickerScripts("选择 O'Hare 目录")[0].includes("O''Hare"));
+}
+
+{
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: { appinfo: { OS: "WINNT" }, prompt: {} },
+    Cc: {},
+    Ci: {},
+    ChromeUtils: {}
+  });
+  platform.getPowerShellExecutableCandidates = () => [{ command: "powershell.exe", mustExist: false }];
+  platform.runProcess = async () => ({ exitCode: 1, stdout: "", stderr: "native picker unavailable" });
+  platform.pickSavePath = async () => {
+    throw new Error("Windows directory selection must not fall through to nsIFilePicker after native picker failure");
+  };
+  await assert.rejects(
+    () => platform.pickDirectoryViaSaveDialog("选择迁移导出目录"),
+    /Windows/
+  );
+}
+
+{
+  const invalidParent = { name: "preferences" };
+  const validParent = { name: "top" };
+  const initParents = [];
+  const initTitles = [];
+  const initModes = [];
+  const initError = new Error("Component returned failure code: 0x80070057 (NS_ERROR_ILLEGAL_VALUE) [nsIFilePicker.init]");
+  initError.result = 0x80070057;
+  const pickers = [
+    {
+      init(parent, title, mode) {
+        initParents.push(parent);
+        initTitles.push(title);
+        initModes.push(mode);
+        throw initError;
+      }
+    },
+    {
+      file: { path: "D:\\GuideExports" },
+      init(parent, title, mode) {
+        initParents.push(parent);
+        initTitles.push(title);
+        initModes.push(mode);
+      },
+      open(resolve) {
+        resolve(0);
+      }
+    }
+  ];
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: { prompt: {} },
+    Cc: {
+      "@mozilla.org/filepicker;1": {
+        createInstance: () => pickers.shift()
+      }
+    },
+    Ci: {
+      nsIFile: function nsIFile() {},
+      nsIFilePicker: {
+        modeGetFolder: 3,
+        returnCancel: 2
+      }
+    },
+    ChromeUtils: {},
+    window: {
+      browsingContext: { topChromeWindow: invalidParent },
+      top: validParent
+    }
+  });
+  const selectedDirectory = await platform.pickDirectory("选择迁移导出目录");
+  assert.deepEqual(initParents, [invalidParent, validParent]);
+  assert.deepEqual(initTitles, ["选择迁移导出目录", "选择迁移导出目录"]);
+  assert.deepEqual(initModes, [3, 3]);
+  assert.equal(selectedDirectory, "D:\\GuideExports");
+}
+
+{
+  const invalidPreferenceWindow = { name: "preferences-wrapper" };
+  const zoteroMainWindow = { name: "zotero-main" };
+  const initParents = [];
+  const initError = new Error("Could not convert JavaScript argument arg 0 [nsIFilePicker.init]");
+  const pickers = [
+    {
+      init(parent) {
+        initParents.push(parent);
+        throw initError;
+      }
+    },
+    {
+      file: { path: "D:\\ImportedMainWindow\\.git4zotero-select-folder" },
+      init(parent, _title, mode) {
+        initParents.push(parent);
+        assert.equal(mode, 1);
+      },
+      appendFilters() {},
+      open(resolve) {
+        resolve(0);
+      }
+    }
+  ];
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: null,
+    Cc: {
+      "@mozilla.org/filepicker;1": {
+        createInstance: () => pickers.shift()
+      }
+    },
+    Ci: {
+      nsIFile: function nsIFile() {},
+      nsIFilePicker: {
+        modeSave: 1,
+        returnCancel: 2,
+        filterAll: 99
+      }
+    },
+    ChromeUtils: {
+      importESModule: (spec) => {
+        assert.equal(spec, "resource://gre/modules/Services.sys.mjs");
+        return {
+          Services: {
+            wm: {
+              getMostRecentWindow: (windowType) => windowType === "zotero:main" ? zoteroMainWindow : null
+            }
+          }
+        };
+      }
+    },
+    window: {
+      browsingContext: { topChromeWindow: invalidPreferenceWindow }
+    }
+  });
+  const selectedDirectory = await platform.pickDirectoryViaSaveDialog("选择迁移导出目录");
+  assert.deepEqual(initParents, [invalidPreferenceWindow, zoteroMainWindow]);
+  assert.equal(selectedDirectory, "D:\\ImportedMainWindow");
+}
+
+{
+  const mainWindow = { name: "main" };
+  let initParent = null;
+  const picker = {
+    file: { path: "D:\\ShouldNotUse" },
+    init(parent, _title, mode) {
+      initParent = parent;
+      assert.equal(mode, 3);
+    },
+    open(resolve) {
+      resolve(2);
+    }
+  };
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {},
+      getMainWindow: () => mainWindow
+    },
+    Services: { prompt: {} },
+    Cc: {
+      "@mozilla.org/filepicker;1": {
+        createInstance: () => picker
+      }
+    },
+    Ci: {
+      nsIFile: function nsIFile() {},
+      nsIFilePicker: {
+        modeGetFolder: 3,
+        returnCancel: 2
+      }
+    },
+    ChromeUtils: {}
+  });
+  const selectedDirectory = await platform.pickDirectory("选择迁移导出目录");
+  assert.equal(initParent, mainWindow);
+  assert.equal(selectedDirectory, null);
+}
+
+{
+  const initError = new Error("Component returned failure code: 0x80070057 (NS_ERROR_ILLEGAL_VALUE) [nsIFilePicker.init]");
+  initError.result = 0x80070057;
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: { prompt: {} },
+    Cc: {
+      "@mozilla.org/filepicker;1": {
+        createInstance: () => ({
+          init() {
+            throw initError;
+          }
+        })
+      }
+    },
+    Ci: {
+      nsIFile: function nsIFile() {},
+      nsIFilePicker: {
+        modeGetFolder: 3,
+        returnCancel: 2
+      }
+    },
+    ChromeUtils: {},
+    window: { top: { name: "invalid" } }
+  });
+  await assert.rejects(
+    () => platform.pickDirectory("选择迁移导出目录"),
+    /当前环境无法打开保存对话框。.*NS_ERROR_ILLEGAL_VALUE/
+  );
 }
 
 {
@@ -1096,6 +1449,7 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
 
   const configuredSavePlatform = Object.create(ZoteroPlatform.prototype);
   const configuredWrites = [];
+  let configuredPickCalls = 0;
   Object.assign(configuredSavePlatform, {
     Zotero: { debug() {} },
     getPluginDataDirectory: () => "C:/Profile/git4zotero",
@@ -1103,6 +1457,7 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
     exists: async (target) => target === "C:/Backup",
     isDirectory: async (target) => target === "C:/Backup",
     pickSavePath: async () => {
+      configuredPickCalls += 1;
       throw new Error(UI_TEXT.saveDialogUnavailable);
     },
     writeBytes: async (target, bytes) => {
@@ -1117,7 +1472,30 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
     }),
     "C:/Backup/git4zotero-backup.zip"
   );
+  assert.equal(configuredPickCalls, 0);
   assert.equal(configuredWrites[0].target, "C:/Backup/git4zotero-backup.zip");
+
+  const fallbackSavePlatform = Object.create(ZoteroPlatform.prototype);
+  const fallbackWrites = [];
+  Object.assign(fallbackSavePlatform, {
+    Zotero: { debug() {} },
+    getPluginDataDirectory: () => "C:/Profile/git4zotero",
+    join: (...parts) => parts.join("/"),
+    pickSavePath: async () => {
+      throw new Error(UI_TEXT.saveDialogUnavailable);
+    },
+    writeBytes: async (target, bytes) => {
+      fallbackWrites.push({ target, bytes });
+    }
+  });
+  assert.equal(
+    await fallbackSavePlatform.saveBinaryFile({
+      defaultFileName: "git4zotero-backup.zip",
+      bytes: binary
+    }),
+    "C:/Profile/git4zotero/exports/git4zotero-backup.zip"
+  );
+  assert.equal(fallbackWrites[0].target, "C:/Profile/git4zotero/exports/git4zotero-backup.zip");
 
   const invalidDirectoryPlatform = Object.create(ZoteroPlatform.prototype);
   let invalidPickCalls = 0;
@@ -2935,17 +3313,105 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   const archivePathWindow = archivePathPrefs.context.window.Git4ZoteroPreferences;
   assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "D:\\MigrationBackups");
   assert.equal(archivePathPrefs.elements["git4zotero-current-archive-export-directory"].textContent, "D:\\MigrationBackups");
+  const chosenDirectoriesChecked = [];
   archivePathWindow.getPlatform = () => ({
-    pickDirectory: async () => "D:\\ChosenBackups"
+    pickDirectory: async () => {
+      throw new Error("modeGetFolder should not be used by preferences");
+    },
+    pickDirectoryViaSaveDialog: async () => "D:\\ChosenBackups",
+    assertDirectoryAvailable: async (path) => {
+      chosenDirectoriesChecked.push(path);
+    }
   });
   await archivePathWindow.chooseArchiveExportDirectory();
   assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\ChosenBackups");
   assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "D:\\ChosenBackups");
+  assert.deepEqual(chosenDirectoriesChecked, ["D:\\ChosenBackups"]);
   assert(archivePathPrefs.elements["git4zotero-archive-status"].textContent.includes("迁移导出目录已保存"));
+  archivePathWindow.getPlatform = () => ({
+    pickDirectory: async () => {
+      throw new Error("modeGetFolder should not be used by preferences");
+    },
+    pickDirectoryViaSaveDialog: async () => null,
+    assertDirectoryAvailable: async () => {}
+  });
+  await archivePathWindow.chooseArchiveExportDirectory();
+  assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\ChosenBackups");
+  assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "D:\\ChosenBackups");
+  assert(archivePathPrefs.elements["git4zotero-archive-status"].textContent.includes("已取消操作"));
+  archivePathWindow.getPlatform = () => ({
+    pickDirectory: async () => {
+      throw new Error("modeGetFolder should not be used by preferences");
+    },
+    pickDirectoryViaSaveDialog: async () => {
+      throw new Error("Component returned failure code: 0x80070057 (NS_ERROR_ILLEGAL_VALUE) [nsIFilePicker.init]");
+    },
+    assertDirectoryAvailable: async () => {}
+  });
+  await archivePathWindow.chooseArchiveExportDirectory();
+  assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\ChosenBackups");
+  assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "D:\\ChosenBackups");
+  assert(archivePathPrefs.elements["git4zotero-archive-status"].textContent.includes("选择迁移导出目录失败"));
+  assert(!archivePathPrefs.elements["git4zotero-archive-status"].textContent.includes("导出版本历史失败"));
+  const manualDirectoriesChecked = [];
+  archivePathPrefs.elements["git4zotero-archive-export-directory"].value = "D:\\ManualBackups";
+  archivePathWindow.getPlatform = () => ({
+    assertDirectoryAvailable: async (path) => {
+      manualDirectoriesChecked.push(path);
+    }
+  });
+  await archivePathWindow.saveArchiveExportDirectory();
+  assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\ManualBackups");
+  assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "D:\\ManualBackups");
+  assert.equal(archivePathPrefs.elements["git4zotero-current-archive-export-directory"].textContent, "D:\\ManualBackups");
+  assert.deepEqual(manualDirectoriesChecked, ["D:\\ManualBackups"]);
+  archivePathPrefs.elements["git4zotero-archive-export-directory"].value = "D:\\Missing";
+  archivePathWindow.getPlatform = () => ({
+    assertDirectoryAvailable: async () => {
+      throw new Error("missing directory");
+    }
+  });
+  await archivePathWindow.saveArchiveExportDirectory();
+  assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\ManualBackups");
+  assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "D:\\Missing");
+  assert.equal(archivePathPrefs.elements["git4zotero-current-archive-export-directory"].textContent, "D:\\ManualBackups");
+  assert(archivePathPrefs.elements["git4zotero-archive-status"].textContent.includes("missing directory"));
+  let emptyInputValidated = false;
+  archivePathPrefs.elements["git4zotero-archive-export-directory"].value = "";
+  archivePathWindow.getPlatform = () => ({
+    assertDirectoryAvailable: async () => {
+      emptyInputValidated = true;
+    }
+  });
+  await archivePathWindow.saveArchiveExportDirectory();
+  assert.equal(emptyInputValidated, false);
+  assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "");
+  assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "");
+  assert(archivePathPrefs.elements["git4zotero-current-archive-export-directory"].textContent.includes("可粘贴目录路径"));
+  archivePathPrefs.elements["git4zotero-archive-export-directory"].value = "D:\\ManualBackups";
+  archivePathPrefs.prefs.set(PREFS.archiveExportDirectory, "D:\\ManualBackups");
   archivePathWindow.clearArchiveExportDirectory();
   assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "");
   assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "");
-  assert(archivePathPrefs.elements["git4zotero-current-archive-export-directory"].textContent.includes("未指定"));
+  assert(archivePathPrefs.elements["git4zotero-current-archive-export-directory"].textContent.includes("可粘贴目录路径"));
+
+  const delayedPreferenceWritePrefs = await runPreferencesScript({
+    archiveExportDirectory: "D:\\OldDisplay"
+  });
+  const delayedPreferenceWriteWindow = delayedPreferenceWritePrefs.context.window.Git4ZoteroPreferences;
+  const delayedPreferenceWrites = [];
+  delayedPreferenceWritePrefs.context.Zotero.Prefs.set = (key, value) => {
+    delayedPreferenceWrites.push([key, value]);
+  };
+  delayedPreferenceWritePrefs.elements["git4zotero-archive-export-directory"].value = "D:\\ImmediateDisplay";
+  delayedPreferenceWriteWindow.getPlatform = () => ({
+    assertDirectoryAvailable: async () => {}
+  });
+  await delayedPreferenceWriteWindow.saveArchiveExportDirectory();
+  assert.deepEqual(delayedPreferenceWrites, [[PREFS.archiveExportDirectory, "D:\\ImmediateDisplay"]]);
+  assert.equal(delayedPreferenceWritePrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\OldDisplay");
+  assert.equal(delayedPreferenceWritePrefs.elements["git4zotero-archive-export-directory"].value, "D:\\ImmediateDisplay");
+  assert.equal(delayedPreferenceWritePrefs.elements["git4zotero-current-archive-export-directory"].textContent, "D:\\ImmediateDisplay");
 
   const failedPrefs = await runPreferencesScript({
     prefValue: "C:\\Old\\git.exe",
@@ -3016,7 +3482,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   await diagnosticsWindow.copyIssueTemplate();
   assert(diagnosticsPrefs.elements["git4zotero-diagnostics-output"].textContent.includes("## 复现步骤"));
   diagnosticsPrefs.prefs.set(PREFS.archiveExportDirectory, "D:\\ArchiveTarget");
-  diagnosticsPrefs.elements["git4zotero-archive-export-directory"].value = "D:\\ArchiveTarget";
+  diagnosticsPrefs.elements["git4zotero-archive-export-directory"].value = "D:\\UnsavedInput";
   let archiveExportInitialDirectory = "";
   diagnosticsWindow.archiveService = {
     exportRepositoryArchive: async (options = {}) => {
@@ -3061,7 +3527,12 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
     "git4zotero-export-history",
     "git4zotero-import-history",
     "git4zotero-choose-archive-export-directory",
-    "git4zotero-clear-archive-export-directory"
+    "git4zotero-save-archive-export-directory",
+    "git4zotero-clear-archive-export-directory",
+    "git4zotero-about-homepage",
+    "git4zotero-about-github",
+    "git4zotero-about-feedback",
+    "git4zotero-about-qa"
   ]) {
     assert.equal(guidePrefs.elements[staticButtonID].listeners.click, undefined, `${staticButtonID} must rely on its inline onclick handler`);
   }
@@ -3088,7 +3559,10 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
     makeDirectory: async (path) => platformActions.push(["makeDirectory", path]),
     openPath: (path) => platformActions.push(["openPath", path]),
     openURL: (url) => platformActions.push(["openURL", url]),
-    pickDirectory: async () => "D:\\GuideExports",
+    pickDirectory: async () => {
+      throw new Error("modeGetFolder should not be used by preferences");
+    },
+    pickDirectoryViaSaveDialog: async () => "D:\\GuideExports",
     writeTempProbeFile: async () => "C:\\ZoteroProfile\\git4zotero\\git4zotero-diagnostic-write-test.txt"
   });
   guideWindow.diagnosticService = {
@@ -3148,6 +3622,25 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   await guideWindow.runFirstUseGuideAction("open-git-guide");
   assert.equal(platformActions.filter((action) => action[0] === "openURL").length, 2);
   assert(platformActions.some((action) => action[0] === "openURL" && action[1].includes("GIT-INSTALL-zh.md")));
+
+  const projectLinks = [
+    ["homepage", "https://github.com/LiKa-shing/git4zotero#readme"],
+    ["github", "https://github.com/LiKa-shing/git4zotero"],
+    ["feedback", "https://github.com/LiKa-shing/git4zotero/issues"],
+    ["qa", "https://github.com/LiKa-shing/git4zotero/issues"]
+  ];
+  for (const [linkID, expectedURL] of projectLinks) {
+    guideWindow.openProjectLink(linkID);
+    assert(platformActions.some((action) => action[0] === "openURL" && action[1] === expectedURL), `${linkID} must open ${expectedURL}`);
+  }
+  assert(guidePrefs.elements["git4zotero-about-status"].textContent.includes("已打开项目链接"));
+  const openURLCountAfterProjectLinks = platformActions.filter((action) => action[0] === "openURL").length;
+  guideWindow.openProjectLink("missing");
+  assert.equal(platformActions.filter((action) => action[0] === "openURL").length, openURLCountAfterProjectLinks);
+  assert(guidePrefs.elements["git4zotero-about-status"].textContent.includes("未知的项目链接"));
+  guideWindow.openProjectLink();
+  assert.equal(platformActions.filter((action) => action[0] === "openURL").length, openURLCountAfterProjectLinks);
+  assert(guidePrefs.elements["git4zotero-about-status"].textContent.includes("未知的项目链接"));
 
   await guideWindow.showFirstUseGuideStep(1);
   assert.equal(guidePrefs.elements["git4zotero-guide-step-title"].textContent, "数据目录");

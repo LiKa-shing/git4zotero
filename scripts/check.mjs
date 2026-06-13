@@ -79,6 +79,9 @@ const requiredChineseText = [
   "运行健康检查",
   "最近错误",
   "首次使用向导",
+  "支持工具",
+  "选择迁移导出目录失败",
+  "自动生成备份 zip 文件名",
   "导出全部版本历史",
   "导入版本历史",
   "恢复前安全检查"
@@ -393,6 +396,27 @@ assert(platformModule.includes("listDirectory"));
 assert(platformModule.includes("copyTextToClipboard"));
 assert(platformModule.includes("redactPath"));
 assert(platformModule.includes("writeTempProbeFile"));
+assert(platformModule.includes("createInitializedFilePicker"));
+assert(platformModule.includes("importServices"));
+assert(platformModule.includes("pickDirectoryViaSaveDialog"));
+assert(platformModule.includes("tryPickDirectoryWithNativeDialog"));
+assert(platformModule.includes("createWindowsFolderPickerScripts"));
+assert(platformModule.includes("createWindowsFormsFolderPickerScript"));
+assert(platformModule.includes("createWindowsShellFolderPickerScript"));
+assert(platformModule.includes("FolderBrowserDialog"));
+assert(platformModule.includes("Shell.Application"));
+assert(platformModule.includes("windowsFolderPickerUnavailable"));
+assert(platformModule.includes("powershell.exe"));
+assert(platformModule.includes("\"-STA\""));
+assert(platformModule.includes("getFilePickerParentCandidates"));
+assert(platformModule.includes("resolveFilePickerParentCandidate"));
+assert(platformModule.includes("isFilePickerInitError"));
+assert(platformModule.includes("getMostRecentWindow"));
+assert(platformModule.includes("zotero:main"));
+assert(platformModule.includes("activeWindow"));
+assert(platformModule.includes("browsingContext"));
+assert(!platformModule.includes("this.initFilePicker"), "file picker must retry initialization with fresh picker instances");
+assert(!platformModule.includes("picker.init(null"), "file picker must use a real parent window when available");
 
 const cleanupModule = await fs.readFile(path.join(root, "chrome/content/src/cleanup.mjs"), "utf8");
 assert(cleanupModule.includes("RepositoryIndexStore"));
@@ -455,8 +479,37 @@ assert(preferencesXhtml.includes("清理已删除条目的历史"));
 assert(preferencesXhtml.includes("复制诊断信息"));
 assert(preferencesXhtml.includes("运行健康检查"));
 assert(preferencesXhtml.includes("首次使用向导"));
+assert(preferencesXhtml.includes("支持工具"));
+assert(!preferencesXhtml.includes("低风险工具"));
+assert(!preferencesXhtml.includes("readonly=\"readonly\""), "migration export directory input must be editable");
+assert(preferencesXhtml.includes("git4zotero-save-archive-export-directory"));
+assert(preferencesXhtml.includes("onclick=\"Git4ZoteroPreferences.saveArchiveExportDirectory(event)\""));
+assert(preferencesXhtml.includes("保存目录"));
+assert(preferencesXhtml.includes("可直接粘贴目录路径"));
+assert(preferencesXhtml.includes("自动生成备份 zip 文件名"));
 assert(preferencesXhtml.includes("打开数据目录"));
 assert(preferencesXhtml.includes("复制 issue 模板"));
+assert(preferencesXhtml.includes("关于"));
+assert(preferencesXhtml.includes("LiKa-shing/git4zotero"));
+assert(preferencesXhtml.includes("git4zotero 版本 0.3.1"));
+assert(preferencesXhtml.includes("MIT"));
+assert(preferencesXhtml.includes("Zotero 8.0"));
+assert(preferencesXhtml.includes(".docx/.doc"));
+assert(preferencesXhtml.includes("git4zotero-about-links"));
+assert(preferencesXhtml.includes("git4zotero-about-link"));
+assert(preferencesXhtml.includes("git4zotero-about-homepage"));
+assert(preferencesXhtml.includes("git4zotero-about-github"));
+assert(preferencesXhtml.includes("git4zotero-about-feedback"));
+assert(preferencesXhtml.includes("git4zotero-about-qa"));
+assert(preferencesXhtml.includes("git4zotero-about-status"));
+assert(!preferencesXhtml.includes("git4zotero-about-repository"));
+assert(!preferencesXhtml.includes("git4zotero-about-releases"));
+assert(!preferencesXhtml.includes("git4zotero-about-issues"));
+assert(!preferencesXhtml.includes("git4zotero-about-readme"));
+assert(!preferencesXhtml.includes("git4zotero-about-license"));
+assert(preferencesXhtml.includes("onclick=\"Git4ZoteroPreferences.openProjectLink('homepage', event)\""));
+assert(preferencesXhtml.includes("Bug Report, Feature Request"));
+assert(preferencesXhtml.includes("Q&amp;A"));
 assert(preferencesXhtml.includes("导出全部版本历史"));
 assert(preferencesXhtml.includes("导入版本历史"));
 assert(!preferencesXhtml.includes("preference=\"extensions.git4zotero.gitPath\""));
@@ -476,8 +529,32 @@ assert(preferencesScript.includes("runHealthCheck"));
 assert(preferencesScript.includes("RepositoryArchiveService"));
 assert(preferencesScript.includes("exportHistoryArchive"));
 assert(preferencesScript.includes("importHistoryArchive"));
+assert(preferencesScript.includes("archiveChooseDirectoryFailed"));
+assert(preferencesScript.includes("saveArchiveExportDirectory"));
+assert(preferencesScript.includes("persistArchiveExportDirectoryValue"));
+assert(preferencesScript.includes("applyArchiveExportDirectoryDisplay"));
+assert(preferencesScript.includes("getArchiveExportDirectoryInputValue"));
+assert(preferencesScript.includes("archiveSaveDirectoryFailed"));
+assert(preferencesScript.includes("pickDirectoryViaSaveDialog"));
+assert(!preferencesScript.includes("getPlatform().pickDirectory("));
+assert(!preferencesScript.includes("input?.value ?? Zotero.Prefs.get(\"extensions.git4zotero.archiveExportDirectory\", true)"));
+assert(preferencesScript.includes("Zotero.Prefs.get(\"extensions.git4zotero.archiveExportDirectory\", true)"));
+assert(preferencesScript.includes("可直接粘贴目录路径"));
+assert(preferencesScript.includes("自动生成备份 zip 文件名"));
 assert(preferencesScript.includes("openDataDirectory"));
 assert(preferencesScript.includes("openGitGuide"));
+assert(preferencesScript.includes("PROJECT_LINKS"));
+assert(preferencesScript.includes("openProjectLink"));
+assert(preferencesScript.includes("aboutLinkOpened"));
+assert(preferencesScript.includes("aboutMeta"));
+assert(preferencesScript.includes("aboutOpenHomepage"));
+assert(preferencesScript.includes("aboutOpenFeedback"));
+assert(preferencesScript.includes("git4zotero version 0.3.1"));
+assert(!preferencesScript.includes("aboutRepository"));
+assert(!preferencesScript.includes("aboutOpenReadme"));
+assert(!preferencesScript.includes("aboutOpenLicense"));
+assert(preferencesScript.includes("Support Tools"));
+assert(!preferencesScript.includes("Low-Risk Tools"));
 assert(preferencesScript.includes("RepositoryCleanupService"));
 assert(preferencesScript.includes("gitInput.value = this.getSavedGitPath()"));
 assert(preferencesScript.includes("Git4ZoteroPreferenceL10n"));

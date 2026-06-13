@@ -6,11 +6,31 @@
 
 ### 中文
 
-- 暂无变更。
+- 设置页新增更轻量的“关于”区域，采用紧凑文本链接风格，提供 Homepage、GitHub、反馈和 Q&A 入口，并展示插件版本、仓库、协议、兼容范围和支持格式。
+- “低风险工具”更名为“支持工具”，让设置页工具区的用途更清晰。
+- 改进“迁移导出目录”设置体验：可以直接粘贴目录路径，也可以点击“选择目录...”；保存或选择成功后会立即回填输入框，并同步“当前迁移导出目录”显示。
+- 修复 Windows/Zotero 9 下“选择目录...”可能无法打开的问题；系统目录选择器不可用时会提示手动粘贴路径，不再显示难懂的底层文件选择器错误。
+- 已设置迁移导出目录后，“导出全部版本历史...”会直接在该目录自动生成备份 zip 文件；如果目录不存在或不是文件夹，会明确提示错误，不会静默保存到其他位置。
 
 ### English
 
-- No changes yet.
+- Added a lighter About area in the preferences pane with compact text links for Homepage, GitHub, feedback, and Q&A, plus plugin version, repository, license, compatibility, and supported formats.
+- Renamed “Low-Risk Tools” to “Support Tools” so the settings tools area is easier to understand.
+- Improved the migration export directory workflow: paste a folder path directly or use Choose Directory; after saving or choosing a folder, the input and current-directory display update immediately.
+- Fixed cases where Choose Directory could fail on Windows/Zotero 9; when the system folder picker is unavailable, the pane now points users to the paste-and-save fallback instead of showing low-level file picker errors.
+- When a migration export directory is configured, Export All Version History writes the backup zip directly there; if the directory is missing or not a folder, the pane reports a clear error instead of silently saving elsewhere.
+
+## 0.3.1
+
+### 中文
+
+- 优化首次使用向导弹窗 UI：固定窗口尺寸，改为内部区域滚动，并改善深色界面下的背景、文字、按钮、步骤选中态和状态徽标对比度。
+- 将插件版本提升至 0.3.1，用于本轮首次使用向导界面改进。
+
+### English
+
+- Improved the first-use guide dialog UI with a fixed window size, internal scrolling, and better dark-theme contrast for backgrounds, text, buttons, selected steps, and status badges.
+- Bumped the plugin version to 0.3.1 for this first-use guide UI refinement.
 
 ## 0.3.0
 

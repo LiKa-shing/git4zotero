@@ -46,7 +46,7 @@
     <html:dl class="git4zotero-pref-facts">
       <html:div>
         <html:dt data-git4zotero-i18n="pluginVersion">插件版本</html:dt>
-        <html:dd>0.3.0</html:dd>
+        <html:dd>0.3.1</html:dd>
       </html:div>
       <html:div>
         <html:dt data-git4zotero-i18n="supportedFormats">支持格式</html:dt>
@@ -123,7 +123,7 @@
       </html:section>
     </html:div>
 
-    <label><html:h3 data-git4zotero-i18n="lowRiskActionsTitle">低风险工具</html:h3></label>
+    <label><html:h3 data-git4zotero-i18n="lowRiskActionsTitle">支持工具</html:h3></label>
     <html:div class="git4zotero-pref-row git4zotero-pref-actions">
       <html:button id="git4zotero-open-data-dir"
                     type="button"
@@ -145,19 +145,22 @@
     <html:div class="git4zotero-pref-row git4zotero-pref-path-row">
       <html:input id="git4zotero-archive-export-directory"
                   type="text"
-                  readonly="readonly"
-                  placeholder="未指定，使用系统保存对话框默认位置"
+                  placeholder="可粘贴目录路径；留空使用系统保存对话框默认位置"
                   data-git4zotero-i18n-placeholder="archiveExportDirectoryPlaceholder" />
       <html:button id="git4zotero-choose-archive-export-directory"
                     type="button"
                     onclick="Git4ZoteroPreferences.chooseArchiveExportDirectory(event)"
                     data-git4zotero-i18n="archiveExportDirectoryChoose">选择目录...</html:button>
+      <html:button id="git4zotero-save-archive-export-directory"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.saveArchiveExportDirectory(event)"
+                    data-git4zotero-i18n="archiveExportDirectorySave">保存目录</html:button>
       <html:button id="git4zotero-clear-archive-export-directory"
                     type="button"
                     onclick="Git4ZoteroPreferences.clearArchiveExportDirectory(event)"
                     data-git4zotero-i18n="archiveExportDirectoryClear">清空</html:button>
     </html:div>
-    <html:p class="git4zotero-pref-help" data-git4zotero-i18n="archiveExportDirectoryHelp">只影响“导出全部版本历史”的默认保存位置；不影响导入位置，也不改变 Zotero 原始附件或插件数据目录。</html:p>
+    <html:p class="git4zotero-pref-help" data-git4zotero-i18n="archiveExportDirectoryHelp">可直接粘贴目录路径，也可用“选择目录...”辅助选择；导出时会在该目录自动生成备份 zip 文件名，不影响导入位置、Zotero 原始附件或插件数据目录。</html:p>
     <html:p class="git4zotero-pref-help"><html:span data-git4zotero-i18n="archiveExportDirectoryCurrent">当前迁移导出目录</html:span><html:span data-git4zotero-i18n="colon">：</html:span><html:code id="git4zotero-current-archive-export-directory">未指定，使用系统保存对话框默认位置</html:code></html:p>
     <html:div class="git4zotero-pref-row git4zotero-pref-actions">
       <html:button id="git4zotero-export-history"
@@ -199,5 +202,36 @@
     </html:div>
     <html:p id="git4zotero-orphan-status" class="git4zotero-pref-status" role="status" data-git4zotero-i18n="orphanInitial">尚未检查是否有已删除条目留下的版本历史。</html:p>
     <html:p class="git4zotero-pref-help" data-git4zotero-i18n="orphanHelp">条目移入 Zotero 回收站时，版本历史会保留，方便恢复条目后继续使用。若条目已被永久删除或清空回收站，插件会清理对应历史；此工具可检查并清理升级前遗留的无对应条目的历史。</html:p>
+  </groupbox>
+
+  <groupbox class="git4zotero-pref-section git4zotero-about-section">
+    <label><html:h2 data-git4zotero-i18n="aboutTitle">关于</html:h2></label>
+    <html:div class="git4zotero-about-links" aria-label="git4zotero project links">
+      <html:button id="git4zotero-about-homepage"
+                    class="git4zotero-about-link"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.openProjectLink('homepage', event)"
+                    data-git4zotero-i18n="aboutOpenHomepage">Homepage</html:button>
+      <html:span class="git4zotero-about-separator">-</html:span>
+      <html:button id="git4zotero-about-github"
+                    class="git4zotero-about-link"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.openProjectLink('github', event)"
+                    data-git4zotero-i18n="aboutOpenGitHub">GitHub</html:button>
+      <html:span class="git4zotero-about-separator">|</html:span>
+      <html:button id="git4zotero-about-feedback"
+                    class="git4zotero-about-link"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.openProjectLink('feedback', event)"
+                    data-git4zotero-i18n="aboutOpenFeedback">Bug Report, Feature Request</html:button>
+      <html:span class="git4zotero-about-separator">|</html:span>
+      <html:button id="git4zotero-about-qa"
+                    class="git4zotero-about-link"
+                    type="button"
+                    onclick="Git4ZoteroPreferences.openProjectLink('qa', event)"
+                    data-git4zotero-i18n="aboutOpenQA">Q&amp;A</html:button>
+    </html:div>
+    <html:p class="git4zotero-about-meta" data-git4zotero-i18n="aboutMeta">git4zotero 版本 0.3.1 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc</html:p>
+    <html:p id="git4zotero-about-status" class="git4zotero-pref-status" role="status" data-git4zotero-i18n="aboutStatusInitial">尚未打开项目链接。</html:p>
   </groupbox>
 </vbox>
