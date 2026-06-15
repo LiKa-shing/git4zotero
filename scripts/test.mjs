@@ -624,6 +624,210 @@ assert.throws(() => assertSafeCommitHash("../HEAD"));
 }
 
 {
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: { appinfo: { OS: "WINNT" }, prompt: {} },
+    Cc: {},
+    Ci: {},
+    ChromeUtils: {}
+  });
+  const processCalls = [];
+  platform.getPowerShellExecutableCandidates = () => [{ command: "powershell.exe", mustExist: false }];
+  platform.runProcess = async (command, args) => {
+    processCalls.push({ command, args });
+    return { exitCode: 0, stdout: "D:\\Backups\\git4zotero-backup.zip\r\n", stderr: "" };
+  };
+  platform.pickOpenPathWithFilePicker = async () => {
+    throw new Error("nsIFilePicker should not be used when native Windows open-file picker succeeds");
+  };
+  const selectedPath = await platform.pickOpenPath(UI_TEXT.archiveImportTitle);
+  assert.equal(selectedPath, "D:\\Backups\\git4zotero-backup.zip");
+  assert.equal(processCalls[0].command, "powershell.exe");
+  assert(processCalls[0].args.includes("-STA"));
+  assert(processCalls[0].args.at(-1).includes("OpenFileDialog"));
+  assert(processCalls[0].args.at(-1).includes("ZIP backups"));
+}
+
+{
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: { appinfo: { OS: "WINNT" }, prompt: {} },
+    Cc: {},
+    Ci: {},
+    ChromeUtils: {}
+  });
+  platform.getPowerShellExecutableCandidates = () => [{ command: "powershell.exe", mustExist: false }];
+  platform.runProcess = async () => ({ exitCode: 2, stdout: "", stderr: "" });
+  platform.pickOpenPathWithFilePicker = async () => {
+    throw new Error("cancelled native Windows open-file picker should not fall through to nsIFilePicker");
+  };
+  const selectedPath = await platform.pickOpenPath(UI_TEXT.archiveImportTitle);
+  assert.equal(selectedPath, null);
+}
+
+{
+  const parentWindow = { name: "main" };
+  let initMode = null;
+  const picker = {
+    file: { path: "D:\\Backups\\fallback.zip" },
+    init(_parent, _title, mode) {
+      initMode = mode;
+    },
+    appendFilter(label, pattern) {
+      assert.equal(label, "ZIP");
+      assert.equal(pattern, "*.zip");
+    },
+    appendFilters(filter) {
+      assert.equal(filter, 99);
+    },
+    open(resolve) {
+      resolve(0);
+    }
+  };
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: { appinfo: { OS: "WINNT" }, prompt: {} },
+    Cc: {
+      "@mozilla.org/filepicker;1": {
+        createInstance: () => picker
+      }
+    },
+    Ci: {
+      nsIFile: function nsIFile() {},
+      nsIFilePicker: {
+        modeOpen: 4,
+        returnCancel: 2,
+        filterAll: 99
+      }
+    },
+    ChromeUtils: {},
+    window: parentWindow
+  });
+  platform.getPowerShellExecutableCandidates = () => [{ command: "powershell.exe", mustExist: false }];
+  platform.runProcess = async () => ({ exitCode: 1, stdout: "", stderr: "native unavailable" });
+  const selectedPath = await platform.pickOpenPath(UI_TEXT.archiveImportTitle);
+  assert.equal(initMode, 4);
+  assert.equal(selectedPath, "D:\\Backups\\fallback.zip");
+}
+
+{
+  const invalidParent = { name: "preferences" };
+  const validParent = { name: "top" };
+  const initParents = [];
+  const initError = new Error("Could not convert JavaScript argument arg 0 [nsIFilePicker.init]");
+  const pickers = [
+    {
+      init(parent) {
+        initParents.push(parent);
+        throw initError;
+      }
+    },
+    {
+      file: { path: "D:\\Backups\\retried-open.zip" },
+      init(parent, _title, mode) {
+        initParents.push(parent);
+        assert.equal(mode, 4);
+      },
+      appendFilter() {},
+      appendFilters() {},
+      open(resolve) {
+        resolve(0);
+      }
+    }
+  ];
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: { prompt: {} },
+    Cc: {
+      "@mozilla.org/filepicker;1": {
+        createInstance: () => pickers.shift()
+      }
+    },
+    Ci: {
+      nsIFile: function nsIFile() {},
+      nsIFilePicker: {
+        modeOpen: 4,
+        returnCancel: 2,
+        filterAll: 99
+      }
+    },
+    ChromeUtils: {},
+    window: {
+      browsingContext: { topChromeWindow: invalidParent },
+      top: validParent
+    }
+  });
+  const selectedPath = await platform.pickOpenPath(UI_TEXT.archiveImportTitle);
+  assert.deepEqual(initParents, [invalidParent, validParent]);
+  assert.equal(selectedPath, "D:\\Backups\\retried-open.zip");
+}
+
+{
+  const promptMessages = [];
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: {
+      appinfo: { OS: "WINNT" },
+      prompt: {
+        prompt(_parent, title, message, input) {
+          promptMessages.push({ title, message });
+          input.value = "D:\\Manual\\typed-backup.zip";
+          return true;
+        }
+      }
+    },
+    Cc: {},
+    Ci: {},
+    ChromeUtils: {}
+  });
+  platform.getPowerShellExecutableCandidates = () => [{ command: "powershell.exe", mustExist: false }];
+  platform.runProcess = async () => ({ exitCode: 1, stdout: "", stderr: "native unavailable" });
+  const selectedPath = await platform.pickOpenPath(UI_TEXT.archiveImportTitle);
+  assert.equal(selectedPath, "D:\\Manual\\typed-backup.zip");
+  assert.equal(promptMessages[0].title, UI_TEXT.archiveImportPathPromptTitle);
+  assert(promptMessages[0].message.includes(UI_TEXT.archiveImportPathPromptMessage));
+  assert(promptMessages[0].message.includes(UI_TEXT.openFileDialogUnavailable));
+}
+
+{
+  const platform = Object.create(ZoteroPlatform.prototype);
+  Object.assign(platform, {
+    exists: async (target) => target === "D:\\BackupFolder" || target === "D:\\ExistingBackup.zip",
+    isDirectory: async (target) => target === "D:\\BackupFolder",
+    readFileBytes: async () => new Uint8Array([1, 2, 3]),
+    pickOpenPath: async () => {
+      throw new Error("direct path must not open file picker");
+    }
+  });
+  await assert.rejects(
+    () => platform.openBinaryFile({ path: "D:\\MissingBackup.zip" }),
+    /导入文件不存在|匯入檔案不存在|import file does not exist/i
+  );
+  await assert.rejects(
+    () => platform.openBinaryFile({ path: "D:\\BackupFolder" }),
+    /导入路径不是文件|匯入路徑不是檔案|import path is not a file/i
+  );
+  const opened = await platform.openBinaryFile({ path: "\"D:\\ExistingBackup.zip\"" });
+  assert.equal(opened.path, "D:\\ExistingBackup.zip");
+  assert.deepEqual([...opened.bytes], [1, 2, 3]);
+}
+
+{
   const parentWindow = { name: "preferences" };
   parentWindow.top = parentWindow;
   let initParent = null;
@@ -1395,6 +1599,35 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
   assert.equal(saveRequests.at(-1).initialDirectory, "C:/backup");
   assert(saveRequests.at(-1).defaultFileName.startsWith("git4zotero-backup-"));
 
+  const itemArchiveAttachment = {
+    libraryID: 1,
+    itemID: 10,
+    itemKey: "ITEM",
+    attachmentID: 20,
+    attachmentKey: "ATTACH",
+    fileName: "paper.docx",
+    extension: ".docx"
+  };
+  const itemExportResult = await archiveService.exportItemRepositoryArchive({
+    repoRelativePath: "library-1/item-ITEM",
+    repoPath: "C:/Profile/git4zotero/library-1/item-ITEM",
+    attachment: itemArchiveAttachment,
+    initialDirectory: "C:/item-backup"
+  });
+  const itemExportedZip = exportedZip;
+  assert.equal(itemExportResult.repositoryCount, 1);
+  assert.equal(saveRequests.at(-1).initialDirectory, "C:/item-backup");
+  assert(saveRequests.at(-1).defaultFileName.startsWith("git4zotero-ITEM-history-"));
+  const itemExportEntries = archiveService.readArchiveEntries(itemExportedZip);
+  const itemExportNames = itemExportEntries.map((entry) => entry.name);
+  assert(itemExportNames.includes("export-manifest.json"));
+  assert(!itemExportNames.includes("index.json"));
+  assert(itemExportNames.includes("library-1/item-ITEM/.git/config"));
+  assert(itemExportNames.every((name) => name === "export-manifest.json" || name.startsWith("library-1/item-ITEM/")));
+  const itemExportManifest = JSON.parse(new TextDecoder().decode(itemExportEntries.find((entry) => entry.name === "export-manifest.json").bytes));
+  assert.equal(itemExportManifest.scope, "item");
+  assert.equal(itemExportManifest.repositories[0].repoRelativePath, "library-1/item-ITEM");
+
   const targetFiles = new Map();
   const targetDirectories = new Set(["D:/Profile/git4zotero"]);
   let ensureIndexCalls = 0;
@@ -1425,6 +1658,293 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
   const skipResult = await importService.importRepositoryArchive();
   assert.equal(skipResult.imported.length, 0);
   assert.equal(skipResult.skipped[0].reason, UI_TEXT.archiveImportSkippedExisting);
+
+  const directImportFiles = new Map();
+  let directImportPath = "";
+  const directImportService = new RepositoryArchiveService({
+    platform: {
+      getPluginDataDirectory: () => "E:/Profile/git4zotero",
+      join: (...parts) => parts.join("/"),
+      exists: async (target) => directImportFiles.has(target) || target === "E:/Profile/git4zotero",
+      writeBytes: async (target, bytes) => {
+        directImportFiles.set(target, bytes);
+      },
+      openBinaryFile: async ({ path }) => {
+        directImportPath = path;
+        return { path, bytes: exportedZip };
+      }
+    },
+    cleanupService: { ensureIndex: async () => {} },
+    pluginVersion: "0.2.4"
+  });
+  const directImportResult = await directImportService.importRepositoryArchive({ path: "C:/backup/git4zotero-backup.zip" });
+  assert.equal(directImportPath, "C:/backup/git4zotero-backup.zip");
+  assert.equal(directImportResult.imported.length, 1);
+  assert(directImportFiles.has("E:/Profile/git4zotero/library-1/item-ITEM/.git/config"));
+
+  const invalidPluginZip = makeStoredZip([{
+    name: "export-manifest.json",
+    text: JSON.stringify({ schemaVersion: 1, plugin: "other-plugin" })
+  }]);
+  const invalidPluginService = new RepositoryArchiveService({
+    platform: {
+      getPluginDataDirectory: () => "D:/Profile/git4zotero",
+      openBinaryFile: async () => ({ path: "C:/backup/invalid-plugin.zip", bytes: invalidPluginZip })
+    }
+  });
+  await assert.rejects(
+    () => invalidPluginService.importRepositoryArchive(),
+    /插件标识不匹配|plugin does not match/i
+  );
+
+  const unsupportedSchemaZip = makeStoredZip([{
+    name: "export-manifest.json",
+    text: JSON.stringify({ schemaVersion: 99, plugin: "git4zotero" })
+  }]);
+  const unsupportedSchemaService = new RepositoryArchiveService({
+    platform: {
+      getPluginDataDirectory: () => "D:/Profile/git4zotero",
+      openBinaryFile: async () => ({ path: "C:/backup/schema.zip", bytes: unsupportedSchemaZip })
+    }
+  });
+  await assert.rejects(
+    () => unsupportedSchemaService.importRepositoryArchive(),
+    /schema/
+  );
+
+  const unsafeZip = makeStoredZip([{
+    name: "../evil.txt",
+    text: "nope"
+  }]);
+  const unsafeService = new RepositoryArchiveService({
+    platform: {
+      getPluginDataDirectory: () => "D:/Profile/git4zotero",
+      openBinaryFile: async () => ({ path: "C:/backup/unsafe.zip", bytes: unsafeZip })
+    }
+  });
+  await assert.rejects(
+    () => unsafeService.importRepositoryArchive(),
+    /不安全|unsafe/i
+  );
+
+  const partialZip = makeStoredZip([
+    {
+      name: "export-manifest.json",
+      text: JSON.stringify({ schemaVersion: 1, plugin: "git4zotero" })
+    },
+    {
+      name: "library-1/item-OK/.git/config",
+      text: "[core]\n"
+    },
+    {
+      name: "library-1/item-FAIL/.git/config",
+      text: "[core]\n"
+    }
+  ]);
+  const partialWrites = [];
+  const partialService = new RepositoryArchiveService({
+    platform: {
+      getPluginDataDirectory: () => "D:/Profile/git4zotero",
+      join: (...parts) => parts.join("/"),
+      exists: async () => false,
+      writeBytes: async (target, bytes) => {
+        if (target.includes("item-FAIL")) {
+          throw new Error("write failed");
+        }
+        partialWrites.push({ target, bytes });
+      },
+      openBinaryFile: async () => ({ path: "C:/backup/partial.zip", bytes: partialZip })
+    },
+    cleanupService: { ensureIndex: async () => {} }
+  });
+  const partialResult = await partialService.importRepositoryArchive();
+  assert.deepEqual(partialResult.imported, ["library-1/item-OK"]);
+  assert.equal(partialResult.failed.length, 1);
+  assert.equal(partialResult.failed[0].repoRelativePath, "library-1/item-FAIL");
+  assert(partialWrites.some((entry) => entry.target.includes("item-OK")));
+
+  const sourceMetadata = {
+    enabled: true,
+    item: { libraryID: 9, itemID: 90, itemKey: "SOURCE" },
+    attachment: { attachmentID: 91, attachmentKey: "SOURCEATT", fileName: "source.docx" },
+    trackedFile: { trackedRelativePath: "tracked/document.docx" },
+    versions: [{
+      id: "v1",
+      commitHash: "abc123",
+      shortHash: "abc123",
+      fileName: "source.docx",
+      trackedRelativePath: "tracked/document.docx",
+      zotero: {
+        libraryID: 9,
+        itemID: 90,
+        itemKey: "SOURCE",
+        attachmentID: 91,
+        attachmentKey: "SOURCEATT"
+      }
+    }]
+  };
+  const itemImportZip = makeStoredZip([
+    {
+      name: "export-manifest.json",
+      text: JSON.stringify({
+        schemaVersion: 1,
+        plugin: "git4zotero",
+        scope: "item",
+        repositories: [{ repoRelativePath: "library-9/item-SOURCE" }]
+      })
+    },
+    {
+      name: "library-9/item-SOURCE/.git/config",
+      text: "[core]\n"
+    },
+    {
+      name: "library-9/item-SOURCE/.git4zotero/versions.json",
+      text: JSON.stringify(sourceMetadata)
+    }
+  ]);
+  const itemImportFiles = new Map();
+  let itemImportEnsureIndexCalls = 0;
+  const itemImportService = new RepositoryArchiveService({
+    platform: {
+      getPluginDataDirectory: () => "F:/Profile/git4zotero",
+      join: (...parts) => parts.join("/"),
+      exists: async (target) => target === "F:/Profile/git4zotero",
+      writeBytes: async (target, bytes) => {
+        itemImportFiles.set(target, bytes);
+      },
+      openBinaryFile: async () => ({ path: "C:/backup/item.zip", bytes: itemImportZip })
+    },
+    cleanupService: { ensureIndex: async () => { itemImportEnsureIndexCalls += 1; } }
+  });
+  const itemImportResult = await itemImportService.importItemRepositoryArchive({
+    targetRepoRelativePath: "library-2/item-TARGET",
+    targetRepoPath: "F:/Profile/git4zotero/library-2/item-TARGET",
+    attachment: {
+      libraryID: 2,
+      itemID: 200,
+      itemKey: "TARGET",
+      attachmentID: 201,
+      attachmentKey: "TARGETATT",
+      fileName: "target.docx",
+      extension: ".docx"
+    }
+  });
+  assert.deepEqual(itemImportResult.imported, ["library-2/item-TARGET"]);
+  assert.equal(itemImportResult.sourceRepoRelativePath, "library-9/item-SOURCE");
+  assert.equal(itemImportEnsureIndexCalls, 1);
+  assert(itemImportFiles.has("F:/Profile/git4zotero/library-2/item-TARGET/.git/config"));
+  assert(!itemImportFiles.has("F:/Profile/git4zotero/library-9/item-SOURCE/.git/config"));
+  const rewrittenMetadata = JSON.parse(new TextDecoder().decode(itemImportFiles.get("F:/Profile/git4zotero/library-2/item-TARGET/.git4zotero/versions.json")));
+  assert.equal(rewrittenMetadata.enabled, true);
+  assert.equal(rewrittenMetadata.item.itemKey, "TARGET");
+  assert.equal(rewrittenMetadata.attachment.attachmentKey, "TARGETATT");
+  assert.equal(rewrittenMetadata.versions[0].zotero.itemKey, "TARGET");
+  assert.equal(rewrittenMetadata.versions[0].zotero.attachmentKey, "TARGETATT");
+  assert.equal(rewrittenMetadata.versions[0].fileName, "source.docx");
+
+  const multiSourceZip = makeStoredZip([
+    {
+      name: "export-manifest.json",
+      text: JSON.stringify({ schemaVersion: 1, plugin: "git4zotero", scope: "all" })
+    },
+    {
+      name: "library-1/item-A/.git/config",
+      text: "[core]\n"
+    },
+    {
+      name: "library-1/item-A/.git4zotero/versions.json",
+      text: JSON.stringify({ ...sourceMetadata, item: { itemKey: "A" }, attachment: { fileName: "a.docx" } })
+    },
+    {
+      name: "library-1/item-B/.git/config",
+      text: "[core]\n"
+    },
+    {
+      name: "library-1/item-B/.git4zotero/versions.json",
+      text: JSON.stringify({ ...sourceMetadata, item: { itemKey: "B" }, attachment: { fileName: "b.docx" } })
+    }
+  ]);
+  const multiSourceFiles = new Map();
+  const sourceSelections = [];
+  const multiSourceService = new RepositoryArchiveService({
+    platform: {
+      getPluginDataDirectory: () => "G:/Profile/git4zotero",
+      join: (...parts) => parts.join("/"),
+      exists: async (target) => target === "G:/Profile/git4zotero",
+      writeBytes: async (target, bytes) => {
+        multiSourceFiles.set(target, bytes);
+      },
+      openBinaryFile: async () => ({ path: "C:/backup/multi.zip", bytes: multiSourceZip })
+    },
+    cleanupService: { ensureIndex: async () => {} }
+  });
+  const multiSourceResult = await multiSourceService.importItemRepositoryArchive({
+    targetRepoRelativePath: "library-3/item-TARGET",
+    targetRepoPath: "G:/Profile/git4zotero/library-3/item-TARGET",
+    attachment: {
+      libraryID: 3,
+      itemID: 300,
+      itemKey: "TARGET",
+      attachmentID: 301,
+      attachmentKey: "TARGETATT",
+      fileName: "target.docx",
+      extension: ".docx"
+    },
+    selectSourceRepository: (_title, _message, labels, repoRelativePaths) => {
+      sourceSelections.push({ labels, repoRelativePaths });
+      return 1;
+    }
+  });
+  assert.equal(sourceSelections.length, 1);
+  assert.equal(multiSourceResult.sourceRepoRelativePath, "library-1/item-B");
+  assert(multiSourceFiles.has("G:/Profile/git4zotero/library-3/item-TARGET/.git/config"));
+
+  const existingTargetService = new RepositoryArchiveService({
+    platform: {
+      getPluginDataDirectory: () => "H:/Profile/git4zotero",
+      join: (...parts) => parts.join("/"),
+      exists: async (target) => target === "H:/Profile/git4zotero/library-2/item-TARGET",
+      writeBytes: async () => {
+        throw new Error("existing target must not be overwritten");
+      },
+      openBinaryFile: async () => ({ path: "C:/backup/item.zip", bytes: itemImportZip })
+    },
+    cleanupService: { ensureIndex: async () => {} }
+  });
+  const existingTargetResult = await existingTargetService.importItemRepositoryArchive({
+    targetRepoRelativePath: "library-2/item-TARGET",
+    targetRepoPath: "H:/Profile/git4zotero/library-2/item-TARGET",
+    attachment: {
+      libraryID: 2,
+      itemID: 200,
+      itemKey: "TARGET",
+      attachmentID: 201,
+      attachmentKey: "TARGETATT",
+      fileName: "target.docx",
+      extension: ".docx"
+    }
+  });
+  assert.equal(existingTargetResult.imported.length, 0);
+  assert.equal(existingTargetResult.skipped[0].reason, UI_TEXT.archiveImportSkippedExisting);
+
+  const missingMetadataZip = makeStoredZip([{
+    name: "library-1/item-NO-META/.git/config",
+    text: "[core]\n"
+  }]);
+  const missingMetadataService = new RepositoryArchiveService({
+    platform: {
+      getPluginDataDirectory: () => "I:/Profile/git4zotero",
+      openBinaryFile: async () => ({ path: "C:/backup/missing-metadata.zip", bytes: missingMetadataZip })
+    }
+  });
+  await assert.rejects(
+    () => missingMetadataService.importItemRepositoryArchive({
+      targetRepoRelativePath: "library-1/item-TARGET",
+      targetRepoPath: "I:/Profile/git4zotero/library-1/item-TARGET",
+      attachment: { fileName: "target.docx", extension: ".docx" }
+    }),
+    /元数据|metadata/i
+  );
 }
 
 {
@@ -1896,6 +2416,226 @@ assert(historyPaneText.includes("Git hash"));
 assert(historyPaneText.includes(older.commitHash));
 assert(historyPaneText.includes("修改前：旧引言段"));
 assert(historyPaneText.includes("修改后：新引言段"));
+assert(historyPaneText.includes(UI_TEXT.versionDetailButton));
+
+const detailLongText = "第三段完整修改内容 ".repeat(18) + "DETAIL_END";
+const detailHarness = await renderPaneHarness({
+  stateProvider: () => ({
+    attachment: managedAttachment,
+    enabled: true,
+    git: { available: true, detail: "git version 2.44.0" },
+    workingTree: { clean: true, entries: [], summary: UI_TEXT.workingTreeClean },
+    versions: [{
+      ...older,
+      id: "detail-version",
+      note: "详情版本",
+      commitHash: "0123456789abcdef0123456789abcdef01234567",
+      shortHash: "01234567",
+      changeSummary: {
+        summary: "正文内容已修改；新增 1 段；删除 1 段；修改 1 段。",
+        paragraphChanges: [
+          { type: "modified", oldText: "第一段旧内容", newText: "第一段新内容", oldIndex: 0, newIndex: 0, source: "document" },
+          { type: "added", newText: "第二段新增内容", newIndex: 1, source: "document" },
+          { type: "modified", oldText: "第三段旧内容", newText: detailLongText, oldIndex: 2, newIndex: 2, source: "document" }
+        ],
+        totalParagraphChanges: 4,
+        omittedChanges: 1
+      }
+    }]
+  })
+});
+assert(!detailHarness.body.textContent.includes("DETAIL_END"), "timeline preview should stay short");
+assert.equal(findAllByClass(detailHarness.body, "git4zotero-version-detail-button").length, 1);
+await findButton(detailHarness.body, UI_TEXT.versionDetailButton).click();
+let detailPanel = findByClass(detailHarness.body, "git4zotero-version-detail-panel");
+assert(detailPanel, "history detail panel should open inside a timeline item");
+assert.equal(detailPanel.getAttribute("role"), "region");
+assert.equal(detailPanel.closest(".git4zotero-timeline-item") !== null, true);
+assert.equal(findByClass(detailHarness.body, "git4zotero-version-detail-backdrop"), null);
+assert(detailPanel.textContent.includes(UI_TEXT.versionDetailTitle));
+assert(detailPanel.textContent.includes("详情版本"));
+assert(detailPanel.textContent.includes("0123456789abcdef0123456789abcdef01234567"));
+assert(detailPanel.textContent.includes(UI_TEXT.versionDetailAllStoredChanges));
+assert.equal(findAllByClass(detailPanel, "git4zotero-change").length, 3);
+assert(detailPanel.textContent.includes("第一段旧内容"));
+assert(detailPanel.textContent.includes("第二段新增内容"));
+assert(detailPanel.textContent.includes("DETAIL_END"), "panel should show full stored change text");
+assert(detailPanel.textContent.includes("未在弹窗中展开"));
+let detailCloseButton = findButton(detailPanel, UI_TEXT.versionDetailClose);
+assert(detailPanel.getAttribute("style").includes("var(--material-background"));
+assert(detailPanel.getAttribute("style").includes("#202124"));
+assert(detailPanel.getAttribute("style").includes("pointer-events:auto"));
+assert(!detailPanel.getAttribute("style").includes("position:fixed"));
+assert(!detailPanel.getAttribute("style").includes("2147483647"));
+assert(detailCloseButton.getAttribute("style").includes("pointer-events:auto"));
+assert.equal(detailCloseButton.getAttribute("data-git4zotero-version-detail-close"), "true");
+assert(detailCloseButton.getAttribute("style").includes("min-height:32px"));
+assert(detailCloseButton.getAttribute("style").includes("touch-action:manipulation"));
+for (const handler of detailCloseButton.listeners.get("pointerdown") ?? []) {
+  await handler({
+    target: detailCloseButton,
+    preventDefault() {},
+    stopPropagation() {}
+  });
+}
+assert.equal(detailPanel.getAttribute("data-git4zotero-closing"), "true");
+assert.equal(findByClass(detailHarness.body, "git4zotero-version-detail-panel"), null);
+await detailCloseButton.click();
+assert.equal(findByClass(detailHarness.body, "git4zotero-version-detail-panel"), null);
+
+await findButton(detailHarness.body, UI_TEXT.versionDetailButton).click();
+detailPanel = findByClass(detailHarness.body, "git4zotero-version-detail-panel");
+detailCloseButton = findButton(detailPanel, UI_TEXT.versionDetailClose);
+for (const handler of detailCloseButton.listeners.get("mousedown") ?? []) {
+  await handler({
+    target: detailCloseButton,
+    preventDefault() {},
+    stopPropagation() {}
+  });
+}
+assert.equal(findByClass(detailHarness.body, "git4zotero-version-detail-panel"), null);
+
+await findButton(detailHarness.body, UI_TEXT.versionDetailButton).click();
+detailPanel = findByClass(detailHarness.body, "git4zotero-version-detail-panel");
+detailCloseButton = findButton(detailPanel, UI_TEXT.versionDetailClose);
+await detailCloseButton.click();
+assert.equal(findByClass(detailHarness.body, "git4zotero-version-detail-panel"), null);
+
+await findButton(detailHarness.body, UI_TEXT.versionDetailButton).click();
+detailPanel = findByClass(detailHarness.body, "git4zotero-version-detail-panel");
+detailCloseButton = findButton(detailPanel, UI_TEXT.versionDetailClose);
+for (const handler of detailCloseButton.listeners.get("command") ?? []) {
+  await handler({
+    target: detailCloseButton,
+    preventDefault() {},
+    stopPropagation() {}
+  });
+}
+assert.equal(findByClass(detailHarness.body, "git4zotero-version-detail-panel"), null);
+
+await findButton(detailHarness.body, UI_TEXT.versionDetailButton).click();
+detailPanel = findByClass(detailHarness.body, "git4zotero-version-detail-panel");
+detailCloseButton = findButton(detailPanel, UI_TEXT.versionDetailClose);
+for (const handler of detailPanel.listeners.get("pointerdown") ?? []) {
+  await handler({
+    target: detailCloseButton,
+    preventDefault() {},
+    stopPropagation() {}
+  });
+}
+assert.equal(findByClass(detailHarness.body, "git4zotero-version-detail-panel"), null);
+
+await findButton(detailHarness.body, UI_TEXT.versionDetailButton).click();
+detailPanel = findByClass(detailHarness.body, "git4zotero-version-detail-panel");
+detailCloseButton = findButton(detailPanel, UI_TEXT.versionDetailClose);
+for (const handler of detailPanel.listeners.get("mousedown") ?? []) {
+  await handler({
+    target: detailCloseButton,
+    preventDefault() {},
+    stopPropagation() {}
+  });
+}
+assert.equal(findByClass(detailHarness.body, "git4zotero-version-detail-panel"), null);
+
+await findButton(detailHarness.body, UI_TEXT.versionDetailButton).click();
+detailPanel = findByClass(detailHarness.body, "git4zotero-version-detail-panel");
+detailCloseButton = findButton(detailPanel, UI_TEXT.versionDetailClose);
+for (const handler of detailPanel.listeners.get("command") ?? []) {
+  await handler({
+    target: detailCloseButton,
+    preventDefault() {},
+    stopPropagation() {}
+  });
+}
+assert.equal(findByClass(detailHarness.body, "git4zotero-version-detail-panel"), null);
+
+await findButton(detailHarness.body, UI_TEXT.versionDetailButton).click();
+detailPanel = findByClass(detailHarness.body, "git4zotero-version-detail-panel");
+for (const handler of detailPanel.listeners.get("keydown") ?? []) {
+  await handler({
+    key: "Escape",
+    preventDefault() {},
+    stopPropagation() {}
+  });
+}
+assert.equal(findByClass(detailHarness.body, "git4zotero-version-detail-panel"), null);
+
+const multiDetailHarness = await renderPaneHarness({
+  stateProvider: () => ({
+    attachment: managedAttachment,
+    enabled: true,
+    git: { available: true, detail: "git version 2.44.0" },
+    workingTree: { clean: true, entries: [], summary: UI_TEXT.workingTreeClean },
+    versions: [
+      { ...older, id: "first-detail", note: "第一条详情", shortHash: "first001" },
+      { ...newer, id: "second-detail", note: "第二条详情", shortHash: "second02" }
+    ]
+  })
+});
+const detailButtons = findAllByClass(multiDetailHarness.body, "git4zotero-version-detail-button");
+await detailButtons[0].click();
+let openPanels = findAllByClass(multiDetailHarness.body, "git4zotero-version-detail-panel");
+assert.equal(openPanels.length, 1);
+assert(openPanels[0].textContent.includes("第一条详情"));
+assert.equal(detailButtons[0].getAttribute("aria-expanded"), "true");
+await detailButtons[1].click();
+openPanels = findAllByClass(multiDetailHarness.body, "git4zotero-version-detail-panel");
+assert.equal(openPanels.length, 1);
+assert(openPanels[0].textContent.includes("第二条详情"));
+assert.equal(detailButtons[0].getAttribute("aria-expanded"), "false");
+assert.equal(detailButtons[1].getAttribute("aria-expanded"), "true");
+
+const groupedDetailHarness = await renderPaneHarness({
+  stateProvider: () => ({
+    attachment: managedAttachment,
+    enabled: true,
+    git: { available: true, detail: "git version 2.44.0" },
+    workingTree: { clean: true, entries: [], summary: UI_TEXT.workingTreeClean },
+    versions: [{
+      ...older,
+      id: "grouped-detail-version",
+      note: "分组详情版本",
+      changeSummary: {
+        summary: "正文内容已修改。",
+        changeGroups: [{
+          label: "正文",
+          summary: "正文 · 3 处变化",
+          changes: [
+            { type: "modified", oldText: "分组旧一", newText: "分组新一", oldIndex: 0, newIndex: 0, source: "document" },
+            { type: "modified", oldText: "分组旧二", newText: "分组新二", oldIndex: 1, newIndex: 1, source: "document" },
+            { type: "added", newText: "分组新增三", newIndex: 2, source: "document" }
+          ]
+        }],
+        totalParagraphChanges: 3,
+        omittedChanges: 0
+      }
+    }]
+  })
+});
+await findButton(groupedDetailHarness.body, UI_TEXT.versionDetailButton).click();
+const groupedPanel = findByClass(groupedDetailHarness.body, "git4zotero-version-detail-panel");
+assert(groupedPanel.textContent.includes("正文 · 3 处变化"));
+assert(groupedPanel.textContent.includes("分组新二"));
+assert(groupedPanel.textContent.includes("分组新增三"));
+
+const fileOnlyDetailHarness = await renderPaneHarness({
+  stateProvider: () => ({
+    attachment: { ...managedAttachment, fileName: "legacy.doc", extension: ".doc" },
+    enabled: true,
+    git: { available: true, detail: "git version 2.44.0" },
+    workingTree: { clean: true, entries: [], summary: UI_TEXT.workingTreeClean },
+    versions: [{
+      ...older,
+      fileName: "legacy.doc",
+      contentSummary: { mode: "file-only", extension: ".doc", fileOnly: true },
+      changeSummary: { summary: UI_TEXT.docFileOnlyTracking }
+    }]
+  })
+});
+await findButton(fileOnlyDetailHarness.body, UI_TEXT.versionDetailButton).click();
+const fileOnlyPanel = findByClass(fileOnlyDetailHarness.body, "git4zotero-version-detail-panel");
+assert(fileOnlyPanel.textContent.includes(UI_TEXT.versionDetailFileOnly));
+assert(fileOnlyPanel.textContent.includes(UI_TEXT.docFileOnlyTracking));
 
 const fiveVersions = Array.from({ length: 5 }, (_value, index) => ({
   ...older,
@@ -2822,7 +3562,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(harness.registered.menus.length, 1);
   const rootMenu = harness.registered.menus[0];
   assert.equal(rootMenu.menuType, "submenu");
-  assert.equal(rootMenu.menus.length, 7);
+  assert.equal(rootMenu.menus.length, 9);
   let showingVisible = null;
   await rootMenu.onShowing({}, {
     items: [item],
@@ -2844,15 +3584,15 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }
     });
   }
-  assert.deepEqual(menuVisibility, [true, true, true, true, true, false, true]);
-  assert.deepEqual(menuEnabled, [false, true, true, true, true, false, true]);
+  assert.deepEqual(menuVisibility, [true, true, true, true, true, true, true, false, true]);
+  assert.deepEqual(menuEnabled, [false, true, true, true, true, false, true, false, true]);
   assert.equal(menuStateCalls, 1);
   await rootMenu.menus[0].onCommand({}, { items: [item] });
   await rootMenu.menus[1].onCommand({}, { items: [item] });
   await rootMenu.menus[2].onCommand({}, { items: [item] });
   await rootMenu.menus[3].onCommand({}, { items: [item] });
   await rootMenu.menus[4].onCommand({}, { items: [item] });
-  await rootMenu.menus[6].onCommand({}, { items: [item] });
+  await rootMenu.menus[8].onCommand({}, { items: [item] });
   assert.deepEqual(calls.map((call) => call[0]), ["enable", "check", "create", "restore", "export", "disable"]);
   assert.equal(calls.find((call) => call[0] === "enable")[2], "C:\\Profile\\git4zotero\\library-1\\item-ABC123");
   assert.equal(calls.find((call) => call[0] === "create")[2], "菜单版本");
@@ -2896,7 +3636,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert(fallbackRoot, "fallback menu root should be created when official menu is missing");
   const fallbackPopup = fallbackRoot.children.find((child) => child.tagName === "menupopup");
   await harness.menu.populateFallbackPopup(fallbackPopup);
-  assert.equal(fallbackPopup.children.length, 6);
+  assert.equal(fallbackPopup.children.length, 8);
   assert.equal(fallbackPopup.children.some((child) => child.getAttribute("data-git4zotero-status") === "true"), false);
   assert.equal(fallbackPopup.children.some((child) => child.tagName === "menuseparator"), false);
   assert.equal(doc.getElementById("git4zotero-menu-configure-git-fallback"), null);
@@ -3173,8 +3913,8 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       }
     });
   }
-  assert.deepEqual(gitMissingVisibility, [true, true, true, true, true, true, true]);
-  assert.deepEqual(gitMissingEnabled, [false, false, false, false, false, true, true]);
+  assert.deepEqual(gitMissingVisibility, [true, true, true, true, true, true, true, true, true]);
+  assert.deepEqual(gitMissingEnabled, [false, false, false, false, false, false, true, true, true]);
   const doc = new FakeDocument();
   const popup = doc.createXULElement("menupopup");
   doc.documentElement.append(popup);
@@ -3189,6 +3929,64 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   await configure.listeners.get("command")[0]({ stopPropagation() {} });
   assert.equal(harness.promptGitCount, 1);
   assert.equal(harness.refreshCount, 1);
+}
+
+{
+  const item = { id: 1 };
+  let exportArchiveOptions = null;
+  let importArchiveOptions = null;
+  const harness = makeMenuHarness({
+    serviceOverrides: {
+      getPanelState: async () => ({
+        attachment: managedAttachment,
+        repoPath: "C:\\Profile\\git4zotero\\library-1\\item-ITEM",
+        enabled: true,
+        git: { available: false, detail: "git missing" },
+        versions: []
+      })
+    },
+    archiveServiceOverrides: {
+      exportItemRepositoryArchive: async (options = {}) => {
+        exportArchiveOptions = options;
+        return { path: "D:\\ArchiveDir\\git4zotero-ITEM-history.zip", fileCount: 4 };
+      },
+      importItemRepositoryArchive: async (options = {}) => {
+        importArchiveOptions = options;
+        return {
+          imported: ["library-1/item-ITEM"],
+          skipped: [],
+          failed: [],
+          sourceRepoRelativePath: "library-9/item-SOURCE",
+          targetRepoRelativePath: "library-1/item-ITEM"
+        };
+      }
+    },
+    platformOverrides: {
+      exists: async (path) => path === "C:\\Profile\\git4zotero\\library-1\\item-ITEM",
+      getPref: (key, fallback) => key === PREFS.archiveExportDirectory ? "D:\\ArchiveDir" : fallback
+    }
+  });
+  harness.menu.register({ id: "git4zotero@paper-version.local", rootURI: "chrome://git4zotero/content/" });
+  const rootMenu = harness.registered.menus[0];
+  const enabled = [];
+  for (const itemMenu of rootMenu.menus) {
+    await itemMenu.onShowing({}, {
+      items: [item],
+      setEnabled: (value) => {
+        enabled.push(value);
+      }
+    });
+  }
+  assert.equal(enabled[5], true, "item archive export should not require Git availability");
+  assert.equal(enabled[6], true, "item archive import should not require Git availability");
+  await rootMenu.menus[5].onCommand({}, { items: [item] });
+  assert.equal(exportArchiveOptions.repoRelativePath, "library-1/item-ITEM");
+  assert.equal(exportArchiveOptions.initialDirectory, "D:\\ArchiveDir");
+  assert(harness.alerts.at(-1)[1].includes("D:\\ArchiveDir\\git4zotero-ITEM-history.zip"));
+  await rootMenu.menus[6].onCommand({}, { items: [item] });
+  assert.equal(importArchiveOptions.targetRepoRelativePath, "library-1/item-ITEM");
+  assert.equal(typeof importArchiveOptions.selectSourceRepository, "function");
+  assert(harness.alerts.at(-1)[1].includes("library-9/item-SOURCE"));
 }
 
 {
@@ -3353,42 +4151,62 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "D:\\ChosenBackups");
   assert(archivePathPrefs.elements["git4zotero-archive-status"].textContent.includes("选择迁移导出目录失败"));
   assert(!archivePathPrefs.elements["git4zotero-archive-status"].textContent.includes("导出版本历史失败"));
+  const archiveDirectoryInput = archivePathPrefs.elements["git4zotero-archive-export-directory"];
+  assert.equal(typeof archiveDirectoryInput.listeners.change, "function");
+  assert.equal(typeof archiveDirectoryInput.listeners.blur, "function");
+  assert.equal(typeof archiveDirectoryInput.listeners.keydown, "function");
   const manualDirectoriesChecked = [];
-  archivePathPrefs.elements["git4zotero-archive-export-directory"].value = "D:\\ManualBackups";
+  archiveDirectoryInput.value = "D:\\ManualBackups";
   archivePathWindow.getPlatform = () => ({
     assertDirectoryAvailable: async (path) => {
       manualDirectoriesChecked.push(path);
     }
   });
-  await archivePathWindow.saveArchiveExportDirectory();
+  await archiveDirectoryInput.listeners.change({ type: "change", target: archiveDirectoryInput });
   assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\ManualBackups");
-  assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "D:\\ManualBackups");
+  assert.equal(archiveDirectoryInput.value, "D:\\ManualBackups");
   assert.equal(archivePathPrefs.elements["git4zotero-current-archive-export-directory"].textContent, "D:\\ManualBackups");
   assert.deepEqual(manualDirectoriesChecked, ["D:\\ManualBackups"]);
-  archivePathPrefs.elements["git4zotero-archive-export-directory"].value = "D:\\Missing";
+  archiveDirectoryInput.value = "D:\\Missing";
   archivePathWindow.getPlatform = () => ({
     assertDirectoryAvailable: async () => {
       throw new Error("missing directory");
     }
   });
-  await archivePathWindow.saveArchiveExportDirectory();
+  await archiveDirectoryInput.listeners.blur({ type: "blur", target: archiveDirectoryInput });
   assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\ManualBackups");
-  assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "D:\\Missing");
+  assert.equal(archiveDirectoryInput.value, "D:\\Missing");
   assert.equal(archivePathPrefs.elements["git4zotero-current-archive-export-directory"].textContent, "D:\\ManualBackups");
   assert(archivePathPrefs.elements["git4zotero-archive-status"].textContent.includes("missing directory"));
+  assert.equal(await archivePathWindow.savePendingArchiveExportDirectory(), false);
+  assert(archivePathPrefs.elements["git4zotero-archive-status"].textContent.includes("missing directory"));
   let emptyInputValidated = false;
-  archivePathPrefs.elements["git4zotero-archive-export-directory"].value = "";
+  archiveDirectoryInput.value = "";
   archivePathWindow.getPlatform = () => ({
     assertDirectoryAvailable: async () => {
       emptyInputValidated = true;
     }
   });
-  await archivePathWindow.saveArchiveExportDirectory();
+  let enterPrevented = false;
+  let enterStopped = false;
+  await archiveDirectoryInput.listeners.keydown({
+    type: "keydown",
+    key: "Enter",
+    target: archiveDirectoryInput,
+    preventDefault: () => {
+      enterPrevented = true;
+    },
+    stopPropagation: () => {
+      enterStopped = true;
+    }
+  });
+  assert.equal(enterPrevented, true);
+  assert.equal(enterStopped, true);
   assert.equal(emptyInputValidated, false);
   assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "");
-  assert.equal(archivePathPrefs.elements["git4zotero-archive-export-directory"].value, "");
+  assert.equal(archiveDirectoryInput.value, "");
   assert(archivePathPrefs.elements["git4zotero-current-archive-export-directory"].textContent.includes("可粘贴目录路径"));
-  archivePathPrefs.elements["git4zotero-archive-export-directory"].value = "D:\\ManualBackups";
+  archiveDirectoryInput.value = "D:\\ManualBackups";
   archivePathPrefs.prefs.set(PREFS.archiveExportDirectory, "D:\\ManualBackups");
   archivePathWindow.clearArchiveExportDirectory();
   assert.equal(archivePathPrefs.prefs.get(PREFS.archiveExportDirectory), "");
@@ -3403,15 +4221,23 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   delayedPreferenceWritePrefs.context.Zotero.Prefs.set = (key, value) => {
     delayedPreferenceWrites.push([key, value]);
   };
-  delayedPreferenceWritePrefs.elements["git4zotero-archive-export-directory"].value = "D:\\ImmediateDisplay";
+  const delayedArchiveDirectoryInput = delayedPreferenceWritePrefs.elements["git4zotero-archive-export-directory"];
+  delayedArchiveDirectoryInput.value = "D:\\ImmediateDisplay";
   delayedPreferenceWriteWindow.getPlatform = () => ({
     assertDirectoryAvailable: async () => {}
   });
-  await delayedPreferenceWriteWindow.saveArchiveExportDirectory();
+  await delayedArchiveDirectoryInput.listeners.change({ type: "change", target: delayedArchiveDirectoryInput });
   assert.deepEqual(delayedPreferenceWrites, [[PREFS.archiveExportDirectory, "D:\\ImmediateDisplay"]]);
   assert.equal(delayedPreferenceWritePrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\OldDisplay");
-  assert.equal(delayedPreferenceWritePrefs.elements["git4zotero-archive-export-directory"].value, "D:\\ImmediateDisplay");
+  assert.equal(delayedArchiveDirectoryInput.value, "D:\\ImmediateDisplay");
   assert.equal(delayedPreferenceWritePrefs.elements["git4zotero-current-archive-export-directory"].textContent, "D:\\ImmediateDisplay");
+  delayedArchiveDirectoryInput.value = "D:\\UnsavedAfterSave";
+  assert.equal(await delayedPreferenceWriteWindow.savePendingArchiveExportDirectory(), true);
+  assert.deepEqual(delayedPreferenceWrites, [
+    [PREFS.archiveExportDirectory, "D:\\ImmediateDisplay"],
+    [PREFS.archiveExportDirectory, "D:\\UnsavedAfterSave"]
+  ]);
+  assert.equal(delayedPreferenceWritePrefs.elements["git4zotero-current-archive-export-directory"].textContent, "D:\\UnsavedAfterSave");
 
   const failedPrefs = await runPreferencesScript({
     prefValue: "C:\\Old\\git.exe",
@@ -3482,28 +4308,14 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   await diagnosticsWindow.copyIssueTemplate();
   assert(diagnosticsPrefs.elements["git4zotero-diagnostics-output"].textContent.includes("## 复现步骤"));
   diagnosticsPrefs.prefs.set(PREFS.archiveExportDirectory, "D:\\ArchiveTarget");
-  diagnosticsPrefs.elements["git4zotero-archive-export-directory"].value = "D:\\UnsavedInput";
-  let archiveExportInitialDirectory = "";
-  diagnosticsWindow.archiveService = {
-    exportRepositoryArchive: async (options = {}) => {
-      archiveExportInitialDirectory = options.initialDirectory;
-      return {
-        path: "C:\\backup\\git4zotero-backup.zip",
-        repositoryCount: 2,
-        fileCount: 7
-      };
-    },
-    importRepositoryArchive: async () => ({
-      imported: ["library-1/item-A"],
-      skipped: [{ repoRelativePath: "library-1/item-B" }],
-      failed: []
-    })
-  };
-  await diagnosticsWindow.exportHistoryArchive();
-  assert.equal(archiveExportInitialDirectory, "D:\\ArchiveTarget");
-  assert(diagnosticsPrefs.elements["git4zotero-archive-status"].textContent.includes("包含 2 个仓库"));
-  await diagnosticsWindow.importHistoryArchive();
-  assert(diagnosticsPrefs.elements["git4zotero-archive-status"].textContent.includes("导入 1 个，跳过 1 个"));
+  diagnosticsWindow.refreshArchiveExportDirectory();
+  diagnosticsPrefs.elements["git4zotero-archive-export-directory"].value = "D:\\PendingExport";
+  diagnosticsWindow.getPlatform = () => ({
+    assertDirectoryAvailable: async () => {}
+  });
+  assert.equal(await diagnosticsWindow.savePendingArchiveExportDirectory(), true);
+  assert.equal(diagnosticsPrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\PendingExport");
+  assert(diagnosticsPrefs.elements["git4zotero-archive-status"].textContent.includes("迁移导出目录已保存"));
   assert.equal(diagnosticsPrefs.elements["git4zotero-copy-diagnostics"].disabled, false);
 }
 
@@ -3524,10 +4336,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
     "git4zotero-open-data-dir",
     "git4zotero-copy-issue-template",
     "git4zotero-open-git-guide",
-    "git4zotero-export-history",
-    "git4zotero-import-history",
     "git4zotero-choose-archive-export-directory",
-    "git4zotero-save-archive-export-directory",
     "git4zotero-clear-archive-export-directory",
     "git4zotero-about-homepage",
     "git4zotero-about-github",
@@ -3576,18 +4385,6 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       warningCount: 0
     })
   };
-  guideWindow.archiveService = {
-    exportRepositoryArchive: async (options = {}) => {
-      archiveExportInitialDirectory = options.initialDirectory;
-      return {
-        path: "D:\\GuideExports\\git4zotero-backup.zip",
-        repositoryCount: 1,
-        fileCount: 3
-      };
-    },
-    importRepositoryArchive: async () => null
-  };
-
   guideWindow.openGitGuide();
   assert.equal(platformActions.filter((action) => action[0] === "openURL").length, 1);
 
@@ -3612,6 +4409,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
     }
   }
   assert(!guideActionIDs.has("refresh-item-selection"));
+  assert(!guideActionIDs.has("export-history-archive"));
   await guideWindow.showFirstUseGuideStep(0);
   assert.equal(guideWindow.guideStepStates.git.status, "ok");
   await guideWindow.runFirstUseGuideAction("test-git");
@@ -3656,14 +4454,11 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(guidePrefs.prefs.get(PREFS.archiveExportDirectory), "D:\\GuideExports");
   assert.equal(guideWindow.guideStepStates.archive.status, "ok");
   guidePrefs.prefs.set(PREFS.archiveExportDirectory, "D:\\Missing");
-  guidePrefs.elements["git4zotero-archive-export-directory"].value = "D:\\Missing";
+  guideWindow.refreshArchiveExportDirectory();
   await guideWindow.refreshGuideArchiveState();
   assert.equal(guideWindow.guideStepStates.archive.status, "error");
   await guideWindow.runFirstUseGuideAction("clear-archive-directory");
   assert.equal(guidePrefs.prefs.get(PREFS.archiveExportDirectory), "");
-  await guideWindow.runFirstUseGuideAction("export-history-archive");
-  assert.equal(archiveExportInitialDirectory, "");
-  assert(guideWindow.guideStepStates.archive.detail.includes("包含 1 个仓库"));
 
   await guideWindow.showFirstUseGuideStep(3);
   assert.equal(guidePrefs.elements["git4zotero-guide-step-title"].textContent, "排错准备");
@@ -3881,6 +4676,66 @@ function makeDocx(files, options = {}) {
   })));
 }
 
+function makeStoredZip(files) {
+  const encoder = new TextEncoder();
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  for (const item of files) {
+    const data = item.data instanceof Uint8Array
+      ? Buffer.from(item.data)
+      : Buffer.from(encoder.encode(item.text ?? ""));
+    const name = Buffer.from(item.name, "utf8");
+    const crc = crc32(data);
+    const localHeader = Buffer.alloc(30);
+    writeStoredLocalHeader(localHeader, crc, data.length, name.length);
+    localParts.push(localHeader, name, data);
+
+    const centralHeader = Buffer.alloc(46);
+    writeStoredCentralHeader(centralHeader, crc, data.length, name.length, offset);
+    centralParts.push(centralHeader, name);
+    offset += localHeader.length + name.length + data.length;
+  }
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = Buffer.alloc(22);
+  writeEndHeader(end, files.length, centralSize, offset);
+  return new Uint8Array(Buffer.concat([...localParts, ...centralParts, end]));
+}
+
+function writeStoredLocalHeader(buffer, crc, size, nameLength) {
+  buffer.writeUInt32LE(0x04034b50, 0);
+  buffer.writeUInt16LE(20, 4);
+  buffer.writeUInt16LE(0x0800, 6);
+  buffer.writeUInt16LE(0, 8);
+  buffer.writeUInt16LE(0, 10);
+  buffer.writeUInt16LE(0, 12);
+  buffer.writeUInt32LE(crc, 14);
+  buffer.writeUInt32LE(size, 18);
+  buffer.writeUInt32LE(size, 22);
+  buffer.writeUInt16LE(nameLength, 26);
+  buffer.writeUInt16LE(0, 28);
+}
+
+function writeStoredCentralHeader(buffer, crc, size, nameLength, offset) {
+  buffer.writeUInt32LE(0x02014b50, 0);
+  buffer.writeUInt16LE(20, 4);
+  buffer.writeUInt16LE(20, 6);
+  buffer.writeUInt16LE(0x0800, 8);
+  buffer.writeUInt16LE(0, 10);
+  buffer.writeUInt16LE(0, 12);
+  buffer.writeUInt16LE(0, 14);
+  buffer.writeUInt32LE(crc, 16);
+  buffer.writeUInt32LE(size, 20);
+  buffer.writeUInt32LE(size, 24);
+  buffer.writeUInt16LE(nameLength, 28);
+  buffer.writeUInt16LE(0, 30);
+  buffer.writeUInt16LE(0, 32);
+  buffer.writeUInt16LE(0, 34);
+  buffer.writeUInt16LE(0, 36);
+  buffer.writeUInt32LE(0, 38);
+  buffer.writeUInt32LE(offset, 42);
+}
+
 function createZip(items) {
   const localParts = [];
   const centralParts = [];
@@ -4047,7 +4902,7 @@ function makePanePlatform(overrides = {}) {
   };
 }
 
-function makeMenuHarness({ serviceOverrides = {}, platformOverrides = {} } = {}) {
+function makeMenuHarness({ serviceOverrides = {}, archiveServiceOverrides = {}, platformOverrides = {} } = {}) {
   let registered = null;
   let refreshCount = 0;
   let promptGitCount = 0;
@@ -4111,6 +4966,8 @@ function makeMenuHarness({ serviceOverrides = {}, platformOverrides = {} } = {})
     promptText: () => "菜单版本",
     selectFromList: () => 0,
     getPref: (_key, fallback) => fallback,
+    exists: async () => false,
+    getRepoPath: (libraryID, itemKey) => `C:\\Profile\\git4zotero\\${buildRepoRelativePath(libraryID, itemKey).replace(/\//g, "\\")}`,
     promptGitPath() {
       promptGitCount += 1;
       return true;
@@ -4120,7 +4977,18 @@ function makeMenuHarness({ serviceOverrides = {}, platformOverrides = {} } = {})
     },
     ...platformOverrides
   };
-  const menu = new PaperVersionMenu({ service, platform });
+  const archiveService = {
+    exportItemRepositoryArchive: async () => ({ path: "C:\\Backups\\item-history.zip", fileCount: 3 }),
+    importItemRepositoryArchive: async () => ({
+      imported: ["library-1/item-ABC123"],
+      skipped: [],
+      failed: [],
+      sourceRepoRelativePath: "library-1/item-SOURCE",
+      targetRepoRelativePath: "library-1/item-ABC123"
+    }),
+    ...archiveServiceOverrides
+  };
+  const menu = new PaperVersionMenu({ service, archiveService, platform });
   return {
     alerts,
     get refreshCount() {
@@ -4133,6 +5001,7 @@ function makeMenuHarness({ serviceOverrides = {}, platformOverrides = {} } = {})
       return registered;
     },
     menu,
+    archiveService,
     platform,
     service
   };

@@ -1,12 +1,14 @@
-import { ICON_20, PLUGIN_ID, UI_TEXT } from "./constants.mjs";
+import { buildRepoRelativePath } from "./attachments.mjs";
+import { ICON_20, PLUGIN_ID, PREFS, UI_TEXT } from "./constants.mjs";
 import { classifyError, recordLastError } from "./diagnostics.mjs";
 import { formatText } from "./localization.mjs";
 
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
 export class PaperVersionMenu {
-  constructor({ service, platform }) {
+  constructor({ service, archiveService = null, platform }) {
     this.service = service;
+    this.archiveService = archiveService;
     this.platform = platform;
     this.menuID = null;
     this.context = null;
@@ -116,6 +118,18 @@ export class PaperVersionMenu {
         l10nID: "git4zotero-menu-export"
       },
       {
+        action: "exportArchive",
+        id: "git4zotero-menu-export-archive",
+        label: UI_TEXT.menuExportItemArchiveLabel,
+        l10nID: "git4zotero-menu-export-archive"
+      },
+      {
+        action: "importArchive",
+        id: "git4zotero-menu-import-archive",
+        label: UI_TEXT.menuImportItemArchiveLabel,
+        l10nID: "git4zotero-menu-import-archive"
+      },
+      {
         action: "configureGit",
         id: "git4zotero-menu-configure-git",
         label: UI_TEXT.menuConfigureGit,
@@ -146,6 +160,12 @@ export class PaperVersionMenu {
       }
       else if (action === "export") {
         await this.exportSummary(eventContext);
+      }
+      else if (action === "exportArchive") {
+        await this.exportItemArchive(eventContext);
+      }
+      else if (action === "importArchive") {
+        await this.importItemArchive(eventContext);
       }
       else if (action === "configureGit") {
         await this.configureGit();
@@ -484,6 +504,7 @@ export class PaperVersionMenu {
         actions: this.buildActionStates({ selectable: true, attachment: false, reason: UI_TEXT.noDocument })
       };
     }
+    const hasRepository = await this.repositoryExists(state.repoPath);
 
     if (!state.enabled) {
       return {
@@ -493,6 +514,7 @@ export class PaperVersionMenu {
           selectable: true,
           attachment: true,
           enabled: false,
+          hasRepository,
           reason: UI_TEXT.notEnabled
         })
       };
@@ -507,6 +529,7 @@ export class PaperVersionMenu {
           selectable: true,
           attachment: true,
           enabled: true,
+          hasRepository,
           gitAvailable: false,
           gitUnavailable: true,
           reason: UI_TEXT.gitPathActionRequired
@@ -526,6 +549,7 @@ export class PaperVersionMenu {
         attachment: true,
         enabled: true,
         gitAvailable: true,
+        hasRepository,
         hasHistory: versionCount > 0
       })
     };
@@ -537,6 +561,7 @@ export class PaperVersionMenu {
     enabled = false,
     gitAvailable = false,
     gitUnavailable = false,
+    hasRepository = false,
     hasHistory = false,
     reason = ""
   } = {}) {
@@ -567,6 +592,16 @@ export class PaperVersionMenu {
         disabled = !enabled || !gitAvailable;
         disabledReason = !enabled ? UI_TEXT.notEnabled : (!gitAvailable ? reason || UI_TEXT.gitUnavailable : "");
       }
+      else if (definition.action === "exportArchive") {
+        disabled = !this.archiveService || !hasRepository;
+        disabledReason = !this.archiveService
+          ? UI_TEXT.menuUnavailable
+          : (!hasRepository ? UI_TEXT.archiveItemNoHistory : "");
+      }
+      else if (definition.action === "importArchive") {
+        disabled = !this.archiveService;
+        disabledReason = disabled ? UI_TEXT.menuUnavailable : "";
+      }
       else if (definition.action === "configureGit") {
         hidden = !gitUnavailable;
       }
@@ -582,6 +617,15 @@ export class PaperVersionMenu {
         reason: disabled ? disabledReason : ""
       };
     });
+  }
+
+  async repositoryExists(repoPath) {
+    try {
+      return !!(repoPath && await this.platform.exists?.(repoPath));
+    }
+    catch (_error) {
+      return false;
+    }
   }
 
   async enable(eventContext) {
@@ -721,6 +765,73 @@ export class PaperVersionMenu {
       return;
     }
     this.platform.alert(UI_TEXT.menuExportSummary, `${UI_TEXT.exportSuccess}\n${result.path}`);
+  }
+
+  async exportItemArchive(eventContext) {
+    const item = this.requireSingleItem(eventContext);
+    const target = await this.getArchiveTarget(item);
+    const result = await this.archiveService.exportItemRepositoryArchive({
+      repoRelativePath: target.repoRelativePath,
+      repoPath: target.repoPath,
+      attachment: target.attachment,
+      initialDirectory: this.platform.getPref(PREFS.archiveExportDirectory, "")
+    });
+    if (!result?.path) {
+      return;
+    }
+    this.platform.alert(
+      UI_TEXT.archiveExportItemTitle,
+      formatText("archiveItemExportSuccess", {
+        path: result.path,
+        fileCount: result.fileCount
+      })
+    );
+  }
+
+  async importItemArchive(eventContext) {
+    const item = this.requireSingleItem(eventContext);
+    const target = await this.getArchiveTarget(item);
+    const result = await this.archiveService.importItemRepositoryArchive({
+      targetRepoRelativePath: target.repoRelativePath,
+      targetRepoPath: target.repoPath,
+      attachment: target.attachment,
+      selectSourceRepository: (title, message, labels) => {
+        return this.platform.selectFromList(title, message, labels);
+      }
+    });
+    if (!result) {
+      return;
+    }
+    if (result.failed?.length) {
+      throw new Error(formatText("archiveItemImportFailed", {
+        message: result.failed[0].reason || UI_TEXT.unknown
+      }));
+    }
+    if (result.skipped?.length) {
+      this.platform.alert(UI_TEXT.archiveImportItemTitle, UI_TEXT.archiveItemImportSkippedExisting);
+      return;
+    }
+    this.platform.alert(
+      UI_TEXT.archiveImportItemTitle,
+      formatText("archiveItemImportSuccess", {
+        repoRelativePath: result.targetRepoRelativePath || target.repoRelativePath,
+        sourceRepoRelativePath: result.sourceRepoRelativePath || UI_TEXT.unknown
+      })
+    );
+    this.refresh();
+  }
+
+  async getArchiveTarget(item) {
+    const attachment = await this.findManageableAttachment(item);
+    if (!attachment) {
+      throw new Error(UI_TEXT.noDocument);
+    }
+    const repoRelativePath = buildRepoRelativePath(attachment.libraryID, attachment.itemKey);
+    return {
+      attachment,
+      repoRelativePath,
+      repoPath: this.platform.getRepoPath(attachment.libraryID, attachment.itemKey)
+    };
   }
 
   async configureGit() {

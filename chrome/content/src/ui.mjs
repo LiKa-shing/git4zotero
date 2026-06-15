@@ -16,6 +16,12 @@ const TIMELINE_HEADER_INLINE_STYLE = "display:flex;align-items:flex-start;justif
 const PRIMARY_TEXT_INLINE_STYLE = "color:CanvasText;overflow-wrap:anywhere;";
 const SECONDARY_TEXT_INLINE_STYLE = "color:GrayText;overflow-wrap:anywhere;";
 const BADGE_INLINE_STYLE = "display:inline-block;flex:0 0 auto;white-space:nowrap;color:GrayText;background:Canvas;border:1px solid ButtonBorder;border-radius:999px;font-size:11px;line-height:1.2;padding:2px 6px;";
+const DETAIL_ACTIONS_INLINE_STYLE = "display:flex;gap:6px;justify-content:flex-start;min-width:0;";
+const DETAIL_SURFACE_BACKGROUND = "var(--material-background, var(--zotero-item-pane-background, #202124))";
+const DETAIL_BUTTON_INLINE_STYLE = `position:relative;min-width:56px;min-height:32px;color:CanvasText;background:${DETAIL_SURFACE_BACKGROUND};border:1px solid ButtonBorder;border-radius:4px;font-size:12px;line-height:1.3;padding:6px 10px;pointer-events:auto;touch-action:manipulation;`;
+const DETAIL_PANEL_INLINE_STYLE = `display:grid;grid-template-rows:auto minmax(0,1fr);box-sizing:border-box;width:100%;max-height:min(640px,calc(100vh - 160px));margin:4px 0;overflow:hidden;color:CanvasText;background:#202124;background:${DETAIL_SURFACE_BACKGROUND};background-clip:padding-box;border:1px solid ButtonBorder;border-radius:6px;pointer-events:auto;`;
+const DETAIL_HEADER_INLINE_STYLE = `display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:0;border-bottom:1px solid ButtonBorder;padding:12px 14px;background:#202124;background:${DETAIL_SURFACE_BACKGROUND};`;
+const DETAIL_BODY_INLINE_STYLE = `display:grid;gap:10px;min-width:0;overflow:auto;padding:12px 14px;background:#202124;background:${DETAIL_SURFACE_BACKGROUND};`;
 const SCOPED_TIMELINE_STYLE = `
 .git4zotero-panel-root {
   display: block !important;
@@ -178,6 +184,85 @@ const SCOPED_TIMELINE_STYLE = `
   justify-content: space-between;
   gap: 8px;
   min-width: 0;
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-button,
+.git4zotero-panel-root .git4zotero-version-detail-close {
+  color: CanvasText;
+  background: #202124;
+  background: var(--material-background, var(--zotero-item-pane-background, #202124));
+  border: 1px solid ButtonBorder;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.3;
+  min-width: 56px;
+  min-height: 32px;
+  padding: 6px 10px;
+  pointer-events: auto;
+  position: relative;
+  touch-action: manipulation;
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  box-sizing: border-box;
+  width: 100%;
+  max-height: min(640px, calc(100vh - 160px));
+  margin: 4px 0;
+  overflow: hidden;
+  color: CanvasText;
+  background: #202124;
+  background: var(--material-background, var(--zotero-item-pane-background, #202124));
+  background-clip: padding-box;
+  border: 1px solid ButtonBorder;
+  border-radius: 6px;
+  pointer-events: auto;
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border-bottom: 1px solid ButtonBorder;
+  padding: 12px 14px;
+  background: #202124;
+  background: var(--material-background, var(--zotero-item-pane-background, #202124));
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-title {
+  color: CanvasText;
+  font-size: 14px;
+  line-height: 1.35;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  overflow: auto;
+  padding: 12px 14px;
+  background: #202124;
+  background: var(--material-background, var(--zotero-item-pane-background, #202124));
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-panel .git4zotero-change-list {
+  gap: 8px;
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-panel .git4zotero-change-text {
+  white-space: pre-wrap;
 }
 `;
 
@@ -420,6 +505,7 @@ export class PaperVersionPane {
 
   renderState({ body, item, panel, state, setSectionSummary, token, paneID }) {
     const doc = panel.ownerDocument;
+    this.closeVersionDetailDialog(this.getRoot(body) ?? panel.parentNode ?? panel);
     this.clear(panel);
     const versionCount = state.versions?.length ?? 0;
     panel.append(this.toolbar(doc, { body, item, setSectionSummary, paneID }));
@@ -784,6 +870,7 @@ export class PaperVersionPane {
       body.append(summary);
     }
     body.append(this.versionDetails(doc, version));
+    body.append(this.versionDetailActions(doc, version, body));
     const changes = this.changeList(doc, version.changeSummary, 2);
     if (changes) {
       body.append(changes);
@@ -822,6 +909,230 @@ export class PaperVersionPane {
     return details;
   }
 
+  versionDetailActions(doc, version, container) {
+    const actions = this.el(doc, "div", "git4zotero-version-detail-actions");
+    const button = this.el(doc, "button", "git4zotero-version-detail-button");
+    button.setAttribute?.("type", "button");
+    button.setAttribute?.("aria-expanded", "false");
+    button.setAttribute?.("data-git4zotero-version-detail", this.versionDetailID(version));
+    button.textContent = UI_TEXT.versionDetailButton;
+    button.addEventListener?.("click", (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      this.openVersionDetailPanel(doc, container, version, button);
+    });
+    actions.append(button);
+    return actions;
+  }
+
+  openVersionDetailPanel(doc, container, version, triggerButton = null) {
+    const root = container?.closest?.(".git4zotero-panel-root")
+      ?? container?.closest?.(".git4zotero-panel")
+      ?? doc?.documentElement
+      ?? container;
+    this.closeVersionDetailPanel(root);
+    this.setVersionDetailButtonsExpanded(root, false);
+    const panel = this.versionDetailPanel(doc, version, triggerButton);
+    container?.append?.(panel);
+    triggerButton?.setAttribute?.("aria-expanded", "true");
+    const closeButton = panel.querySelector?.(".git4zotero-version-detail-close");
+    try {
+      closeButton?.focus?.();
+    }
+    catch {
+      // Focusing can fail in some Zotero/XUL embedding contexts.
+    }
+    return panel;
+  }
+
+  closeVersionDetailDialog(root) {
+    this.closeVersionDetailPanel(root);
+  }
+
+  closeVersionDetailPanel(root) {
+    this.dismissVersionDetailPanel(root);
+  }
+
+  versionDetailPanel(doc, version, triggerButton = null) {
+    const panelID = this.versionDetailID(version);
+    const panel = this.el(doc, "section", "git4zotero-version-detail-panel");
+    panel.setAttribute?.("role", "region");
+    panel.setAttribute?.("aria-labelledby", `git4zotero-version-detail-title-${panelID}`);
+    panel.setAttribute?.("tabindex", "-1");
+    const header = this.el(doc, "header", "git4zotero-version-detail-header");
+    const title = this.el(doc, "h3", "git4zotero-version-detail-title");
+    title.setAttribute?.("id", `git4zotero-version-detail-title-${panelID}`);
+    title.textContent = UI_TEXT.versionDetailTitle;
+    const closeButton = this.el(doc, "button", "git4zotero-version-detail-close");
+    closeButton.setAttribute?.("type", "button");
+    closeButton.setAttribute?.("data-git4zotero-version-detail-close", "true");
+    closeButton.textContent = UI_TEXT.versionDetailClose;
+
+    const close = (event) => this.dismissVersionDetailPanel(panel, event, triggerButton);
+    const closeFromDelegatedEvent = (event) => {
+      if (!this.isVersionDetailCloseTarget(event?.target)) {
+        return;
+      }
+      close(event);
+    };
+    closeButton.addEventListener?.("pointerdown", close);
+    closeButton.addEventListener?.("mousedown", close);
+    closeButton.addEventListener?.("click", close);
+    closeButton.addEventListener?.("command", close);
+    panel.addEventListener?.("pointerdown", closeFromDelegatedEvent, true);
+    panel.addEventListener?.("mousedown", closeFromDelegatedEvent, true);
+    panel.addEventListener?.("click", closeFromDelegatedEvent, true);
+    panel.addEventListener?.("command", closeFromDelegatedEvent, true);
+    panel.addEventListener?.("keydown", (event) => {
+      if (event?.key !== "Escape") {
+        return;
+      }
+      close(event);
+    });
+
+    header.append(title, closeButton);
+    const body = this.el(doc, "div", "git4zotero-version-detail-body");
+    body.append(this.versionDetailMetadata(doc, version));
+    if (version.changeSummary?.summary) {
+      const summary = this.el(doc, "div", "git4zotero-change-summary");
+      summary.textContent = version.changeSummary.summary;
+      body.append(summary);
+    }
+    body.append(this.versionDetailChanges(doc, version));
+    panel.append(header, body);
+    return panel;
+  }
+
+  dismissVersionDetailPanel(panelOrRoot, event = null, triggerButton = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (!panelOrRoot) {
+      return;
+    }
+
+    const uniquePanels = [...new Set(this.findVersionDetailPanels(panelOrRoot))];
+    for (const panel of uniquePanels) {
+      if (panel.getAttribute?.("data-git4zotero-closing") === "true") {
+        continue;
+      }
+      panel.setAttribute?.("data-git4zotero-closing", "true");
+      const button = triggerButton ?? this.findVersionDetailTriggerButton(panel);
+      button?.setAttribute?.("aria-expanded", "false");
+      panel.remove?.();
+    }
+  }
+
+  findVersionDetailPanels(root) {
+    if (!root) {
+      return [];
+    }
+    if (this.hasClass(root, "git4zotero-version-detail-panel")) {
+      return [root];
+    }
+    const panels = [];
+    const visit = (node) => {
+      if (!node) {
+        return;
+      }
+      if (this.hasClass(node, "git4zotero-version-detail-panel")) {
+        panels.push(node);
+        return;
+      }
+      for (const child of node.childNodes ?? node.children ?? []) {
+        visit(child);
+      }
+    };
+    visit(root);
+    return panels;
+  }
+
+  findVersionDetailTriggerButton(panel) {
+    const container = panel?.parentNode;
+    for (const child of container?.childNodes ?? []) {
+      if (this.hasClass(child, "git4zotero-version-detail-actions")) {
+        return child.querySelector?.(".git4zotero-version-detail-button") ?? null;
+      }
+    }
+    return null;
+  }
+
+  setVersionDetailButtonsExpanded(root, expanded) {
+    const visit = (node) => {
+      if (!node) {
+        return;
+      }
+      if (this.hasClass(node, "git4zotero-version-detail-button")) {
+        node.setAttribute?.("aria-expanded", expanded ? "true" : "false");
+      }
+      for (const child of node.childNodes ?? node.children ?? []) {
+        visit(child);
+      }
+    };
+    visit(root);
+  }
+
+  isVersionDetailCloseTarget(target) {
+    for (let current = target; current; current = current.parentNode) {
+      if (current.getAttribute?.("data-git4zotero-version-detail-close") === "true") {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  versionDetailMetadata(doc, version) {
+    const list = this.el(doc, "dl", "git4zotero-version-details-list");
+    const rows = [
+      [UI_TEXT.versionNoteLabel, version.note || UI_TEXT.defaultNote],
+      [UI_TEXT.createdAtLabel, this.formatDate(version.createdAt)],
+      [UI_TEXT.gitHashLabel, version.commitHash || version.id || UI_TEXT.unknown],
+      [UI_TEXT.fileNameLabel, version.fileName || UI_TEXT.unknown],
+      [UI_TEXT.fileSizeLabel, this.formatSize(version.fileSize)],
+      [UI_TEXT.versionTypeLabel, this.versionKindLabel(version)],
+      [UI_TEXT.safetyBackupLabel, version.kind === "safety" ? UI_TEXT.safetyBackupYes : UI_TEXT.safetyBackupNo],
+      [UI_TEXT.changeSummaryLabel, version.changeSummary?.summary || UI_TEXT.actionCompleted]
+    ];
+    if (version.contentSummary?.extension === ".doc") {
+      rows.push([UI_TEXT.trackingModeLabel, UI_TEXT.docFileOnlyTracking]);
+    }
+    for (const [label, value] of rows) {
+      const term = this.el(doc, "dt");
+      term.textContent = label;
+      const description = this.el(doc, "dd");
+      description.textContent = value;
+      list.append(term, description);
+    }
+    return list;
+  }
+
+  versionDetailChanges(doc, version) {
+    const section = this.el(doc, "section", "git4zotero-version-detail-changes");
+    const title = this.el(doc, "strong", "git4zotero-section-title");
+    title.textContent = UI_TEXT.versionDetailAllStoredChanges;
+    section.append(title);
+
+    const changes = this.changeList(doc, version.changeSummary, Number.POSITIVE_INFINITY, {
+      full: true,
+      omittedKey: "omittedParagraphChangesDialog"
+    });
+    if (changes) {
+      section.append(changes);
+      return section;
+    }
+
+    const message = version.contentSummary?.extension === ".doc" || version.contentSummary?.fileOnly
+      ? UI_TEXT.versionDetailFileOnly
+      : UI_TEXT.versionDetailNoChanges;
+    section.append(this.hint(doc, message));
+    return section;
+  }
+
+  versionDetailID(version) {
+    return String(version?.id || version?.commitHash || version?.shortHash || Date.now())
+      .replace(/[^a-zA-Z0-9_-]+/g, "-")
+      .slice(0, 80) || "version";
+  }
+
   appendOptional(parent, child) {
     if (child) {
       parent.append(child);
@@ -848,9 +1159,9 @@ export class PaperVersionPane {
     return UI_TEXT.versionKindManual;
   }
 
-  changeList(doc, changeSummary, limit = 5) {
+  changeList(doc, changeSummary, limit = 5, options = {}) {
     if (changeSummary?.changeGroups?.length) {
-      return this.changeGroupList(doc, changeSummary, limit);
+      return this.changeGroupList(doc, changeSummary, limit, options);
     }
     const changes = changeSummary?.paragraphChanges?.length
       ? changeSummary.paragraphChanges
@@ -860,9 +1171,10 @@ export class PaperVersionPane {
     }
 
     const wrapper = this.el(doc, "div", "git4zotero-change-list");
-    const shownChanges = changes.slice(0, limit);
+    const showAll = options.full || !Number.isFinite(limit);
+    const shownChanges = showAll ? changes : changes.slice(0, limit);
     for (const change of shownChanges) {
-      wrapper.append(this.changeItem(doc, change));
+      wrapper.append(this.changeItem(doc, change, options));
     }
 
     const totalChanges = Number.isFinite(changeSummary?.totalParagraphChanges)
@@ -870,23 +1182,27 @@ export class PaperVersionPane {
       : changes.length + Math.max(0, changeSummary?.omittedChanges ?? 0);
     const omitted = Math.max(0, totalChanges - shownChanges.length);
     if (omitted > 0) {
-      wrapper.append(this.meta(doc, formatText("omittedParagraphChanges", { count: omitted })));
+      wrapper.append(this.meta(doc, formatText(options.omittedKey || "omittedParagraphChanges", { count: omitted })));
     }
 
     return wrapper;
   }
 
-  changeGroupList(doc, changeSummary, limit = 5) {
+  changeGroupList(doc, changeSummary, limit = 5, options = {}) {
     const wrapper = this.el(doc, "div", "git4zotero-change-list");
-    const groups = changeSummary.changeGroups.slice(0, limit);
+    const showAll = options.full || !Number.isFinite(limit);
+    const groups = showAll ? changeSummary.changeGroups : changeSummary.changeGroups.slice(0, limit);
     let shownChanges = 0;
     for (const group of groups) {
       const groupNode = this.el(doc, "div", "git4zotero-change-group");
       const title = this.el(doc, "strong", "git4zotero-change-group-title");
       title.textContent = group.summary || group.label;
       groupNode.append(title);
-      for (const change of (group.changes ?? []).slice(0, Math.max(1, Math.min(2, limit)))) {
-        groupNode.append(this.changeItem(doc, change));
+      const groupChanges = showAll
+        ? (group.changes ?? [])
+        : (group.changes ?? []).slice(0, Math.max(1, Math.min(2, limit)));
+      for (const change of groupChanges) {
+        groupNode.append(this.changeItem(doc, change, options));
         shownChanges += 1;
       }
       wrapper.append(groupNode);
@@ -897,12 +1213,12 @@ export class PaperVersionPane {
       : shownChanges + Math.max(0, changeSummary?.omittedChanges ?? 0);
     const omitted = Math.max(0, totalChanges - shownChanges);
     if (omitted > 0) {
-      wrapper.append(this.meta(doc, formatText("omittedParagraphChanges", { count: omitted })));
+      wrapper.append(this.meta(doc, formatText(options.omittedKey || "omittedParagraphChanges", { count: omitted })));
     }
     return wrapper;
   }
 
-  changeItem(doc, change) {
+  changeItem(doc, change, options = {}) {
     const wrapper = this.el(doc, "div", "git4zotero-change");
     const kind = this.el(doc, "strong", "git4zotero-change-kind");
     kind.textContent = this.changeKind(change);
@@ -917,24 +1233,24 @@ export class PaperVersionPane {
 
     if (change.type === "modified") {
       wrapper.append(
-        this.changeText(doc, UI_TEXT.changeBefore, change.oldText),
-        this.changeText(doc, UI_TEXT.changeAfter, change.newText)
+        this.changeText(doc, UI_TEXT.changeBefore, change.oldText, options),
+        this.changeText(doc, UI_TEXT.changeAfter, change.newText, options)
       );
       return wrapper;
     }
 
     if (change.type === "deleted") {
-      wrapper.append(this.changeText(doc, UI_TEXT.changeDeleted, change.oldText));
+      wrapper.append(this.changeText(doc, UI_TEXT.changeDeleted, change.oldText, options));
       return wrapper;
     }
 
-    wrapper.append(this.changeText(doc, UI_TEXT.changeAdded, change.newText));
+    wrapper.append(this.changeText(doc, UI_TEXT.changeAdded, change.newText, options));
     return wrapper;
   }
 
-  changeText(doc, label, value) {
+  changeText(doc, label, value, options = {}) {
     const line = this.el(doc, "div", "git4zotero-change-text");
-    line.textContent = `${label}${UI_TEXT.colon}${this.formatChangeText(value)}`;
+    line.textContent = `${label}${UI_TEXT.colon}${options.full ? this.formatFullChangeText(value) : this.formatChangeText(value)}`;
     return line;
   }
 
@@ -966,6 +1282,11 @@ export class PaperVersionPane {
       return UI_TEXT.emptyParagraph;
     }
     return text.length > 180 ? `${text.slice(0, 179)}…` : text;
+  }
+
+  formatFullChangeText(value) {
+    const text = String(value ?? "").replace(/\r\n?/g, "\n").trim();
+    return text || UI_TEXT.emptyParagraph;
   }
 
   section(doc, title) {
@@ -2096,6 +2417,21 @@ export class PaperVersionPane {
     }
     if (has("git4zotero-version-badge")) {
       styles.push(BADGE_INLINE_STYLE);
+    }
+    if (has("git4zotero-version-detail-actions")) {
+      styles.push(DETAIL_ACTIONS_INLINE_STYLE);
+    }
+    if (has("git4zotero-version-detail-button") || has("git4zotero-version-detail-close")) {
+      styles.push(DETAIL_BUTTON_INLINE_STYLE);
+    }
+    if (has("git4zotero-version-detail-panel")) {
+      styles.push(DETAIL_PANEL_INLINE_STYLE);
+    }
+    if (has("git4zotero-version-detail-header")) {
+      styles.push(DETAIL_HEADER_INLINE_STYLE);
+    }
+    if (has("git4zotero-version-detail-body")) {
+      styles.push(DETAIL_BODY_INLINE_STYLE);
     }
 
     if (!styles.length) {

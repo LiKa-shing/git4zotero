@@ -1,4 +1,5 @@
 import { AttachmentFinder } from "./attachments.mjs";
+import { RepositoryArchiveService } from "./archive.mjs";
 import { RepositoryCleanupService, RepositoryIndexStore } from "./cleanup.mjs";
 import {
   FTL_FILE,
@@ -28,6 +29,7 @@ export const Git4Zotero = {
   sectionID: null,
   pane: null,
   menu: null,
+  archive: null,
   cleanup: null,
   notifierObserverID: null,
   notifierObserver: null,
@@ -65,9 +67,14 @@ export const Git4Zotero = {
       metadataStore,
       indexStore
     });
+    this.archive = new RepositoryArchiveService({
+      platform: this.platform,
+      cleanupService: this.cleanup,
+      pluginVersion: context.version
+    });
 
     this.pane = new PaperVersionPane({ service, platform: this.platform });
-    this.menu = new PaperVersionMenu({ service, platform: this.platform });
+    this.menu = new PaperVersionMenu({ service, archiveService: this.archive, platform: this.platform });
     await this.registerPreferencePane(context);
 
     for (const win of zotero.getMainWindows()) {
@@ -101,6 +108,7 @@ export const Git4Zotero = {
 
     this.pane = null;
     this.menu = null;
+    this.archive = null;
     this.cleanup = null;
     this.platform = null;
     this.context = null;

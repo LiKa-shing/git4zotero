@@ -1,4 +1,5 @@
 import { PLUGIN_NAME, UI_TEXT } from "./constants.mjs";
+import { getExtension, sanitizeForPath } from "./attachments.mjs";
 import { isSafeRepoRelativePath } from "./cleanup.mjs";
 import { formatText } from "./localization.mjs";
 
@@ -16,19 +17,50 @@ export class RepositoryArchiveService {
     this.pluginVersion = pluginVersion;
   }
 
+  async exportItemRepositoryArchive(options = {}) {
+    const repoRelativePath = assertRepoRelativePath(options.repoRelativePath);
+    const repoPath = options.repoPath;
+    if (!repoPath || !(await this.safeExists(repoPath))) {
+      throw new Error(UI_TEXT.archiveItemNoHistory);
+    }
+
+    const entries = [];
+    await this.collectFiles(repoPath, repoRelativePath, entries);
+    if (!entries.length) {
+      throw new Error(UI_TEXT.archiveItemNoHistory);
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    entries.unshift({
+      name: "export-manifest.json",
+      bytes: encodeText(JSON.stringify(this.createArchiveManifest({
+        scope: "item",
+        repositories: [createArchiveRepositoryManifest(repoRelativePath, options.attachment)]
+      }), null, 2) + "\n")
+    });
+
+    const defaultFileName = buildItemArchiveFileName(options.attachment);
+    const path = await this.platform.saveBinaryFile({
+      title: UI_TEXT.archiveExportItemTitle,
+      defaultFileName,
+      initialDirectory: options.initialDirectory || "",
+      bytes: createStoredZip(entries)
+    });
+    return {
+      path,
+      fileName: defaultFileName,
+      fileCount: entries.length,
+      repositoryCount: 1,
+      repoRelativePath
+    };
+  }
+
   async exportRepositoryArchive(options = {}) {
     const dataDir = this.platform.getPluginDataDirectory();
     await this.cleanupService?.ensureIndex?.();
     const entries = await this.collectArchiveEntries(dataDir);
     entries.unshift({
       name: "export-manifest.json",
-      bytes: encodeText(JSON.stringify({
-        schemaVersion: ARCHIVE_SCHEMA_VERSION,
-        plugin: PLUGIN_NAME,
-        pluginVersion: this.pluginVersion || this.platform.getPluginVersion?.() || "",
-        exportedAt: new Date().toISOString(),
-        includesOriginalAttachments: false
-      }, null, 2) + "\n")
+      bytes: encodeText(JSON.stringify(this.createArchiveManifest({ scope: "all" }), null, 2) + "\n")
     });
 
     const defaultFileName = `git4zotero-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`;
@@ -46,14 +78,89 @@ export class RepositoryArchiveService {
     };
   }
 
-  async importRepositoryArchive() {
-    const picked = await this.platform.openBinaryFile({ title: UI_TEXT.archiveImportTitle });
+  async importItemRepositoryArchive(options = {}) {
+    const targetRepoRelativePath = assertRepoRelativePath(options.targetRepoRelativePath);
+    const dataDir = this.platform.getPluginDataDirectory();
+    const targetRepoPath = options.targetRepoPath || this.platform.join(dataDir, ...targetRepoRelativePath.split("/"));
+    const picked = await this.readImportArchive(options);
+    if (!picked) {
+      return null;
+    }
+
+    const entries = this.readArchiveEntries(picked.bytes);
+    const manifest = this.validateArchiveManifest(entries);
+    const repoGroups = this.groupImportRepositoryEntries(entries);
+    if (!repoGroups.size) {
+      throw new Error(UI_TEXT.archiveNoRepositories);
+    }
+
+    const sourceRepoRelativePath = await this.selectItemImportSource({
+      repoGroups,
+      manifest,
+      targetRepoRelativePath,
+      selectSourceRepository: options.selectSourceRepository
+    });
+    if (!sourceRepoRelativePath) {
+      return null;
+    }
+
+    const sourceEntries = repoGroups.get(sourceRepoRelativePath);
+    const sourceMetadata = readRepositoryMetadata(sourceEntries, sourceRepoRelativePath);
+    if (!sourceMetadata) {
+      throw new Error(formatText("archiveImportMissingMetadata", { repoRelativePath: sourceRepoRelativePath }));
+    }
+    assertCompatibleImportFormat(sourceMetadata, options.attachment);
+
+    const skipped = [];
+    const imported = [];
+    const failed = [];
+    if (await this.safeExists(targetRepoPath)) {
+      skipped.push({
+        repoRelativePath: targetRepoRelativePath,
+        sourceRepoRelativePath,
+        reason: UI_TEXT.archiveImportSkippedExisting
+      });
+    }
+    else {
+      const rewrittenEntries = rewriteRepositoryEntriesForTarget(sourceEntries, {
+        sourceRepoRelativePath,
+        targetRepoRelativePath,
+        attachment: options.attachment,
+        metadata: sourceMetadata
+      });
+      try {
+        await this.importRepositoryGroup(dataDir, rewrittenEntries);
+        imported.push(targetRepoRelativePath);
+      }
+      catch (error) {
+        failed.push({
+          repoRelativePath: targetRepoRelativePath,
+          sourceRepoRelativePath,
+          reason: error.message || String(error)
+        });
+      }
+    }
+
+    await this.cleanupService?.ensureIndex?.();
+    return {
+      path: picked.path,
+      imported,
+      skipped,
+      failed,
+      sourceRepoRelativePath,
+      targetRepoRelativePath
+    };
+  }
+
+  async importRepositoryArchive(options = {}) {
+    const picked = await this.readImportArchive(options);
     if (!picked) {
       return null;
     }
     const dataDir = this.platform.getPluginDataDirectory();
-    const entries = readStoredZip(picked.bytes);
-    const repoGroups = groupRepositoryEntries(entries);
+    const entries = this.readArchiveEntries(picked.bytes);
+    this.validateArchiveManifest(entries);
+    const repoGroups = this.groupImportRepositoryEntries(entries);
     if (!repoGroups.size) {
       throw new Error(UI_TEXT.archiveNoRepositories);
     }
@@ -68,11 +175,7 @@ export class RepositoryArchiveService {
         continue;
       }
       try {
-        for (const entry of repoEntries) {
-          const relativeParts = entry.name.split("/");
-          const targetPath = this.platform.join(dataDir, ...relativeParts);
-          await this.platform.writeBytes(targetPath, entry.bytes);
-        }
+        await this.importRepositoryGroup(dataDir, repoEntries);
         imported.push(repoRelativePath);
       }
       catch (error) {
@@ -87,6 +190,57 @@ export class RepositoryArchiveService {
       skipped,
       failed
     };
+  }
+
+  async readImportArchive(options = {}) {
+    return this.platform.openBinaryFile({
+      title: UI_TEXT.archiveImportTitle,
+      path: options.path || ""
+    });
+  }
+
+  readArchiveEntries(bytes) {
+    return readStoredZip(bytes);
+  }
+
+  validateArchiveManifest(entries) {
+    const manifestEntry = entries.find((entry) => entry.name === "export-manifest.json");
+    if (!manifestEntry) {
+      return null;
+    }
+
+    let manifest;
+    try {
+      manifest = JSON.parse(decodeText(manifestEntry.bytes));
+    }
+    catch (_error) {
+      throw new Error(UI_TEXT.archiveInvalidManifest);
+    }
+
+    if (!manifest || typeof manifest !== "object") {
+      throw new Error(UI_TEXT.archiveInvalidManifest);
+    }
+    if (manifest.plugin !== PLUGIN_NAME) {
+      throw new Error(formatText("archiveInvalidManifestPlugin", { plugin: manifest.plugin || UI_TEXT.unknown }));
+    }
+
+    const schemaVersion = Number(manifest.schemaVersion);
+    if (!Number.isInteger(schemaVersion) || schemaVersion < 1 || schemaVersion > ARCHIVE_SCHEMA_VERSION) {
+      throw new Error(formatText("archiveUnsupportedSchemaVersion", { version: manifest.schemaVersion ?? UI_TEXT.unknown }));
+    }
+    return manifest;
+  }
+
+  groupImportRepositoryEntries(entries) {
+    return groupRepositoryEntries(entries);
+  }
+
+  async importRepositoryGroup(dataDir, repoEntries) {
+    for (const entry of repoEntries) {
+      const relativeParts = entry.name.split("/");
+      const targetPath = this.platform.join(dataDir, ...relativeParts);
+      await this.platform.writeBytes(targetPath, entry.bytes);
+    }
   }
 
   async collectArchiveEntries(dataDir) {
@@ -117,6 +271,59 @@ export class RepositoryArchiveService {
     return entries.sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  createArchiveManifest(extra = {}) {
+    return {
+      schemaVersion: ARCHIVE_SCHEMA_VERSION,
+      plugin: PLUGIN_NAME,
+      pluginVersion: this.pluginVersion || this.platform.getPluginVersion?.() || "",
+      exportedAt: new Date().toISOString(),
+      includesOriginalAttachments: false,
+      ...extra
+    };
+  }
+
+  async selectItemImportSource({
+    repoGroups,
+    manifest = null,
+    targetRepoRelativePath,
+    selectSourceRepository = null
+  }) {
+    if (repoGroups.has(targetRepoRelativePath)) {
+      return targetRepoRelativePath;
+    }
+
+    const manifestRepos = Array.isArray(manifest?.repositories)
+      ? manifest.repositories.map((repo) => repo?.repoRelativePath).filter((repo) => repoGroups.has(repo))
+      : [];
+    if (manifest?.scope === "item" && manifestRepos.length === 1) {
+      return manifestRepos[0];
+    }
+
+    const repoRelativePaths = [...repoGroups.keys()].sort();
+    if (repoRelativePaths.length === 1) {
+      return repoRelativePaths[0];
+    }
+
+    const labels = repoRelativePaths.map((repoRelativePath) => {
+      return formatImportSourceLabel(repoRelativePath, repoGroups.get(repoRelativePath), manifest);
+    });
+    const selector = selectSourceRepository
+      ?? ((title, message, choices) => this.platform.selectFromList?.(title, message, choices) ?? -1);
+    const selected = await selector(
+      UI_TEXT.archiveImportSourceTitle,
+      UI_TEXT.archiveImportSourceMessage,
+      labels,
+      repoRelativePaths
+    );
+    if (typeof selected === "string" && repoGroups.has(selected)) {
+      return selected;
+    }
+    if (!Number.isInteger(selected) || selected < 0) {
+      return null;
+    }
+    return repoRelativePaths[selected] ?? null;
+  }
+
   async collectFiles(path, relativePath, entries) {
     if (!(await this.platform.isDirectory(path))) {
       entries.push({ name: assertArchiveEntryName(relativePath), bytes: await this.platform.readFileBytes(path) });
@@ -144,6 +351,125 @@ export class RepositoryArchiveService {
       return false;
     }
   }
+}
+
+function assertRepoRelativePath(value) {
+  const normalized = String(value ?? "").replace(/\\/g, "/");
+  if (!isSafeRepoRelativePath(normalized)) {
+    throw new Error(formatText("archiveInvalidEntry", { name: normalized || UI_TEXT.unknown }));
+  }
+  return normalized;
+}
+
+function createArchiveRepositoryManifest(repoRelativePath, attachment = null) {
+  return {
+    repoRelativePath,
+    item: createItemMetadata(attachment),
+    attachment: createAttachmentMetadata(attachment)
+  };
+}
+
+function createItemMetadata(attachment = null) {
+  return {
+    libraryID: attachment?.libraryID ?? null,
+    itemID: attachment?.itemID ?? null,
+    itemKey: attachment?.itemKey ?? ""
+  };
+}
+
+function createAttachmentMetadata(attachment = null) {
+  return {
+    attachmentID: attachment?.attachmentID ?? null,
+    attachmentKey: attachment?.attachmentKey ?? "",
+    fileName: attachment?.fileName ?? ""
+  };
+}
+
+function readRepositoryMetadata(repoEntries = [], repoRelativePath = "") {
+  const metadataName = `${repoRelativePath}/.git4zotero/versions.json`;
+  const entry = repoEntries.find((candidate) => candidate.name === metadataName);
+  if (!entry) {
+    return null;
+  }
+  try {
+    return JSON.parse(decodeText(entry.bytes));
+  }
+  catch (_error) {
+    throw new Error(formatText("archiveImportMissingMetadata", { repoRelativePath }));
+  }
+}
+
+function rewriteRepositoryEntriesForTarget(repoEntries, {
+  sourceRepoRelativePath,
+  targetRepoRelativePath,
+  attachment,
+  metadata
+}) {
+  const metadataName = `${sourceRepoRelativePath}/.git4zotero/versions.json`;
+  return repoEntries.map((entry) => {
+    const suffix = entry.name.slice(sourceRepoRelativePath.length);
+    const name = assertArchiveEntryName(`${targetRepoRelativePath}${suffix}`);
+    const bytes = entry.name === metadataName
+      ? encodeText(`${JSON.stringify(rewriteRepositoryMetadata(metadata, attachment), null, 2)}\n`)
+      : entry.bytes;
+    return { ...entry, name, bytes };
+  });
+}
+
+function rewriteRepositoryMetadata(metadata, attachment) {
+  const item = createItemMetadata(attachment);
+  const attachmentMetadata = createAttachmentMetadata(attachment);
+  return {
+    ...metadata,
+    enabled: true,
+    item,
+    attachment: attachmentMetadata,
+    versions: (metadata.versions ?? []).map((version) => ({
+      ...version,
+      zotero: {
+        ...(version.zotero ?? {}),
+        libraryID: item.libraryID,
+        itemID: item.itemID,
+        itemKey: item.itemKey,
+        attachmentID: attachmentMetadata.attachmentID,
+        attachmentKey: attachmentMetadata.attachmentKey
+      }
+    }))
+  };
+}
+
+function assertCompatibleImportFormat(metadata, attachment = null) {
+  const sourceFileName = metadata?.attachment?.fileName
+    || metadata?.versions?.find((version) => version?.fileName)?.fileName
+    || "";
+  const sourceExtension = getExtension(sourceFileName);
+  const targetExtension = attachment?.extension || getExtension(attachment?.fileName);
+  if (sourceExtension && targetExtension && sourceExtension !== targetExtension) {
+    throw new Error(formatText("archiveImportFormatMismatch", {
+      source: sourceExtension,
+      target: targetExtension
+    }));
+  }
+}
+
+function formatImportSourceLabel(repoRelativePath, repoEntries = [], manifest = null) {
+  const metadata = readRepositoryMetadata(repoEntries, repoRelativePath);
+  const manifestRepo = Array.isArray(manifest?.repositories)
+    ? manifest.repositories.find((repo) => repo?.repoRelativePath === repoRelativePath)
+    : null;
+  const fileName = metadata?.attachment?.fileName || manifestRepo?.attachment?.fileName || UI_TEXT.unknown;
+  const itemKey = metadata?.item?.itemKey || manifestRepo?.item?.itemKey || UI_TEXT.unknown;
+  return formatText("archiveImportSourceLabel", {
+    fileName,
+    itemKey,
+    repoRelativePath
+  });
+}
+
+function buildItemArchiveFileName(attachment = null) {
+  const key = sanitizeForPath(attachment?.itemKey || attachment?.attachmentKey || "item");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `git4zotero-${key}-history-${stamp}.zip`;
 }
 
 function groupRepositoryEntries(entries) {

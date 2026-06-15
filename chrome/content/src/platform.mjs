@@ -411,11 +411,12 @@ export class ZoteroPlatform {
     }
   }
 
-  async openBinaryFile({ title = UI_TEXT.archiveImportTitle } = {}) {
-    const path = await this.pickOpenPath(title);
+  async openBinaryFile({ title = UI_TEXT.archiveImportTitle, path = "" } = {}) {
+    path = normalizeExecutablePath(path) || await this.pickOpenPath(title);
     if (!path) {
       return null;
     }
+    await this.assertFileAvailable(path);
     return { path, bytes: await this.readFileBytes(path) };
   }
 
@@ -461,7 +462,23 @@ export class ZoteroPlatform {
   }
 
   async pickOpenPath(title) {
-    const { filePickerInterface, picker } = this.createInitializedFilePicker(title, this.Ci?.nsIFilePicker?.modeOpen);
+    const nativePath = await this.tryPickOpenFileWithNativeDialog(title);
+    if (nativePath !== undefined) {
+      return nativePath;
+    }
+    try {
+      return await this.pickOpenPathWithFilePicker(title);
+    }
+    catch (error) {
+      this.Zotero.debug?.(`git4zotero: open file picker unavailable, using manual path prompt: ${error?.stack || error}`);
+      return this.promptOpenFilePath(title, error);
+    }
+  }
+
+  async pickOpenPathWithFilePicker(title) {
+    const { filePickerInterface, picker } = this.createInitializedFilePicker(title, this.Ci?.nsIFilePicker?.modeOpen, {
+      unavailableMessage: UI_TEXT.openFileDialogUnavailable
+    });
     picker.appendFilter?.("ZIP", "*.zip");
     picker.appendFilters?.(filePickerInterface.filterAll);
     const result = await this.showFilePicker(picker);
@@ -470,9 +487,117 @@ export class ZoteroPlatform {
     }
     const path = picker.file?.path || "";
     if (!path) {
-      throw new Error(UI_TEXT.saveDialogNoPath);
+      throw new Error(UI_TEXT.openFileDialogNoPath);
     }
     return path;
+  }
+
+  async tryPickOpenFileWithNativeDialog(title) {
+    if (!this.isWindows()) {
+      return undefined;
+    }
+
+    const scripts = this.createWindowsOpenFilePickerScripts(title);
+    let lastError = null;
+    for (const script of scripts) {
+      for (const candidate of this.getPowerShellExecutableCandidates()) {
+        try {
+          if (candidate.mustExist && !(await this.safeExists(candidate.command))) {
+            continue;
+          }
+
+          const result = await this.runProcess(candidate.command, [
+            "-NoProfile",
+            "-STA",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script
+          ]);
+          if (result.exitCode === 2) {
+            return null;
+          }
+          if (result.exitCode === 0) {
+            const selected = normalizeExecutablePath(result.stdout.split(/\r?\n/).find((line) => line.trim()) || "");
+            if (selected) {
+              return selected;
+            }
+          }
+          lastError = new Error((result.stderr || result.stdout || UI_TEXT.openFileDialogNoPath).trim());
+        }
+        catch (error) {
+          lastError = error;
+          this.Zotero.debug?.(`git4zotero: native Windows open file picker failed: ${error?.stack || error}`);
+        }
+      }
+    }
+
+    if (lastError) {
+      this.Zotero.debug?.(`git4zotero: native Windows open file picker unavailable, trying nsIFilePicker: ${lastError?.stack || lastError}`);
+    }
+    return undefined;
+  }
+
+  createWindowsOpenFilePickerScripts(title) {
+    const description = escapePowerShellSingleQuotedString(title || UI_TEXT.archiveImportTitle);
+    return [
+      this.createWindowsFormsOpenFilePickerScript(description),
+      this.createWindowsWpfOpenFilePickerScript(description)
+    ];
+  }
+
+  createWindowsFormsOpenFilePickerScript(description) {
+    return [
+      "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false",
+      "Add-Type -AssemblyName System.Windows.Forms",
+      "$dialog = New-Object System.Windows.Forms.OpenFileDialog",
+      `$dialog.Title = '${description}'`,
+      "$dialog.Filter = 'ZIP backups (*.zip)|*.zip|All files (*.*)|*.*'",
+      "$dialog.CheckFileExists = $true",
+      "$dialog.Multiselect = $false",
+      "try {",
+      "  $result = $dialog.ShowDialog()",
+      "  if ($result -eq [System.Windows.Forms.DialogResult]::OK -and -not [string]::IsNullOrWhiteSpace($dialog.FileName)) {",
+      "    Write-Output $dialog.FileName",
+      "    exit 0",
+      "  }",
+      "  exit 2",
+      "}",
+      "finally {",
+      "  if ($dialog) { $dialog.Dispose() }",
+      "}"
+    ].join("\n");
+  }
+
+  createWindowsWpfOpenFilePickerScript(description) {
+    return [
+      "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false",
+      "Add-Type -AssemblyName PresentationFramework",
+      "$dialog = New-Object Microsoft.Win32.OpenFileDialog",
+      `$dialog.Title = '${description}'`,
+      "$dialog.Filter = 'ZIP backups (*.zip)|*.zip|All files (*.*)|*.*'",
+      "$dialog.CheckFileExists = $true",
+      "$dialog.Multiselect = $false",
+      "$result = $dialog.ShowDialog()",
+      "if ($result -eq $true -and -not [string]::IsNullOrWhiteSpace($dialog.FileName)) {",
+      "  Write-Output $dialog.FileName",
+      "  exit 0",
+      "}",
+      "exit 2"
+    ].join("\n");
+  }
+
+  promptOpenFilePath(title, error = null) {
+    if (!this.Services?.prompt?.prompt) {
+      const detail = error?.message || String(error || "");
+      throw new Error(detail ? `${UI_TEXT.openFileDialogUnavailable} ${detail}` : UI_TEXT.openFileDialogUnavailable);
+    }
+    const detail = error?.message || String(error || "");
+    const message = detail
+      ? `${UI_TEXT.archiveImportPathPromptMessage}\n\n${detail}`
+      : UI_TEXT.archiveImportPathPromptMessage;
+    const value = this.promptText(UI_TEXT.archiveImportPathPromptTitle || title, message, "");
+    return normalizeExecutablePath(value);
   }
 
   async pickDirectoryViaSaveDialog(title, defaultFileName = ".git4zotero-select-folder") {
@@ -584,17 +709,17 @@ export class ZoteroPlatform {
     return path;
   }
 
-  createInitializedFilePicker(title, mode) {
+  createInitializedFilePicker(title, mode, { unavailableMessage = UI_TEXT.saveDialogUnavailable } = {}) {
     const filePickerInterface = this.Ci?.nsIFilePicker;
     if (!filePickerInterface || mode === undefined || mode === null) {
-      throw new Error(UI_TEXT.saveDialogUnavailable);
+      throw new Error(unavailableMessage);
     }
 
     const errors = [];
     for (const parent of this.getFilePickerParentCandidates()) {
       const picker = this.Cc?.["@mozilla.org/filepicker;1"]?.createInstance?.(filePickerInterface);
       if (!picker?.init) {
-        throw new Error(UI_TEXT.saveDialogUnavailable);
+        throw new Error(unavailableMessage);
       }
 
       try {
@@ -614,7 +739,7 @@ export class ZoteroPlatform {
       .map((error) => error?.message || String(error || ""))
       .filter(Boolean)
       .join("; ");
-    throw new Error(detail ? `${UI_TEXT.saveDialogUnavailable} ${detail}` : UI_TEXT.saveDialogUnavailable);
+    throw new Error(detail ? `${unavailableMessage} ${detail}` : unavailableMessage);
   }
 
   getFilePickerParentCandidates() {
@@ -857,6 +982,15 @@ export class ZoteroPlatform {
     }
     if (!(await this.isDirectory(path))) {
       throw new Error(formatText("archiveExportDirectoryNotFolder", { path }));
+    }
+  }
+
+  async assertFileAvailable(path) {
+    if (!(await this.exists(path))) {
+      throw new Error(formatText("archiveImportFileUnavailable", { path }));
+    }
+    if (await this.isDirectory(path)) {
+      throw new Error(formatText("archiveImportPathNotFile", { path }));
     }
   }
 

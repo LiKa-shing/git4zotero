@@ -6,19 +6,55 @@
 
 ### 中文
 
-- 设置页新增更轻量的“关于”区域，采用紧凑文本链接风格，提供 Homepage、GitHub、反馈和 Q&A 入口，并展示插件版本、仓库、协议、兼容范围和支持格式。
-- “低风险工具”更名为“支持工具”，让设置页工具区的用途更清晰。
-- 改进“迁移导出目录”设置体验：可以直接粘贴目录路径，也可以点击“选择目录...”；保存或选择成功后会立即回填输入框，并同步“当前迁移导出目录”显示。
-- 修复 Windows/Zotero 9 下“选择目录...”可能无法打开的问题；系统目录选择器不可用时会提示手动粘贴路径，不再显示难懂的底层文件选择器错误。
-- 已设置迁移导出目录后，“导出全部版本历史...”会直接在该目录自动生成备份 zip 文件；如果目录不存在或不是文件夹，会明确提示错误，不会静默保存到其他位置。
+- 暂无变更。
 
 ### English
 
-- Added a lighter About area in the preferences pane with compact text links for Homepage, GitHub, feedback, and Q&A, plus plugin version, repository, license, compatibility, and supported formats.
-- Renamed “Low-Risk Tools” to “Support Tools” so the settings tools area is easier to understand.
-- Improved the migration export directory workflow: paste a folder path directly or use Choose Directory; after saving or choosing a folder, the input and current-directory display update immediately.
-- Fixed cases where Choose Directory could fail on Windows/Zotero 9; when the system folder picker is unavailable, the pane now points users to the paste-and-save fallback instead of showing low-level file picker errors.
-- When a migration export directory is configured, Export All Version History writes the backup zip directly there; if the directory is missing or not a folder, the pane reports a clear error instead of silently saving elsewhere.
+- No changes yet.
+
+## 0.4.0
+
+### 中文
+
+#### 重要更新
+
+- 本次为重要更新：版本历史导入/导出已改为针对单个 Zotero 条目操作。现在请在条目右键菜单的“论文版本”中导出或导入当前条目的历史，避免误操作整个库。
+- 右侧“论文版本”栏新增“历史详情”，可查看单次版本的说明、创建时间、文件信息、变化摘要和全部已保存修改记录。
+
+#### 历史详情
+
+- 历史详情现在以右侧栏内嵌详情面板展示。
+
+#### 条目级导入导出
+
+- 导入备份到当前条目时，可从备份包中选择一个来源历史并映射到当前条目；如果当前条目已有版本历史，插件会跳过导入，不会覆盖已有记录。
+- 导出当前条目版本历史时，只打包 git4zotero 保存的本地历史，不包含 Zotero 原始附件文件。
+
+#### 设置与兼容性
+
+- 迁移导出目录支持直接粘贴路径并自动保存；导出时会在该目录自动生成备份 ZIP 文件名。
+- 优化 Windows/Zotero 下目录选择和 ZIP 导入的兜底提示，文件选择器不可用时可通过粘贴路径继续完成操作。
+
+### English
+
+#### Highlights
+
+- Important update: version-history import/export now works on one Zotero item at a time. Use Paper Versions from the item context menu to export or import the selected item's history, reducing the risk of whole-library operations.
+- The right-side Paper Versions pane now includes History Details for each saved version, showing the note, creation time, file information, change summary, and all saved change records.
+
+#### History Details
+
+- History Details now open as an inline panel in the right pane.
+
+#### Item-Level Import and Export
+
+- When importing into the current item, you can choose one source history from a backup and map it to the selected item; if that item already has history, import is skipped without overwriting.
+- Exporting an item's version history packages only git4zotero's local history, not Zotero's original attachment files.
+
+#### Preferences and Compatibility
+
+- The migration export folder can be pasted and auto-saved; exports automatically create the backup ZIP filename in that folder.
+- Improved fallback guidance for folder selection and backup ZIP import on Windows/Zotero, including pasted-path recovery when the file picker is unavailable.
 
 ## 0.3.1
 

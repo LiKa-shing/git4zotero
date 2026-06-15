@@ -57,7 +57,7 @@ var Git4ZoteroPreferenceL10n = (() => {
     guideDataWriteFailed: "写权限检查失败：{message}",
     guideDataActionCheckWrite: "检查写权限",
     guideArchiveStepTitle: "迁移备份",
-    guideArchiveStepDescription: "配置“导出全部版本历史...”的默认目录；这不影响导入位置、Zotero 原始附件或插件数据目录。",
+    guideArchiveStepDescription: "配置条目级版本历史导出 ZIP 的默认目录；导入/导出请在具体条目的右键“论文版本”菜单中执行。",
     guideArchiveReady: "迁移导出目录：{path}",
     guideArchiveUnset: "未指定迁移导出目录；导出时将使用系统保存对话框默认位置。",
     guideArchiveUnavailable: "迁移导出目录不可用：{message}",
@@ -72,7 +72,7 @@ var Git4ZoteroPreferenceL10n = (() => {
     copyIssueTemplate: "复制 issue 模板",
     openGitGuide: "打开 Git 安装指南",
     aboutTitle: "关于",
-    aboutMeta: "git4zotero 版本 0.3.1 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
+    aboutMeta: "git4zotero 版本 0.4.0 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
     aboutOpenHomepage: "Homepage",
     aboutOpenGitHub: "GitHub",
     aboutOpenFeedback: "Bug Report, Feature Request",
@@ -88,23 +88,22 @@ var Git4ZoteroPreferenceL10n = (() => {
     gitGuideOpened: "已打开 Git 安装指南。",
     gitGuideOpenFailed: "无法打开 Git 安装指南：{message}",
     archiveActionsTitle: "版本历史备份与迁移",
-    archiveActionsDescription: "导出/导入只处理 git4zotero 保存的本地版本历史，不包含 Zotero 原始附件文件。导入时只合并缺失仓库，不覆盖已有历史。",
+    archiveActionsDescription: "条目级导入/导出请在 Zotero 条目列表中右键具体论文条目或附件，选择“论文版本”菜单执行。这里仅设置导出备份 ZIP 的默认目录。",
     archiveExportDirectoryLabel: "迁移导出目录",
-    archiveExportDirectoryHelp: "可直接粘贴目录路径，也可用“选择目录...”辅助选择；导出时会在该目录自动生成备份 zip 文件名，不影响导入位置、Zotero 原始附件或插件数据目录。",
+    archiveExportDirectoryHelp: "可直接粘贴目录路径，按 Enter 或离开输入框后自动保存，也可用“选择目录...”辅助选择；条目级导出时会在该目录自动生成备份 zip 文件名，不影响导入位置、Zotero 原始附件或插件数据目录。",
     archiveExportDirectoryPlaceholder: "可粘贴目录路径；留空使用系统保存对话框默认位置",
     archiveExportDirectoryCurrent: "当前迁移导出目录",
     archiveExportDirectoryChoose: "选择目录...",
-    archiveExportDirectorySave: "保存目录",
     archiveExportDirectoryClear: "清空",
     archiveExportDirectoryChooseTitle: "选择迁移导出目录",
     archiveExportDirectorySaved: "迁移导出目录已保存：{path}",
     archiveExportDirectoryCleared: "已清空迁移导出目录，将使用系统保存对话框默认位置。",
-    archiveChooseDirectoryFailed: "选择迁移导出目录失败：{message}\n可直接粘贴目录路径，然后点击“保存目录”。",
-    archiveSaveDirectoryFailed: "保存迁移导出目录失败：{message}",
+    archiveChooseDirectoryFailed: "选择迁移导出目录失败：{message}\n可直接粘贴目录路径，按 Enter 或离开输入框后自动保存。",
+    archiveSaveDirectoryFailed: "自动保存迁移导出目录失败：{message}",
     exportAllHistory: "导出全部版本历史...",
     importHistory: "导入版本历史...",
-    archiveStatusInitial: "尚未导入或导出版本历史。",
-    archiveExporting: "正在导出全部版本历史...",
+    archiveStatusInitial: "条目级版本历史导入/导出请从右键“论文版本”菜单执行。",
+    archiveExporting: "正在导出版本历史...",
     archiveImporting: "正在导入版本历史...",
     archiveCanceled: "已取消操作。",
     archiveExportFailed: "导出版本历史失败：{message}",
@@ -237,7 +236,7 @@ var Git4ZoteroPreferenceL10n = (() => {
       guideDataWriteFailed: "寫入權限檢查失敗：{message}",
       guideDataActionCheckWrite: "檢查寫入權限",
       guideArchiveStepTitle: "遷移備份",
-      guideArchiveStepDescription: "設定「匯出全部版本歷史...」的預設目錄；這不影響匯入位置、Zotero 原始附件或插件資料目錄。",
+      guideArchiveStepDescription: "設定條目級版本歷史匯出 ZIP 的預設目錄；匯入/匯出請在具體條目的右鍵「論文版本」選單中執行。",
       guideArchiveReady: "遷移匯出目錄：{path}",
       guideArchiveUnset: "未指定遷移匯出目錄；匯出時將使用系統儲存對話框預設位置。",
       guideArchiveUnavailable: "遷移匯出目錄不可用：{message}",
@@ -252,7 +251,7 @@ var Git4ZoteroPreferenceL10n = (() => {
       copyIssueTemplate: "複製 issue 範本",
       openGitGuide: "開啟 Git 安裝指南",
       aboutTitle: "關於",
-      aboutMeta: "git4zotero 版本 0.3.1 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
+      aboutMeta: "git4zotero 版本 0.4.0 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
       aboutOpenHomepage: "Homepage",
       aboutOpenGitHub: "GitHub",
       aboutOpenFeedback: "Bug Report, Feature Request",
@@ -268,23 +267,22 @@ var Git4ZoteroPreferenceL10n = (() => {
       gitGuideOpened: "已開啟 Git 安裝指南。",
       gitGuideOpenFailed: "無法開啟 Git 安裝指南：{message}",
       archiveActionsTitle: "版本歷史備份與遷移",
-      archiveActionsDescription: "匯出/匯入只處理 git4zotero 儲存的本機版本歷史，不包含 Zotero 原始附件檔案。匯入時只合併缺失倉庫，不覆蓋既有歷史。",
+      archiveActionsDescription: "條目級匯入/匯出請在 Zotero 條目列表中右鍵具體論文條目或附件，選擇「論文版本」選單執行。這裡僅設定匯出備份 ZIP 的預設目錄。",
       archiveExportDirectoryLabel: "遷移匯出目錄",
-      archiveExportDirectoryHelp: "可直接貼上目錄路徑，也可用「選擇目錄...」輔助選擇；匯出時會在該目錄自動產生備份 zip 檔名，不影響匯入位置、Zotero 原始附件或插件資料目錄。",
+      archiveExportDirectoryHelp: "可直接貼上目錄路徑，按 Enter 或離開輸入框後自動儲存，也可用「選擇目錄...」輔助選擇；條目級匯出時會在該目錄自動產生備份 zip 檔名，不影響匯入位置、Zotero 原始附件或插件資料目錄。",
       archiveExportDirectoryPlaceholder: "可貼上目錄路徑；留空使用系統儲存對話框預設位置",
       archiveExportDirectoryCurrent: "目前遷移匯出目錄",
       archiveExportDirectoryChoose: "選擇目錄...",
-      archiveExportDirectorySave: "儲存目錄",
       archiveExportDirectoryClear: "清空",
       archiveExportDirectoryChooseTitle: "選擇遷移匯出目錄",
       archiveExportDirectorySaved: "遷移匯出目錄已儲存：{path}",
       archiveExportDirectoryCleared: "已清空遷移匯出目錄，將使用系統儲存對話框預設位置。",
-      archiveChooseDirectoryFailed: "選擇遷移匯出目錄失敗：{message}\n可直接貼上目錄路徑，然後點擊「儲存目錄」。",
-      archiveSaveDirectoryFailed: "儲存遷移匯出目錄失敗：{message}",
+      archiveChooseDirectoryFailed: "選擇遷移匯出目錄失敗：{message}\n可直接貼上目錄路徑，按 Enter 或離開輸入框後自動儲存。",
+      archiveSaveDirectoryFailed: "自動儲存遷移匯出目錄失敗：{message}",
       exportAllHistory: "匯出全部版本歷史...",
       importHistory: "匯入版本歷史...",
-      archiveStatusInitial: "尚未匯入或匯出版本歷史。",
-      archiveExporting: "正在匯出全部版本歷史...",
+      archiveStatusInitial: "條目級版本歷史匯入/匯出請從右鍵「論文版本」選單執行。",
+      archiveExporting: "正在匯出版本歷史...",
       archiveImporting: "正在匯入版本歷史...",
       archiveCanceled: "已取消操作。",
       archiveExportFailed: "匯出版本歷史失敗：{message}",
@@ -415,7 +413,7 @@ var Git4ZoteroPreferenceL10n = (() => {
       guideDataWriteFailed: "Write permission check failed: {message}",
       guideDataActionCheckWrite: "Check Write Permission",
       guideArchiveStepTitle: "Migration Backup",
-      guideArchiveStepDescription: "Configure the default directory for \"Export All Version History...\"; this does not affect imports, original Zotero attachments, or the plugin data directory.",
+      guideArchiveStepDescription: "Configure the default directory for item-level version-history ZIP exports; import and export are run from the selected item's Paper Versions context menu.",
       guideArchiveReady: "Migration export directory: {path}",
       guideArchiveUnset: "No migration export directory is set; exports will use the system save dialog default.",
       guideArchiveUnavailable: "Migration export directory is unavailable: {message}",
@@ -430,7 +428,7 @@ var Git4ZoteroPreferenceL10n = (() => {
       copyIssueTemplate: "Copy Issue Template",
       openGitGuide: "Open Git Install Guide",
       aboutTitle: "About",
-      aboutMeta: "git4zotero version 0.3.1 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
+      aboutMeta: "git4zotero version 0.4.0 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
       aboutOpenHomepage: "Homepage",
       aboutOpenGitHub: "GitHub",
       aboutOpenFeedback: "Bug Report, Feature Request",
@@ -446,23 +444,22 @@ var Git4ZoteroPreferenceL10n = (() => {
       gitGuideOpened: "Opened the Git install guide.",
       gitGuideOpenFailed: "Could not open the Git install guide: {message}",
       archiveActionsTitle: "Version History Backup and Migration",
-      archiveActionsDescription: "Export/import handles only local version history saved by git4zotero and does not include Zotero's original attachment files. Import only merges missing repositories and never overwrites existing history.",
+      archiveActionsDescription: "Run item-level import/export from the Paper Versions context menu on a specific Zotero item or attachment. This pane only configures the default directory for exported backup ZIP files.",
       archiveExportDirectoryLabel: "Migration export directory",
-      archiveExportDirectoryHelp: "Paste a directory path directly, or use Choose Directory... as a helper; exports automatically generate a backup zip file name in that directory and do not affect imports, original Zotero attachments, or the plugin data directory.",
+      archiveExportDirectoryHelp: "Paste a directory path directly, then press Enter or leave the input to save it automatically; you can also use Choose Directory... as a helper. Item-level exports automatically generate a backup zip file name in that directory and do not affect imports, original Zotero attachments, or the plugin data directory.",
       archiveExportDirectoryPlaceholder: "Paste a directory path, or leave blank to use the system save dialog default",
       archiveExportDirectoryCurrent: "Current migration export directory",
       archiveExportDirectoryChoose: "Choose Directory...",
-      archiveExportDirectorySave: "Save Directory",
       archiveExportDirectoryClear: "Clear",
       archiveExportDirectoryChooseTitle: "Choose Migration Export Directory",
       archiveExportDirectorySaved: "Migration export directory saved: {path}",
       archiveExportDirectoryCleared: "Migration export directory cleared; the system save dialog default will be used.",
-      archiveChooseDirectoryFailed: "Could not choose the migration export directory: {message}\nYou can paste a directory path directly and click Save Directory.",
-      archiveSaveDirectoryFailed: "Could not save the migration export directory: {message}",
+      archiveChooseDirectoryFailed: "Could not choose the migration export directory: {message}\nYou can paste a directory path directly, then press Enter or leave the input to save it automatically.",
+      archiveSaveDirectoryFailed: "Could not auto-save the migration export directory: {message}",
       exportAllHistory: "Export All Version History...",
       importHistory: "Import Version History...",
-      archiveStatusInitial: "Version history has not been imported or exported yet.",
-      archiveExporting: "Exporting all version history...",
+      archiveStatusInitial: "Run item-level version-history import/export from the Paper Versions context menu.",
+      archiveExporting: "Exporting version history...",
       archiveImporting: "Importing version history...",
       archiveCanceled: "Operation canceled.",
       archiveExportFailed: "Version history export failed: {message}",
@@ -608,8 +605,7 @@ const FIRST_USE_GUIDE_STEPS = Object.freeze([
     descriptionKey: "guideArchiveStepDescription",
     actions: [
       { id: "choose-archive-directory", labelKey: "guideArchiveActionChoose" },
-      { id: "clear-archive-directory", labelKey: "archiveExportDirectoryClear" },
-      { id: "export-history-archive", labelKey: "exportAllHistory" }
+      { id: "clear-archive-directory", labelKey: "archiveExportDirectoryClear" }
     ]
   },
   {
@@ -650,8 +646,8 @@ var Git4ZoteroPreferences = {
   platform: null,
   cleanupService: null,
   diagnosticService: null,
-  archiveService: null,
   lastOrphanScan: null,
+  confirmedArchiveExportDirectory: null,
   guideStepIndex: 0,
   guideStepStates: null,
 
@@ -682,6 +678,17 @@ var Git4ZoteroPreferences = {
     gitInput?.addEventListener("input", () => {
       this.refreshResolvedGit();
       this.refreshSavedGit();
+    });
+
+    const archiveExportDirectoryInput = document.getElementById("git4zotero-archive-export-directory");
+    archiveExportDirectoryInput?.addEventListener("change", (changeEvent) => {
+      return this.autoSaveArchiveExportDirectory(changeEvent);
+    });
+    archiveExportDirectoryInput?.addEventListener("blur", (blurEvent) => {
+      return this.autoSaveArchiveExportDirectory(blurEvent);
+    });
+    archiveExportDirectoryInput?.addEventListener("keydown", (keyEvent) => {
+      return this.autoSaveArchiveExportDirectory(keyEvent);
     });
 
     this.bindFirstUseGuideControls();
@@ -1163,10 +1170,6 @@ var Git4ZoteroPreferences = {
         this.clearArchiveExportDirectory();
         await this.refreshGuideArchiveState();
       }
-      else if (actionID === "export-history-archive") {
-        await this.exportHistoryArchive();
-        this.syncGuideStateFromStatusElement("archive", "git4zotero-archive-status");
-      }
       else if (actionID === "run-health-check") {
         await this.runHealthCheck();
         this.refreshGuideTroubleshootingState();
@@ -1395,20 +1398,38 @@ var Git4ZoteroPreferences = {
     }
   },
 
-  async saveArchiveExportDirectory(event = null) {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
+  async autoSaveArchiveExportDirectory(event = null) {
+    const isEnterKey = event?.key === "Enter" || event?.code === "Enter" || event?.code === "NumpadEnter";
+    if (event?.type === "keydown" && !isEnterKey) {
+      return false;
+    }
+    if (event?.type === "keydown") {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+    }
     this.init(event);
     this.setArchiveButtonsDisabled(true);
     try {
-      await this.persistArchiveExportDirectoryValue();
-    }
-    catch (error) {
-      this.recordPreferenceError(error, "save archive export directory");
-      this.setArchiveStatus(this.text("archiveSaveDirectoryFailed", { message: error.message || String(error) }), "error");
+      return await this.savePendingArchiveExportDirectory();
     }
     finally {
       this.setArchiveButtonsDisabled(false);
+    }
+  },
+
+  async savePendingArchiveExportDirectory() {
+    const directory = this.getArchiveExportDirectoryInputValue();
+    if (directory === this.getArchiveExportDirectory()) {
+      return true;
+    }
+    try {
+      await this.persistArchiveExportDirectoryValue();
+      return true;
+    }
+    catch (error) {
+      this.recordPreferenceError(error, "auto-save archive export directory");
+      this.setArchiveStatus(this.text("archiveSaveDirectoryFailed", { message: error.message || String(error) }), "error");
+      return false;
     }
   },
 
@@ -1433,64 +1454,8 @@ var Git4ZoteroPreferences = {
     this.init(event);
     this.setArchiveExportDirectoryValue("");
     Zotero.Prefs.set("extensions.git4zotero.archiveExportDirectory", "");
-    this.refreshArchiveExportDirectory();
+    this.applyArchiveExportDirectoryDisplay("");
     this.setArchiveStatus(this.text("archiveExportDirectoryCleared"), "success");
-  },
-
-  async exportHistoryArchive(event = null) {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
-    this.init(event);
-    this.setArchiveButtonsDisabled(true);
-    this.setArchiveStatus(this.text("archiveExporting"), "");
-    try {
-      const result = await this.getArchiveService().exportRepositoryArchive({
-        initialDirectory: this.getArchiveExportDirectory()
-      });
-      if (!result?.path) {
-        this.setArchiveStatus(this.text("archiveCanceled"), "");
-        return;
-      }
-      this.setArchiveStatus(this.text("archiveExportSuccess", {
-        path: result.path,
-        repoCount: result.repositoryCount,
-        fileCount: result.fileCount
-      }), "success");
-    }
-    catch (error) {
-      this.recordPreferenceError(error, "export version history archive");
-      this.setArchiveStatus(this.text("archiveExportFailed", { message: error.message || String(error) }), "error");
-    }
-    finally {
-      this.setArchiveButtonsDisabled(false);
-    }
-  },
-
-  async importHistoryArchive(event = null) {
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
-    this.init(event);
-    this.setArchiveButtonsDisabled(true);
-    this.setArchiveStatus(this.text("archiveImporting"), "");
-    try {
-      const result = await this.getArchiveService().importRepositoryArchive();
-      if (!result) {
-        this.setArchiveStatus(this.text("archiveCanceled"), "");
-        return;
-      }
-      this.setArchiveStatus(this.text("archiveImportSuccess", {
-        importedCount: result.imported?.length ?? 0,
-        skippedCount: result.skipped?.length ?? 0,
-        failedCount: result.failed?.length ?? 0
-      }), result.failed?.length ? "warning" : "success");
-    }
-    catch (error) {
-      this.recordPreferenceError(error, "import version history archive");
-      this.setArchiveStatus(this.text("archiveImportFailed", { message: error.message || String(error) }), "error");
-    }
-    finally {
-      this.setArchiveButtonsDisabled(false);
-    }
   },
 
   getPlatform() {
@@ -1561,19 +1526,6 @@ var Git4ZoteroPreferences = {
     return this.diagnosticService;
   },
 
-  getArchiveService() {
-    if (this.archiveService) {
-      return this.archiveService;
-    }
-    const archiveModule = ChromeUtils.importESModule("chrome://git4zotero/content/src/archive.mjs");
-    this.archiveService = new archiveModule.RepositoryArchiveService({
-      platform: this.getPlatform(),
-      cleanupService: this.getCleanupService(),
-      pluginVersion: this.getPlatform().getPluginVersion?.() || ""
-    });
-    return this.archiveService;
-  },
-
   getDocument(event = null) {
     return event?.target?.ownerDocument ?? document;
   },
@@ -1590,7 +1542,6 @@ var Git4ZoteroPreferences = {
       && doc.getElementById("git4zotero-guide-step-list")
       && doc.getElementById("git4zotero-guide-step-title")
       && doc.getElementById("git4zotero-archive-export-directory")
-      && doc.getElementById("git4zotero-save-archive-export-directory")
       && doc.getElementById("git4zotero-current-archive-export-directory")
       && doc.getElementById("git4zotero-archive-status")
       && doc.getElementById("git4zotero-about-status")
@@ -1638,8 +1589,15 @@ var Git4ZoteroPreferences = {
     return this.normalizeExecutablePath(Zotero.Prefs.get("extensions.git4zotero.gitPath", true));
   },
 
-  getArchiveExportDirectory() {
+  getSavedArchiveExportDirectory() {
     return this.normalizeExecutablePath(Zotero.Prefs.get("extensions.git4zotero.archiveExportDirectory", true));
+  },
+
+  getArchiveExportDirectory() {
+    if (this.confirmedArchiveExportDirectory !== null) {
+      return this.normalizeExecutablePath(this.confirmedArchiveExportDirectory);
+    }
+    return this.getSavedArchiveExportDirectory();
   },
 
   getArchiveExportDirectoryInputValue() {
@@ -1681,12 +1639,13 @@ var Git4ZoteroPreferences = {
   },
 
   refreshArchiveExportDirectory() {
-    const directory = this.normalizeExecutablePath(Zotero.Prefs.get("extensions.git4zotero.archiveExportDirectory", true));
+    const directory = this.getSavedArchiveExportDirectory();
     this.applyArchiveExportDirectoryDisplay(directory);
   },
 
   applyArchiveExportDirectoryDisplay(directoryValue) {
     const directory = this.normalizeExecutablePath(directoryValue);
+    this.confirmedArchiveExportDirectory = directory;
     this.setArchiveExportDirectoryValue(directory);
     const current = document.getElementById("git4zotero-current-archive-export-directory");
     if (current) {
@@ -1813,10 +1772,7 @@ var Git4ZoteroPreferences = {
 
   setArchiveButtonsDisabled(disabled) {
     for (const id of [
-      "git4zotero-export-history",
-      "git4zotero-import-history",
       "git4zotero-choose-archive-export-directory",
-      "git4zotero-save-archive-export-directory",
       "git4zotero-clear-archive-export-directory"
     ]) {
       const button = document.getElementById(id);

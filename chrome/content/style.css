@@ -287,6 +287,87 @@
   overflow-wrap: anywhere;
 }
 
+.git4zotero-version-detail-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.git4zotero-version-detail-button,
+.git4zotero-version-detail-close {
+  background: #202124;
+  background: var(--material-background, var(--zotero-item-pane-background, #202124));
+  border: 1px solid var(--color-border, ButtonBorder);
+  border-radius: 4px;
+  color: var(--fill-primary, CanvasText);
+  cursor: default;
+  font-size: 12px;
+  line-height: 1.3;
+  min-height: 32px;
+  min-width: 56px;
+  padding: 6px 10px;
+  pointer-events: auto;
+  position: relative;
+  touch-action: manipulation;
+}
+
+.git4zotero-version-detail-panel {
+  background: #202124;
+  background: var(--material-background, var(--zotero-item-pane-background, #202124));
+  background-clip: padding-box;
+  border: 1px solid var(--color-border, ButtonBorder);
+  border-radius: 6px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .32);
+  box-sizing: border-box;
+  color: var(--fill-primary, CanvasText);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  margin: 4px 0;
+  max-height: min(640px, calc(100vh - 160px));
+  overflow: hidden;
+  pointer-events: auto;
+  width: 100%;
+}
+
+.git4zotero-version-detail-header {
+  align-items: flex-start;
+  background: #202124;
+  background: var(--material-background, var(--zotero-item-pane-background, #202124));
+  border-bottom: 1px solid var(--color-border, ButtonBorder);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.git4zotero-version-detail-title {
+  color: var(--fill-primary, CanvasText);
+  font-size: 14px;
+  line-height: 1.35;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.git4zotero-version-detail-body {
+  background: #202124;
+  background: var(--material-background, var(--zotero-item-pane-background, #202124));
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.git4zotero-version-detail-panel .git4zotero-change-list {
+  gap: 8px;
+}
+
+.git4zotero-version-detail-panel .git4zotero-change-text {
+  white-space: pre-wrap;
+}
+
 .git4zotero-version-badge {
   background: var(--material-background, Canvas);
   border: 1px solid var(--color-border, ButtonBorder);
