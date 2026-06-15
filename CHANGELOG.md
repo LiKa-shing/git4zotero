@@ -6,11 +6,11 @@
 
 ### 中文
 
-- 暂无变更。
+- CI 工作流现在支持从 GitHub Actions 页面手动触发，用于无发布副作用地运行验证并上传 XPI artifact。
 
 ### English
 
-- No changes yet.
+- CI workflow can now be manually triggered from GitHub Actions to run verification and upload the XPI artifact without publishing a release.
 
 ## 0.4.0
 
