@@ -7,10 +7,12 @@
 ### 中文
 
 - CI 工作流现在支持从 GitHub Actions 页面手动触发，用于无发布副作用地运行验证并上传 XPI artifact。
+- 修复 Zotero 窗口最大化/还原后右侧论文版本面板可能无法正确刷新的问题。
 
 ### English
 
 - CI workflow can now be manually triggered from GitHub Actions to run verification and upload the XPI artifact without publishing a release.
+- Fixed an issue where the right-side Paper Versions pane could fail to refresh correctly after maximizing or restoring the Zotero window.
 
 ## 0.4.0
 
