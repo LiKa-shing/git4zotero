@@ -1,36 +1,51 @@
-import { SECTION_ID, UI_TEXT } from "./constants.mjs";
+import { PREFS, SECTION_ID, UI_TEXT } from "./constants.mjs";
 import { classifyError, recordLastError } from "./diagnostics.mjs";
 import { formatText } from "./localization.mjs";
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
-const ROOT_INLINE_STYLE = "display:block;box-sizing:border-box;width:100%;min-width:0;min-height:72px;color:CanvasText;background:Canvas;";
-const PANEL_INLINE_STYLE = "display:flex;flex-direction:column;gap:12px;box-sizing:border-box;width:100%;min-width:0;max-width:100%;min-height:72px;color:CanvasText;background:Canvas;padding:8px 4px 12px;";
-const STATUS_INLINE_STYLE = "display:block;box-sizing:border-box;color:CanvasText;background:Canvas;border:1px solid ButtonBorder;border-radius:4px;line-height:1.5;overflow-wrap:anywhere;padding:8px 10px;";
-const SECTION_INLINE_STYLE = "display:flex;flex-direction:column;gap:8px;min-width:0;color:CanvasText;";
-const TIMELINE_INLINE_STYLE = "display:grid;overflow:visible;padding:2px 0;min-width:0;color:CanvasText;";
-const TIMELINE_ITEM_INLINE_STYLE = "display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;position:relative;min-width:0;padding:0 0 12px;color:CanvasText;";
-const TIMELINE_LINE_INLINE_STYLE = "display:block;position:absolute;top:0;bottom:-2px;left:8px;width:2px;background:ButtonBorder;";
-const TIMELINE_NODE_INLINE_STYLE = "display:block;box-sizing:border-box;width:12px;height:12px;margin-top:4px;justify-self:center;align-self:start;border:2px solid #1565c0;border-radius:50%;background:Canvas;z-index:1;";
-const TIMELINE_BODY_INLINE_STYLE = "display:grid;gap:6px;min-width:0;color:CanvasText;";
-const TIMELINE_HEADER_INLINE_STYLE = "display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0;color:CanvasText;";
-const PRIMARY_TEXT_INLINE_STYLE = "color:CanvasText;overflow-wrap:anywhere;";
-const SECONDARY_TEXT_INLINE_STYLE = "color:GrayText;overflow-wrap:anywhere;";
-const BADGE_INLINE_STYLE = "display:inline-block;flex:0 0 auto;white-space:nowrap;color:GrayText;background:Canvas;border:1px solid ButtonBorder;border-radius:999px;font-size:11px;line-height:1.2;padding:2px 6px;";
+const ROOT_INLINE_STYLE = "display:block;box-sizing:border-box;width:100%;min-width:0;min-height:72px;color:var(--git4zotero-text,CanvasText);background:var(--git4zotero-surface,Canvas);";
+const PANEL_INLINE_STYLE = "display:flex;flex-direction:column;gap:12px;box-sizing:border-box;width:100%;min-width:0;max-width:100%;min-height:72px;color:var(--git4zotero-text,CanvasText);background:var(--git4zotero-surface,Canvas);padding:8px 4px 12px;";
+const STATUS_INLINE_STYLE = "display:block;box-sizing:border-box;color:var(--git4zotero-text,CanvasText);background:var(--git4zotero-surface,Canvas);border:1px solid var(--git4zotero-border,ButtonBorder);border-radius:4px;line-height:1.5;overflow-wrap:anywhere;padding:8px 10px;";
+const SECTION_INLINE_STYLE = "display:flex;flex-direction:column;gap:8px;min-width:0;color:var(--git4zotero-text,CanvasText);";
+const TIMELINE_INLINE_STYLE = "display:grid;overflow:visible;padding:2px 0;min-width:0;color:var(--git4zotero-text,CanvasText);";
+const TIMELINE_ITEM_INLINE_STYLE = "display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;position:relative;min-width:0;padding:0 0 12px;color:var(--git4zotero-text,CanvasText);";
+const TIMELINE_LINE_INLINE_STYLE = "display:block;position:absolute;top:0;bottom:-2px;left:8px;width:2px;background:var(--git4zotero-border,ButtonBorder);";
+const TIMELINE_NODE_INLINE_STYLE = "display:block;box-sizing:border-box;width:12px;height:12px;margin-top:4px;justify-self:center;align-self:start;border:2px solid var(--git4zotero-accent,#1565c0);border-radius:50%;background:var(--git4zotero-surface,Canvas);z-index:1;";
+const TIMELINE_BODY_INLINE_STYLE = "display:grid;gap:6px;min-width:0;color:var(--git4zotero-text,CanvasText);";
+const TIMELINE_HEADER_INLINE_STYLE = "display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:0;color:var(--git4zotero-text,CanvasText);";
+const PRIMARY_TEXT_INLINE_STYLE = "color:var(--git4zotero-text,CanvasText);overflow-wrap:anywhere;";
+const SECONDARY_TEXT_INLINE_STYLE = "color:var(--git4zotero-muted,GrayText);overflow-wrap:anywhere;";
+const BADGE_INLINE_STYLE = "display:inline-block;flex:0 0 auto;white-space:nowrap;color:var(--git4zotero-muted,GrayText);background:var(--git4zotero-surface,Canvas);border:1px solid var(--git4zotero-border,ButtonBorder);border-radius:999px;font-size:11px;line-height:1.2;padding:2px 6px;";
 const DETAIL_ACTIONS_INLINE_STYLE = "display:flex;gap:6px;justify-content:flex-start;min-width:0;";
-const DETAIL_SURFACE_BACKGROUND = "var(--material-background, var(--zotero-item-pane-background, #202124))";
-const DETAIL_BUTTON_INLINE_STYLE = `position:relative;min-width:56px;min-height:32px;color:CanvasText;background:${DETAIL_SURFACE_BACKGROUND};border:1px solid ButtonBorder;border-radius:4px;font-size:12px;line-height:1.3;padding:6px 10px;pointer-events:auto;touch-action:manipulation;`;
-const DETAIL_PANEL_INLINE_STYLE = `display:grid;grid-template-rows:auto minmax(0,1fr);box-sizing:border-box;width:100%;max-height:min(640px,calc(100vh - 160px));margin:4px 0;overflow:hidden;color:CanvasText;background:#202124;background:${DETAIL_SURFACE_BACKGROUND};background-clip:padding-box;border:1px solid ButtonBorder;border-radius:6px;pointer-events:auto;`;
-const DETAIL_HEADER_INLINE_STYLE = `display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:0;border-bottom:1px solid ButtonBorder;padding:12px 14px;background:#202124;background:${DETAIL_SURFACE_BACKGROUND};`;
-const DETAIL_BODY_INLINE_STYLE = `display:grid;gap:10px;min-width:0;overflow:auto;padding:12px 14px;background:#202124;background:${DETAIL_SURFACE_BACKGROUND};`;
+const DETAIL_HEADER_ACTIONS_INLINE_STYLE = "display:flex;align-items:flex-start;flex-wrap:wrap;gap:6px;justify-content:flex-end;min-width:0;";
+const DETAIL_STATUS_INLINE_STYLE = "display:block;color:var(--git4zotero-muted,GrayText);font-size:12px;line-height:1.4;overflow-wrap:anywhere;";
+const DETAIL_SURFACE_BACKGROUND = "var(--git4zotero-detail-surface,var(--material-background,var(--zotero-item-pane-background,#202124)))";
+const DETAIL_BUTTON_INLINE_STYLE = `position:relative;min-width:56px;min-height:32px;color:var(--git4zotero-text,CanvasText);background:${DETAIL_SURFACE_BACKGROUND};border:1px solid var(--git4zotero-border,ButtonBorder);border-radius:4px;font-size:12px;line-height:1.3;padding:6px 10px;pointer-events:auto;touch-action:manipulation;`;
+const DETAIL_PANEL_INLINE_STYLE = `display:grid;grid-template-rows:auto minmax(0,1fr);box-sizing:border-box;width:100%;max-height:min(640px,calc(100vh - 160px));margin:4px 0;overflow:hidden;color:var(--git4zotero-text,CanvasText);background:${DETAIL_SURFACE_BACKGROUND};background-clip:padding-box;border:1px solid var(--git4zotero-border,ButtonBorder);border-radius:6px;pointer-events:auto;`;
+const DETAIL_HEADER_INLINE_STYLE = `display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:0;border-bottom:1px solid var(--git4zotero-border,ButtonBorder);padding:12px 14px;background:${DETAIL_SURFACE_BACKGROUND};`;
+const DETAIL_BODY_INLINE_STYLE = `display:grid;gap:10px;min-width:0;overflow:auto;padding:12px 14px;background:${DETAIL_SURFACE_BACKGROUND};`;
+const DETAIL_INITIAL_CHANGE_LIMIT = 20;
+const DETAIL_INITIAL_GROUP_LIMIT = 8;
+const PANE_HEADER_ICON_CLASS = "git4zotero-pane-header-icon";
+const PANE_HEADER_LABEL_CLASS = "git4zotero-pane-header-label";
 const SCOPED_TIMELINE_STYLE = `
 .git4zotero-panel-root {
+  --git4zotero-surface: Canvas;
+  --git4zotero-detail-surface: var(--material-background, var(--zotero-item-pane-background, #202124));
+  --git4zotero-text: CanvasText;
+  --git4zotero-muted: GrayText;
+  --git4zotero-border: ButtonBorder;
+  --git4zotero-accent: #1565c0;
+  --git4zotero-success: #167c3c;
+  --git4zotero-warning: #8a5a00;
+  --git4zotero-error: #b3261e;
   display: block !important;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   min-height: 72px;
-  color: CanvasText;
-  background: Canvas;
+  color: var(--git4zotero-text);
+  background: var(--git4zotero-surface);
 }
 
 .git4zotero-panel-root .git4zotero-panel {
@@ -43,8 +58,8 @@ const SCOPED_TIMELINE_STYLE = `
   max-width: 100%;
   min-height: 72px;
   padding: 8px 4px 12px;
-  color: CanvasText;
-  background: Canvas;
+  color: var(--git4zotero-text);
+  background: var(--git4zotero-surface);
 }
 
 .git4zotero-panel-root .git4zotero-toolbar {
@@ -194,11 +209,13 @@ const SCOPED_TIMELINE_STYLE = `
 }
 
 .git4zotero-panel-root .git4zotero-version-detail-button,
+.git4zotero-panel-root .git4zotero-version-detail-copy,
+.git4zotero-panel-root .git4zotero-version-detail-export,
+.git4zotero-panel-root .git4zotero-version-detail-toggle,
 .git4zotero-panel-root .git4zotero-version-detail-close {
-  color: CanvasText;
-  background: #202124;
-  background: var(--material-background, var(--zotero-item-pane-background, #202124));
-  border: 1px solid ButtonBorder;
+  color: var(--git4zotero-text);
+  background: var(--git4zotero-detail-surface);
+  border: 1px solid var(--git4zotero-border);
   border-radius: 4px;
   font-size: 12px;
   line-height: 1.3;
@@ -218,11 +235,10 @@ const SCOPED_TIMELINE_STYLE = `
   max-height: min(640px, calc(100vh - 160px));
   margin: 4px 0;
   overflow: hidden;
-  color: CanvasText;
-  background: #202124;
-  background: var(--material-background, var(--zotero-item-pane-background, #202124));
+  color: var(--git4zotero-text);
+  background: var(--git4zotero-detail-surface);
   background-clip: padding-box;
-  border: 1px solid ButtonBorder;
+  border: 1px solid var(--git4zotero-border);
   border-radius: 6px;
   pointer-events: auto;
 }
@@ -233,14 +249,22 @@ const SCOPED_TIMELINE_STYLE = `
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
-  border-bottom: 1px solid ButtonBorder;
+  border-bottom: 1px solid var(--git4zotero-border);
   padding: 12px 14px;
-  background: #202124;
-  background: var(--material-background, var(--zotero-item-pane-background, #202124));
+  background: var(--git4zotero-detail-surface);
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-header-actions {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .git4zotero-panel-root .git4zotero-version-detail-title {
-  color: CanvasText;
+  color: var(--git4zotero-text);
   font-size: 14px;
   line-height: 1.35;
   margin: 0;
@@ -253,8 +277,22 @@ const SCOPED_TIMELINE_STYLE = `
   min-width: 0;
   overflow: auto;
   padding: 12px 14px;
-  background: #202124;
-  background: var(--material-background, var(--zotero-item-pane-background, #202124));
+  background: var(--git4zotero-detail-surface);
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-status {
+  color: var(--git4zotero-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-status[data-tone="success"] {
+  color: var(--git4zotero-success);
+}
+
+.git4zotero-panel-root .git4zotero-version-detail-status[data-tone="error"] {
+  color: var(--git4zotero-error);
 }
 
 .git4zotero-panel-root .git4zotero-version-detail-panel .git4zotero-change-list {
@@ -963,10 +1001,20 @@ export class PaperVersionPane {
     const title = this.el(doc, "h3", "git4zotero-version-detail-title");
     title.setAttribute?.("id", `git4zotero-version-detail-title-${panelID}`);
     title.textContent = UI_TEXT.versionDetailTitle;
+    const headerActions = this.el(doc, "div", "git4zotero-version-detail-header-actions");
+    const copyButton = this.versionDetailHeaderButton(doc, "git4zotero-version-detail-copy", UI_TEXT.versionDetailCopy);
+    const exportButton = this.versionDetailHeaderButton(doc, "git4zotero-version-detail-export", UI_TEXT.versionDetailExport);
     const closeButton = this.el(doc, "button", "git4zotero-version-detail-close");
     closeButton.setAttribute?.("type", "button");
     closeButton.setAttribute?.("data-git4zotero-version-detail-close", "true");
     closeButton.textContent = UI_TEXT.versionDetailClose;
+
+    copyButton.addEventListener?.("click", (event) => {
+      this.copyVersionDetail(panel, version, event);
+    });
+    exportButton.addEventListener?.("click", (event) => {
+      return this.exportVersionDetail(panel, version, event);
+    });
 
     const close = (event) => this.dismissVersionDetailPanel(panel, event, triggerButton);
     const closeFromDelegatedEvent = (event) => {
@@ -990,17 +1038,88 @@ export class PaperVersionPane {
       close(event);
     });
 
-    header.append(title, closeButton);
+    headerActions.append(copyButton, exportButton, closeButton);
+    header.append(title, headerActions);
     const body = this.el(doc, "div", "git4zotero-version-detail-body");
+    const status = this.el(doc, "div", "git4zotero-version-detail-status");
+    status.setAttribute?.("role", "status");
+    status.hidden = true;
+    status.setAttribute?.("hidden", "hidden");
     body.append(this.versionDetailMetadata(doc, version));
     if (version.changeSummary?.summary) {
       const summary = this.el(doc, "div", "git4zotero-change-summary");
       summary.textContent = version.changeSummary.summary;
       body.append(summary);
     }
+    body.append(status);
     body.append(this.versionDetailChanges(doc, version));
     panel.append(header, body);
     return panel;
+  }
+
+  versionDetailHeaderButton(doc, className, label) {
+    const button = this.el(doc, "button", className);
+    button.setAttribute?.("type", "button");
+    button.textContent = label;
+    return button;
+  }
+
+  copyVersionDetail(panel, version, event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    try {
+      const content = this.service.formatSingleVersionSummaryMarkdown(version);
+      this.platform.copyTextToClipboard(content);
+      this.setVersionDetailStatus(panel, UI_TEXT.versionDetailCopySuccess, "success");
+    }
+    catch (error) {
+      recordLastError(this.platform, error, { operation: "copy version detail" });
+      this.setVersionDetailStatus(
+        panel,
+        formatText("versionDetailCopyFailed", { message: error?.message || String(error) }),
+        "error"
+      );
+    }
+  }
+
+  async exportVersionDetail(panel, version, event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    try {
+      const result = await this.service.exportSingleVersionSummary(version, {
+        initialDirectory: this.platform?.getPref?.(PREFS.archiveExportDirectory, "") || ""
+      });
+      if (result?.path) {
+        this.setVersionDetailStatus(panel, `${UI_TEXT.versionDetailExportSuccess}\n${result.path}`, "success");
+      }
+    }
+    catch (error) {
+      recordLastError(this.platform, error, { operation: "export single version summary" });
+      this.setVersionDetailStatus(
+        panel,
+        formatText("versionDetailExportFailed", { message: error?.message || String(error) }),
+        "error"
+      );
+    }
+  }
+
+  setVersionDetailStatus(panel, message, tone = "") {
+    const status = panel?.querySelector?.(".git4zotero-version-detail-status");
+    if (!status) {
+      return;
+    }
+    status.textContent = message;
+    if (status.dataset) {
+      status.dataset.tone = tone || "";
+    }
+    status.setAttribute?.("data-tone", tone || "");
+    status.hidden = !message;
+    if (message) {
+      status.removeAttribute?.("hidden");
+    }
+    else {
+      status.setAttribute?.("hidden", "hidden");
+    }
   }
 
   dismissVersionDetailPanel(panelOrRoot, event = null, triggerButton = null) {
@@ -1105,18 +1224,24 @@ export class PaperVersionPane {
     return list;
   }
 
-  versionDetailChanges(doc, version) {
+  versionDetailChanges(doc, version, { expanded = false } = {}) {
     const section = this.el(doc, "section", "git4zotero-version-detail-changes");
     const title = this.el(doc, "strong", "git4zotero-section-title");
     title.textContent = UI_TEXT.versionDetailAllStoredChanges;
     section.append(title);
 
-    const changes = this.changeList(doc, version.changeSummary, Number.POSITIVE_INFINITY, {
-      full: true,
-      omittedKey: "omittedParagraphChangesDialog"
+    const limit = this.versionDetailInitialLimit(version.changeSummary);
+    const hasMore = this.versionDetailHasMore(version.changeSummary, limit);
+    const showFull = expanded || !hasMore;
+    const changes = this.changeList(doc, version.changeSummary, showFull ? Number.POSITIVE_INFINITY : limit, {
+      full: showFull,
+      omittedKey: showFull ? "omittedParagraphChangesDialog" : "omittedParagraphChangesPanel"
     });
     if (changes) {
       section.append(changes);
+      if (hasMore) {
+        section.append(this.versionDetailToggleButton(doc, version, expanded, section));
+      }
       return section;
     }
 
@@ -1125,6 +1250,56 @@ export class PaperVersionPane {
       : UI_TEXT.versionDetailNoChanges;
     section.append(this.hint(doc, message));
     return section;
+  }
+
+  versionDetailToggleButton(doc, version, expanded, section) {
+    const button = this.el(doc, "button", "git4zotero-version-detail-toggle");
+    button.setAttribute?.("type", "button");
+    button.setAttribute?.("aria-expanded", expanded ? "true" : "false");
+    button.textContent = expanded ? UI_TEXT.versionDetailCollapse : UI_TEXT.versionDetailShowAll;
+    button.addEventListener?.("click", (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      const next = this.versionDetailChanges(doc, version, { expanded: !expanded });
+      section.replaceWith?.(next);
+      if (!section.replaceWith && section.parentNode) {
+        const parent = section.parentNode;
+        const index = parent.childNodes?.indexOf?.(section) ?? -1;
+        if (index >= 0) {
+          parent.childNodes[index] = next;
+          next.parentNode = parent;
+          section.parentNode = null;
+        }
+      }
+    });
+    return button;
+  }
+
+  versionDetailInitialLimit(changeSummary) {
+    return changeSummary?.changeGroups?.length ? DETAIL_INITIAL_GROUP_LIMIT : DETAIL_INITIAL_CHANGE_LIMIT;
+  }
+
+  versionDetailHasMore(changeSummary, limit) {
+    if (!changeSummary) {
+      return false;
+    }
+    if (changeSummary.changeGroups?.length) {
+      return changeSummary.changeGroups.length > limit || this.countDetailChanges(changeSummary) > DETAIL_INITIAL_CHANGE_LIMIT;
+    }
+    return this.countDetailChanges(changeSummary) > limit;
+  }
+
+  countDetailChanges(changeSummary) {
+    if (Number.isFinite(changeSummary?.totalParagraphChanges)) {
+      return changeSummary.totalParagraphChanges;
+    }
+    if (changeSummary?.changeGroups?.length) {
+      return changeSummary.changeGroups.reduce((total, group) => total + (group.changes?.length ?? 0), 0);
+    }
+    const changes = changeSummary?.paragraphChanges?.length
+      ? changeSummary.paragraphChanges
+      : (changeSummary?.displayChanges ?? []);
+    return changes.length + Math.max(0, changeSummary?.omittedChanges ?? 0);
   }
 
   versionDetailID(version) {
@@ -1495,11 +1670,75 @@ export class PaperVersionPane {
       this.paneContext.refresh = refresh;
     }
     this.paneContext.paneID = paneID;
+    if (doc) {
+      this.ensurePaneHeaderBranding(doc, paneID);
+    }
 
     if (source === "init" || refresh) {
       this.debug(`item pane context captured source=${source}, actualPaneID=${paneID}, hasDoc=${!!this.paneContext.doc}, hasRefresh=${typeof this.paneContext.refresh === "function"}`);
     }
     return this.paneContext;
+  }
+
+  ensurePaneHeaderBranding(doc, paneID = this.actualPaneID) {
+    const section = this.findPaneSectionInDocument(doc, paneID);
+    if (!section) {
+      return false;
+    }
+    const label = this.findPaneHeaderLabel(section);
+    if (!label) {
+      return false;
+    }
+
+    this.addClass(label, PANE_HEADER_LABEL_CLASS);
+    this.removeExternalPaneHeaderIcons(label);
+    if (this.hasPaneHeaderIcon(label)) {
+      return true;
+    }
+
+    const icon = this.el(doc, "span", PANE_HEADER_ICON_CLASS);
+    icon.setAttribute?.("aria-hidden", "true");
+    icon.setAttribute?.("data-git4zotero-pane-header-icon", "true");
+    if (!this.insertBefore(label, icon, label.childNodes?.[0] ?? label.children?.[0] ?? null)) {
+      this.addClass(label.parentNode, "git4zotero-pane-header-row");
+      this.insertBefore(label.parentNode, icon, label);
+    }
+    return true;
+  }
+
+  findPaneHeaderLabel(section) {
+    const byL10n = this.findDescendant(section, (node) => node?.getAttribute?.("data-l10n-id") === "git4zotero-item-pane-header");
+    if (byL10n) {
+      return byL10n;
+    }
+
+    const knownLabels = new Set(["版本管理", "Version Management", "论文版本", "論文版本", "Paper Versions"]);
+    return this.findDescendant(section, (node) => {
+      if (this.hasClass(node, PANE_HEADER_ICON_CLASS) || this.hasClass(node, "git4zotero-panel-root")) {
+        return false;
+      }
+      const value = String(node?.textContent ?? node?.getAttribute?.("value") ?? node?.getAttribute?.("label") ?? "").trim();
+      return knownLabels.has(value);
+    });
+  }
+
+  hasPaneHeaderIcon(label) {
+    if (!label) {
+      return false;
+    }
+    return [...(label.childNodes ?? label.children ?? [])].some((child) => this.hasClass(child, PANE_HEADER_ICON_CLASS));
+  }
+
+  removeExternalPaneHeaderIcons(label) {
+    const parent = label?.parentNode;
+    if (!parent) {
+      return;
+    }
+    for (const child of [...(parent.childNodes ?? parent.children ?? [])]) {
+      if (child !== label && this.hasClass(child, PANE_HEADER_ICON_CLASS)) {
+        child.remove?.();
+      }
+    }
   }
 
   getActualPaneID(renderContext = {}) {
@@ -2289,6 +2528,46 @@ export class PaperVersionPane {
     return String(node.className ?? "").split(/\s+/).includes(className);
   }
 
+  addClass(node, className) {
+    if (!node || this.hasClass(node, className)) {
+      return;
+    }
+    if (node.classList?.add) {
+      node.classList.add(className);
+      return;
+    }
+    const next = [...String(node.className ?? "").split(/\s+/), className]
+      .filter(Boolean)
+      .join(" ");
+    node.className = next;
+    node.setAttribute?.("class", next);
+  }
+
+  insertBefore(parent, node, reference) {
+    if (!parent || !node) {
+      return false;
+    }
+    if (typeof parent.insertBefore === "function") {
+      parent.insertBefore(node, reference ?? null);
+      return true;
+    }
+
+    const children = parent.childNodes ?? parent.children;
+    if (!children?.splice) {
+      parent.append?.(node);
+      return true;
+    }
+    const index = reference ? children.indexOf(reference) : -1;
+    if (index >= 0) {
+      node.parentNode = parent;
+      children.splice(index, 0, node);
+    }
+    else {
+      parent.append?.(node);
+    }
+    return true;
+  }
+
   nextToken(body) {
     const token = (this.renderTokens.get(body) ?? 0) + 1;
     this.renderTokens.set(body, token);
@@ -2421,8 +2700,18 @@ export class PaperVersionPane {
     if (has("git4zotero-version-detail-actions")) {
       styles.push(DETAIL_ACTIONS_INLINE_STYLE);
     }
-    if (has("git4zotero-version-detail-button") || has("git4zotero-version-detail-close")) {
+    if (has("git4zotero-version-detail-button")
+      || has("git4zotero-version-detail-copy")
+      || has("git4zotero-version-detail-export")
+      || has("git4zotero-version-detail-toggle")
+      || has("git4zotero-version-detail-close")) {
       styles.push(DETAIL_BUTTON_INLINE_STYLE);
+    }
+    if (has("git4zotero-version-detail-header-actions")) {
+      styles.push(DETAIL_HEADER_ACTIONS_INLINE_STYLE);
+    }
+    if (has("git4zotero-version-detail-status")) {
+      styles.push(DETAIL_STATUS_INLINE_STYLE);
     }
     if (has("git4zotero-version-detail-panel")) {
       styles.push(DETAIL_PANEL_INLINE_STYLE);

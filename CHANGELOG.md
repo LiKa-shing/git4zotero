@@ -6,13 +6,65 @@
 
 ### 中文
 
-- CI 工作流现在支持从 GitHub Actions 页面手动触发，用于无发布副作用地运行验证并上传 XPI artifact。
-- 修复 Zotero 窗口最大化/还原后右侧论文版本面板可能无法正确刷新的问题。
+- 修复右侧“版本管理”标题图标与文字分离的问题。
+- 设置页 About 区块中的 Homepage 现在指向开发者 GitHub 主页。
 
 ### English
 
-- CI workflow can now be manually triggered from GitHub Actions to run verification and upload the XPI artifact without publishing a release.
+- Fixed an issue where the right-pane "Version Management" icon could be separated from the title text.
+- The Homepage link in the preferences About section now opens the developer's GitHub profile.
+
+## 0.4.2
+
+### 中文
+
+- 导出版本摘要现在会使用设置页保存的迁移导出目录；已配置目录时会直接在该目录自动生成摘要文件，未配置时保持原有保存对话框行为。
+- 设置页 About 区块不再默认显示“尚未打开项目链接”，仅在打开项目链接成功或失败时显示状态反馈。
+- 右侧栏历史详情新增“复制详情”和“导出该次修改摘要”，可生成适合发给指导老师或提交 issue 的 Markdown 内容。
+- 长文档的历史详情现在默认折叠较长修改记录，可按需展开完整修改，减少右侧栏滚动卡顿。
+- 健康检查结果新增独立“下一步建议”小节；Git 路径测试在检测到多个可用 Git 时可让用户选择保存的路径。
+- 更新插件图标为更统一的 Git 分支与命令行风格，在设置页、右键菜单和 README 中保持一致展示。
+- 右侧条目栏标题优化为“版本管理”，并在标题左侧加入插件图标，使其与 Zotero 界面风格更协调。
+
+### English
+
+- Version summary exports now use the migration export directory saved in preferences. When configured, summary files are generated directly in that folder; otherwise the existing save-dialog behavior is preserved.
+- The About section no longer shows the initial "Project link has not been opened yet" placeholder and only displays status feedback after opening a project link succeeds or fails.
+- History Details in the right pane now include Copy Details and Export This Change Summary actions that generate Markdown suitable for advisor review or issue reports.
+- Long document diffs in History Details are collapsed by default and can be expanded on demand, reducing right-pane scrolling friction.
+- Health check results now include a separate Next Steps section, and Git path testing lets users choose which detected Git executable to save when multiple candidates are available.
+- Updated the plugin icon to a unified Git-branch and command-line style across preferences, context menus, and the README.
+- The right-side item pane title is now "Version Management" with the plugin icon shown beside it for a more native Zotero feel.
+
+## 0.4.1
+
+### 中文
+
+#### 更新
+
+- 本次更新强化了条目级版本历史备份的迁移契约：新导出的备份会记录更清晰的来源仓库、兼容格式、导出插件版本、版本数量和最近版本时间，方便后续迁移与问题诊断。
+- 导入版本历史前会先展示预览，包括来源文件、来源仓库、版本数量、最近版本、目标条目以及是否会因为已有历史而跳过，减少误导入和误覆盖风险。
+
+#### 兼容性与迁移
+
+- 旧版本备份仍可读取；全局导入/导出能力保留为内部兼容路径，但用户入口继续以具体 Zotero 条目的右键菜单为准。
+- 版本历史 metadata 增加集中迁移层，旧的 `versions.json` 会在读取时规范到当前结构，后续字段演进会更稳定。
+- 修复 Zotero 窗口最大化/还原后右侧论文版本面板可能无法正确刷新的问题。
+- CI 工作流现在支持从 GitHub Actions 页面手动触发，用于无发布副作用地运行验证并上传 XPI artifact。
+
+### English
+
+#### Update
+
+- This release strengthens the item-level backup contract. Newly exported archives now describe the source repository, compatible format, exporting plugin version, version count, and latest version time more clearly for future migration and troubleshooting.
+- Version-history import now shows a preview before writing, including the source file, source repository, version count, latest version, target item, and whether the import will be skipped because history already exists.
+
+#### Compatibility and Migration
+
+- Older backups remain readable. Whole-library import/export is kept only as an internal compatibility path, while user-facing migration continues through the selected Zotero item's context menu.
+- Version metadata now has a centralized migration layer so older `versions.json` files are normalized consistently when read, making future schema changes safer.
 - Fixed an issue where the right-side Paper Versions pane could fail to refresh correctly after maximizing or restoring the Zotero window.
+- CI workflow can now be manually triggered from GitHub Actions to run verification and upload the XPI artifact without publishing a release.
 
 ## 0.4.0
 

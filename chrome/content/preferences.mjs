@@ -57,7 +57,7 @@ var Git4ZoteroPreferenceL10n = (() => {
     guideDataWriteFailed: "写权限检查失败：{message}",
     guideDataActionCheckWrite: "检查写权限",
     guideArchiveStepTitle: "迁移备份",
-    guideArchiveStepDescription: "配置条目级版本历史导出 ZIP 的默认目录；导入/导出请在具体条目的右键“论文版本”菜单中执行。",
+    guideArchiveStepDescription: "配置条目级版本历史 ZIP 和版本摘要导出的默认目录；导入/导出请在具体条目的右键“论文版本”菜单中执行。",
     guideArchiveReady: "迁移导出目录：{path}",
     guideArchiveUnset: "未指定迁移导出目录；导出时将使用系统保存对话框默认位置。",
     guideArchiveUnavailable: "迁移导出目录不可用：{message}",
@@ -72,12 +72,11 @@ var Git4ZoteroPreferenceL10n = (() => {
     copyIssueTemplate: "复制 issue 模板",
     openGitGuide: "打开 Git 安装指南",
     aboutTitle: "关于",
-    aboutMeta: "git4zotero 版本 0.4.0 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
+    aboutMeta: "git4zotero 版本 0.4.2 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
     aboutOpenHomepage: "Homepage",
     aboutOpenGitHub: "GitHub",
     aboutOpenFeedback: "Bug Report, Feature Request",
     aboutOpenQA: "Q&A",
-    aboutStatusInitial: "尚未打开项目链接。",
     aboutLinkOpened: "已打开项目链接：{label}",
     aboutLinkOpenFailed: "无法打开项目链接：{message}",
     aboutUnknownLink: "未知的项目链接。",
@@ -88,9 +87,9 @@ var Git4ZoteroPreferenceL10n = (() => {
     gitGuideOpened: "已打开 Git 安装指南。",
     gitGuideOpenFailed: "无法打开 Git 安装指南：{message}",
     archiveActionsTitle: "版本历史备份与迁移",
-    archiveActionsDescription: "条目级导入/导出请在 Zotero 条目列表中右键具体论文条目或附件，选择“论文版本”菜单执行。这里仅设置导出备份 ZIP 的默认目录。",
+    archiveActionsDescription: "条目级导入/导出请在 Zotero 条目列表中右键具体论文条目或附件，选择“论文版本”菜单执行。这里设置条目级历史 ZIP 和版本摘要导出的默认目录。",
     archiveExportDirectoryLabel: "迁移导出目录",
-    archiveExportDirectoryHelp: "可直接粘贴目录路径，按 Enter 或离开输入框后自动保存，也可用“选择目录...”辅助选择；条目级导出时会在该目录自动生成备份 zip 文件名，不影响导入位置、Zotero 原始附件或插件数据目录。",
+    archiveExportDirectoryHelp: "可直接粘贴目录路径，按 Enter 或离开输入框后自动保存，也可用“选择目录...”辅助选择；条目级历史 ZIP 和版本摘要导出都会默认写入该目录，并自动生成文件名，不影响导入位置、Zotero 原始附件或插件数据目录。",
     archiveExportDirectoryPlaceholder: "可粘贴目录路径；留空使用系统保存对话框默认位置",
     archiveExportDirectoryCurrent: "当前迁移导出目录",
     archiveExportDirectoryChoose: "选择目录...",
@@ -154,6 +153,8 @@ var Git4ZoteroPreferenceL10n = (() => {
     healthSuggestionDeletedHistory: "确认条目已不需要恢复后，可使用“清理已删除条目的历史”显式清理。",
     healthSuggestionMetadata: "建议先不要手动修改仓库文件，复制诊断信息并提交 issue。",
     healthSuggestionConsistency: "建议先不要手动修复仓库；复制诊断信息提交 issue，后续可按明确修复入口处理。",
+    healthNextStepsTitle: "下一步建议",
+    healthNoNextSteps: "未发现需要处理的事项。健康检查不会自动修复或清理历史。",
     checkDeletedHistory: "检查已删除条目的历史",
     cleanDeletedHistory: "清理已删除条目的历史",
     orphanInitial: "尚未检查是否有已删除条目留下的版本历史。",
@@ -161,6 +162,9 @@ var Git4ZoteroPreferenceL10n = (() => {
     testingGit: "正在测试 Git...",
     gitAvailable: "Git 可用：{detail}\n已测试路径：{testedPath}\n已保存路径：{savedPath}",
     gitUnavailable: "Git 不可用：{detail}",
+    gitCandidateSelectTitle: "选择 Git 可执行文件",
+    gitCandidateSelectMessage: "检测到多个可用 Git，请选择要保存并使用的路径。",
+    gitCandidateSelectionCanceled: "已取消 Git 路径选择。",
     gitPathCheckHint: "请检查 Git 路径。",
     gitTestFailed: "Git 测试失败：{message}",
     orphanChecking: "正在检查是否有已删除条目留下的版本历史...",
@@ -236,7 +240,7 @@ var Git4ZoteroPreferenceL10n = (() => {
       guideDataWriteFailed: "寫入權限檢查失敗：{message}",
       guideDataActionCheckWrite: "檢查寫入權限",
       guideArchiveStepTitle: "遷移備份",
-      guideArchiveStepDescription: "設定條目級版本歷史匯出 ZIP 的預設目錄；匯入/匯出請在具體條目的右鍵「論文版本」選單中執行。",
+      guideArchiveStepDescription: "設定條目級版本歷史 ZIP 和版本摘要匯出的預設目錄；匯入/匯出請在具體條目的右鍵「論文版本」選單中執行。",
       guideArchiveReady: "遷移匯出目錄：{path}",
       guideArchiveUnset: "未指定遷移匯出目錄；匯出時將使用系統儲存對話框預設位置。",
       guideArchiveUnavailable: "遷移匯出目錄不可用：{message}",
@@ -251,12 +255,11 @@ var Git4ZoteroPreferenceL10n = (() => {
       copyIssueTemplate: "複製 issue 範本",
       openGitGuide: "開啟 Git 安裝指南",
       aboutTitle: "關於",
-      aboutMeta: "git4zotero 版本 0.4.0 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
+      aboutMeta: "git4zotero 版本 0.4.2 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
       aboutOpenHomepage: "Homepage",
       aboutOpenGitHub: "GitHub",
       aboutOpenFeedback: "Bug Report, Feature Request",
       aboutOpenQA: "Q&A",
-      aboutStatusInitial: "尚未開啟專案連結。",
       aboutLinkOpened: "已開啟專案連結：{label}",
       aboutLinkOpenFailed: "無法開啟專案連結：{message}",
       aboutUnknownLink: "未知的專案連結。",
@@ -267,9 +270,9 @@ var Git4ZoteroPreferenceL10n = (() => {
       gitGuideOpened: "已開啟 Git 安裝指南。",
       gitGuideOpenFailed: "無法開啟 Git 安裝指南：{message}",
       archiveActionsTitle: "版本歷史備份與遷移",
-      archiveActionsDescription: "條目級匯入/匯出請在 Zotero 條目列表中右鍵具體論文條目或附件，選擇「論文版本」選單執行。這裡僅設定匯出備份 ZIP 的預設目錄。",
+      archiveActionsDescription: "條目級匯入/匯出請在 Zotero 條目列表中右鍵具體論文條目或附件，選擇「論文版本」選單執行。這裡設定條目級歷史 ZIP 和版本摘要匯出的預設目錄。",
       archiveExportDirectoryLabel: "遷移匯出目錄",
-      archiveExportDirectoryHelp: "可直接貼上目錄路徑，按 Enter 或離開輸入框後自動儲存，也可用「選擇目錄...」輔助選擇；條目級匯出時會在該目錄自動產生備份 zip 檔名，不影響匯入位置、Zotero 原始附件或插件資料目錄。",
+      archiveExportDirectoryHelp: "可直接貼上目錄路徑，按 Enter 或離開輸入框後自動儲存，也可用「選擇目錄...」輔助選擇；條目級歷史 ZIP 和版本摘要匯出都會預設寫入該目錄，並自動產生檔名，不影響匯入位置、Zotero 原始附件或插件資料目錄。",
       archiveExportDirectoryPlaceholder: "可貼上目錄路徑；留空使用系統儲存對話框預設位置",
       archiveExportDirectoryCurrent: "目前遷移匯出目錄",
       archiveExportDirectoryChoose: "選擇目錄...",
@@ -333,6 +336,8 @@ var Git4ZoteroPreferenceL10n = (() => {
       healthSuggestionDeletedHistory: "確認條目已不需要恢復後，可使用「清理已刪除條目的歷史」明確清理。",
       healthSuggestionMetadata: "建議先不要手動修改倉庫檔案，複製診斷資訊並提交 issue。",
       healthSuggestionConsistency: "建議先不要手動修復倉庫；複製診斷資訊提交 issue，後續可按明確修復入口處理。",
+      healthNextStepsTitle: "下一步建議",
+      healthNoNextSteps: "未發現需要處理的事項。健康檢查不會自動修復或清理歷史。",
       checkDeletedHistory: "檢查已刪除條目的歷史",
       cleanDeletedHistory: "清理已刪除條目的歷史",
       orphanInitial: "尚未檢查是否有已刪除條目留下的版本歷史。",
@@ -340,6 +345,9 @@ var Git4ZoteroPreferenceL10n = (() => {
       testingGit: "正在測試 Git...",
       gitAvailable: "Git 可用：{detail}\n已測試路徑：{testedPath}\n已儲存路徑：{savedPath}",
       gitUnavailable: "Git 不可用：{detail}",
+      gitCandidateSelectTitle: "選擇 Git 可執行檔",
+      gitCandidateSelectMessage: "偵測到多個可用 Git，請選擇要儲存並使用的路徑。",
+      gitCandidateSelectionCanceled: "已取消 Git 路徑選擇。",
       gitPathCheckHint: "請檢查 Git 路徑。",
       gitTestFailed: "Git 測試失敗：{message}",
       orphanChecking: "正在檢查是否有已刪除條目留下的版本歷史...",
@@ -413,7 +421,7 @@ var Git4ZoteroPreferenceL10n = (() => {
       guideDataWriteFailed: "Write permission check failed: {message}",
       guideDataActionCheckWrite: "Check Write Permission",
       guideArchiveStepTitle: "Migration Backup",
-      guideArchiveStepDescription: "Configure the default directory for item-level version-history ZIP exports; import and export are run from the selected item's Paper Versions context menu.",
+      guideArchiveStepDescription: "Configure the default directory for item-level version-history ZIP and version-summary exports; import and export are run from the selected item's Paper Versions context menu.",
       guideArchiveReady: "Migration export directory: {path}",
       guideArchiveUnset: "No migration export directory is set; exports will use the system save dialog default.",
       guideArchiveUnavailable: "Migration export directory is unavailable: {message}",
@@ -428,12 +436,11 @@ var Git4ZoteroPreferenceL10n = (() => {
       copyIssueTemplate: "Copy Issue Template",
       openGitGuide: "Open Git Install Guide",
       aboutTitle: "About",
-      aboutMeta: "git4zotero version 0.4.0 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
+      aboutMeta: "git4zotero version 0.4.2 · LiKa-shing/git4zotero · MIT · Zotero 8.0-9.0.* · .docx/.doc",
       aboutOpenHomepage: "Homepage",
       aboutOpenGitHub: "GitHub",
       aboutOpenFeedback: "Bug Report, Feature Request",
       aboutOpenQA: "Q&A",
-      aboutStatusInitial: "Project link has not been opened yet.",
       aboutLinkOpened: "Opened project link: {label}",
       aboutLinkOpenFailed: "Could not open project link: {message}",
       aboutUnknownLink: "Unknown project link.",
@@ -444,9 +451,9 @@ var Git4ZoteroPreferenceL10n = (() => {
       gitGuideOpened: "Opened the Git install guide.",
       gitGuideOpenFailed: "Could not open the Git install guide: {message}",
       archiveActionsTitle: "Version History Backup and Migration",
-      archiveActionsDescription: "Run item-level import/export from the Paper Versions context menu on a specific Zotero item or attachment. This pane only configures the default directory for exported backup ZIP files.",
+      archiveActionsDescription: "Run item-level import/export from the Paper Versions context menu on a specific Zotero item or attachment. This pane configures the default directory for exported history ZIP files and version summaries.",
       archiveExportDirectoryLabel: "Migration export directory",
-      archiveExportDirectoryHelp: "Paste a directory path directly, then press Enter or leave the input to save it automatically; you can also use Choose Directory... as a helper. Item-level exports automatically generate a backup zip file name in that directory and do not affect imports, original Zotero attachments, or the plugin data directory.",
+      archiveExportDirectoryHelp: "Paste a directory path directly, then press Enter or leave the input to save it automatically; you can also use Choose Directory... as a helper. Item-level history ZIP and version-summary exports are written there by default with generated file names and do not affect imports, original Zotero attachments, or the plugin data directory.",
       archiveExportDirectoryPlaceholder: "Paste a directory path, or leave blank to use the system save dialog default",
       archiveExportDirectoryCurrent: "Current migration export directory",
       archiveExportDirectoryChoose: "Choose Directory...",
@@ -510,6 +517,8 @@ var Git4ZoteroPreferenceL10n = (() => {
       healthSuggestionDeletedHistory: "After confirming the item no longer needs to be restored, use \"Clean History for Deleted Items\" to clean it explicitly.",
       healthSuggestionMetadata: "Do not edit repository files manually; copy diagnostics and file an issue.",
       healthSuggestionConsistency: "Do not repair the repository manually; copy diagnostics and file an issue so a future explicit repair action can be designed.",
+      healthNextStepsTitle: "Next Steps",
+      healthNoNextSteps: "No action is needed. Health checks do not repair repositories or clean history automatically.",
       checkDeletedHistory: "Check History for Deleted Items",
       cleanDeletedHistory: "Clean History for Deleted Items",
       orphanInitial: "History left by deleted items has not been checked yet.",
@@ -517,6 +526,9 @@ var Git4ZoteroPreferenceL10n = (() => {
       testingGit: "Testing Git...",
       gitAvailable: "Git available: {detail}\nTested path: {testedPath}\nSaved path: {savedPath}",
       gitUnavailable: "Git unavailable: {detail}",
+      gitCandidateSelectTitle: "Choose Git Executable",
+      gitCandidateSelectMessage: "Multiple usable Git executables were detected. Choose the path to save and use.",
+      gitCandidateSelectionCanceled: "Git path selection was canceled.",
       gitPathCheckHint: "Check the Git path.",
       gitTestFailed: "Git test failed: {message}",
       orphanChecking: "Checking for version history left by deleted items...",
@@ -623,7 +635,7 @@ const FIRST_USE_GUIDE_STEPS = Object.freeze([
 const PROJECT_LINKS = Object.freeze({
   homepage: {
     labelKey: "aboutOpenHomepage",
-    url: "https://github.com/LiKa-shing/git4zotero#readme"
+    url: "https://github.com/LiKa-shing/"
   },
   github: {
     labelKey: "aboutOpenGitHub",
@@ -714,7 +726,31 @@ var Git4ZoteroPreferences = {
 
     try {
       const platform = this.getPlatform();
-      const result = await platform.checkGitAvailability(this.getGitInputValue(), { persist: true });
+      let gitInputValue = this.getGitInputValue();
+      if (!gitInputValue && typeof platform.listGitExecutableCandidates === "function") {
+        const candidates = await platform.listGitExecutableCandidates();
+        if (candidates.length > 1) {
+          const selected = platform.selectFromList(
+            this.text("gitCandidateSelectTitle"),
+            this.text("gitCandidateSelectMessage"),
+            candidates.map((candidate) => [
+              candidate.version || candidate.detail || "Git",
+              candidate.command
+            ].filter(Boolean).join(" — "))
+          );
+          if (selected < 0) {
+            this.setStatus(this.text("gitCandidateSelectionCanceled"), "");
+            return;
+          }
+          gitInputValue = candidates[selected]?.command || "";
+          this.setGitInputValue(gitInputValue);
+        }
+        else if (candidates.length === 1) {
+          gitInputValue = candidates[0].command;
+          this.setGitInputValue(gitInputValue);
+        }
+      }
+      const result = await platform.checkGitAvailability(gitInputValue, { persist: true });
 
       if (result.available) {
         this.setGitInputValue(result.command);
@@ -1705,6 +1741,13 @@ var Git4ZoteroPreferences = {
     }
     status.textContent = message;
     status.dataset.tone = tone || "";
+    status.hidden = !message;
+    if (message) {
+      status.removeAttribute?.("hidden");
+    }
+    else {
+      status.setAttribute?.("hidden", "hidden");
+    }
   },
 
   setHealthStatus(message, tone) {
@@ -1808,13 +1851,21 @@ var Git4ZoteroPreferences = {
   },
 
   formatHealthCheck(checks) {
-    return checks.map((check) => {
+    const details = checks.map((check) => {
       const label = this.text(`healthStatus${this.capitalizeStatus(check.status)}`);
       const colon = this.text("colon");
       const stop = this.text("locale") === "en-US" ? "." : "。";
-      const suggestion = check.suggestion ? ` ${check.suggestion}` : "";
-      return `- ${check.label}${colon}${label}${stop}${check.detail || ""}${suggestion}`;
-    }).join("\n");
+      return `- ${check.label}${colon}${label}${stop}${check.detail || ""}`;
+    });
+    const suggestions = checks
+      .filter((check) => check.suggestion)
+      .map((check) => `- ${check.label}${this.text("colon")}${check.suggestion}`);
+    return [
+      ...details,
+      "",
+      this.text("healthNextStepsTitle"),
+      ...(suggestions.length ? suggestions : [`- ${this.text("healthNoNextSteps")}`])
+    ].join("\n");
   },
 
   capitalizeStatus(status) {

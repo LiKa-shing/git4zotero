@@ -2,8 +2,9 @@ import { PLUGIN_NAME, UI_TEXT } from "./constants.mjs";
 import { getExtension, sanitizeForPath } from "./attachments.mjs";
 import { isSafeRepoRelativePath } from "./cleanup.mjs";
 import { formatText } from "./localization.mjs";
+import { METADATA_SCHEMA_VERSION, migrateMetadata } from "./metadata.mjs";
 
-const ARCHIVE_SCHEMA_VERSION = 1;
+const ARCHIVE_SCHEMA_VERSION = 2;
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder("utf-8");
 const ARCHIVE_EOCD_SIGNATURE = 0x06054b50;
@@ -30,11 +31,15 @@ export class RepositoryArchiveService {
       throw new Error(UI_TEXT.archiveItemNoHistory);
     }
     entries.sort((a, b) => a.name.localeCompare(b.name));
+    const metadata = readRepositoryMetadata(entries, repoRelativePath);
+    const sourceRepository = createArchiveRepositoryManifest(repoRelativePath, options.attachment, metadata);
     entries.unshift({
       name: "export-manifest.json",
       bytes: encodeText(JSON.stringify(this.createArchiveManifest({
         scope: "item",
-        repositories: [createArchiveRepositoryManifest(repoRelativePath, options.attachment)]
+        archiveKind: "item-history",
+        sourceRepository,
+        repositories: [sourceRepository]
       }), null, 2) + "\n")
     });
 
@@ -54,13 +59,19 @@ export class RepositoryArchiveService {
     };
   }
 
+  // Internal compatibility path for legacy all-history archives. User-facing
+  // import/export is item-level and is exposed from the Paper Versions menu.
   async exportRepositoryArchive(options = {}) {
     const dataDir = this.platform.getPluginDataDirectory();
     await this.cleanupService?.ensureIndex?.();
     const entries = await this.collectArchiveEntries(dataDir);
     entries.unshift({
       name: "export-manifest.json",
-      bytes: encodeText(JSON.stringify(this.createArchiveManifest({ scope: "all" }), null, 2) + "\n")
+      bytes: encodeText(JSON.stringify(this.createArchiveManifest({
+        scope: "all",
+        archiveKind: "internal-all-history-compat",
+        internalCompatibilityOnly: true
+      }), null, 2) + "\n")
     });
 
     const defaultFileName = `git4zotero-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`;
@@ -79,6 +90,15 @@ export class RepositoryArchiveService {
   }
 
   async importItemRepositoryArchive(options = {}) {
+    const prepared = options.preparedImport
+      ?? await this.prepareItemRepositoryArchiveImport(options);
+    if (!prepared) {
+      return null;
+    }
+    return this.commitItemRepositoryArchiveImport(prepared);
+  }
+
+  async prepareItemRepositoryArchiveImport(options = {}) {
     const targetRepoRelativePath = assertRepoRelativePath(options.targetRepoRelativePath);
     const dataDir = this.platform.getPluginDataDirectory();
     const targetRepoPath = options.targetRepoPath || this.platform.join(dataDir, ...targetRepoRelativePath.split("/"));
@@ -110,7 +130,48 @@ export class RepositoryArchiveService {
       throw new Error(formatText("archiveImportMissingMetadata", { repoRelativePath: sourceRepoRelativePath }));
     }
     assertCompatibleImportFormat(sourceMetadata, options.attachment);
+    const targetExists = await this.safeExists(targetRepoPath);
+    const sourceRepository = createArchiveRepositoryManifest(sourceRepoRelativePath, null, sourceMetadata);
+    const preview = createItemImportPreview({
+      manifest,
+      picked,
+      sourceRepoRelativePath,
+      sourceMetadata,
+      sourceRepository,
+      targetRepoRelativePath,
+      targetRepoPath,
+      targetExists,
+      attachment: options.attachment
+    });
+    return {
+      dataDir,
+      picked,
+      entries,
+      manifest,
+      repoGroups,
+      sourceRepoRelativePath,
+      sourceEntries,
+      sourceMetadata,
+      targetRepoRelativePath,
+      targetRepoPath,
+      attachment: options.attachment,
+      targetExists,
+      preview,
+      ...preview
+    };
+  }
 
+  async commitItemRepositoryArchiveImport(prepared = {}) {
+    const {
+      dataDir,
+      picked,
+      sourceRepoRelativePath,
+      sourceEntries,
+      sourceMetadata,
+      targetRepoRelativePath,
+      targetRepoPath,
+      attachment
+    } = prepared;
     const skipped = [];
     const imported = [];
     const failed = [];
@@ -125,7 +186,7 @@ export class RepositoryArchiveService {
       const rewrittenEntries = rewriteRepositoryEntriesForTarget(sourceEntries, {
         sourceRepoRelativePath,
         targetRepoRelativePath,
-        attachment: options.attachment,
+        attachment,
         metadata: sourceMetadata
       });
       try {
@@ -152,6 +213,8 @@ export class RepositoryArchiveService {
     };
   }
 
+  // Internal compatibility path for legacy all-history archives. It remains
+  // available so older backups can still be read by tests and future tooling.
   async importRepositoryArchive(options = {}) {
     const picked = await this.readImportArchive(options);
     if (!picked) {
@@ -292,9 +355,12 @@ export class RepositoryArchiveService {
       return targetRepoRelativePath;
     }
 
-    const manifestRepos = Array.isArray(manifest?.repositories)
+    const manifestRepos = [
+      manifest?.sourceRepository?.repoRelativePath,
+      ...(Array.isArray(manifest?.repositories)
       ? manifest.repositories.map((repo) => repo?.repoRelativePath).filter((repo) => repoGroups.has(repo))
-      : [];
+      : [])
+    ].filter((repo, index, list) => repoGroups.has(repo) && list.indexOf(repo) === index);
     if (manifest?.scope === "item" && manifestRepos.length === 1) {
       return manifestRepos[0];
     }
@@ -361,27 +427,48 @@ function assertRepoRelativePath(value) {
   return normalized;
 }
 
-function createArchiveRepositoryManifest(repoRelativePath, attachment = null) {
+function createArchiveRepositoryManifest(repoRelativePath, attachment = null, metadata = null) {
+  const normalizedMetadata = metadata ? migrateMetadata(metadata) : null;
+  const versions = normalizedMetadata?.versions ?? [];
+  const latestVersion = versions[0] ?? null;
   return {
     repoRelativePath,
-    item: createItemMetadata(attachment),
-    attachment: createAttachmentMetadata(attachment)
+    item: createItemMetadata(attachment, normalizedMetadata),
+    attachment: createAttachmentMetadata(attachment, normalizedMetadata),
+    compatibleFormat: createCompatibleFormat(attachment, normalizedMetadata),
+    metadataSchemaVersion: normalizedMetadata?.schemaVersion ?? METADATA_SCHEMA_VERSION,
+    versionCount: versions.length,
+    latestVersionAt: latestVersion?.createdAt ?? null,
+    latestVersionHash: latestVersion?.commitHash ?? latestVersion?.hash ?? null
   };
 }
 
-function createItemMetadata(attachment = null) {
+function createItemMetadata(attachment = null, metadata = null) {
   return {
-    libraryID: attachment?.libraryID ?? null,
-    itemID: attachment?.itemID ?? null,
-    itemKey: attachment?.itemKey ?? ""
+    libraryID: attachment?.libraryID ?? metadata?.item?.libraryID ?? null,
+    itemID: attachment?.itemID ?? metadata?.item?.itemID ?? null,
+    itemKey: attachment?.itemKey ?? metadata?.item?.itemKey ?? ""
   };
 }
 
-function createAttachmentMetadata(attachment = null) {
+function createAttachmentMetadata(attachment = null, metadata = null) {
   return {
-    attachmentID: attachment?.attachmentID ?? null,
-    attachmentKey: attachment?.attachmentKey ?? "",
-    fileName: attachment?.fileName ?? ""
+    attachmentID: attachment?.attachmentID ?? metadata?.attachment?.attachmentID ?? null,
+    attachmentKey: attachment?.attachmentKey ?? metadata?.attachment?.attachmentKey ?? "",
+    fileName: attachment?.fileName ?? metadata?.attachment?.fileName ?? metadata?.versions?.find((version) => version?.fileName)?.fileName ?? ""
+  };
+}
+
+function createCompatibleFormat(attachment = null, metadata = null) {
+  const fileName = attachment?.fileName
+    || metadata?.attachment?.fileName
+    || metadata?.versions?.find((version) => version?.fileName)?.fileName
+    || "";
+  const extension = attachment?.extension || getExtension(fileName) || "";
+  return {
+    extension,
+    trackingMode: extension === ".docx" ? "content" : "file",
+    supportsContentDiff: extension === ".docx"
   };
 }
 
@@ -392,7 +479,7 @@ function readRepositoryMetadata(repoEntries = [], repoRelativePath = "") {
     return null;
   }
   try {
-    return JSON.parse(decodeText(entry.bytes));
+    return migrateMetadata(JSON.parse(decodeText(entry.bytes)));
   }
   catch (_error) {
     throw new Error(formatText("archiveImportMissingMetadata", { repoRelativePath }));
@@ -417,14 +504,16 @@ function rewriteRepositoryEntriesForTarget(repoEntries, {
 }
 
 function rewriteRepositoryMetadata(metadata, attachment) {
+  const source = migrateMetadata(metadata);
   const item = createItemMetadata(attachment);
   const attachmentMetadata = createAttachmentMetadata(attachment);
   return {
-    ...metadata,
+    ...source,
+    schemaVersion: METADATA_SCHEMA_VERSION,
     enabled: true,
     item,
     attachment: attachmentMetadata,
-    versions: (metadata.versions ?? []).map((version) => ({
+    versions: (source.versions ?? []).map((version) => ({
       ...version,
       zotero: {
         ...(version.zotero ?? {}),
@@ -454,9 +543,7 @@ function assertCompatibleImportFormat(metadata, attachment = null) {
 
 function formatImportSourceLabel(repoRelativePath, repoEntries = [], manifest = null) {
   const metadata = readRepositoryMetadata(repoEntries, repoRelativePath);
-  const manifestRepo = Array.isArray(manifest?.repositories)
-    ? manifest.repositories.find((repo) => repo?.repoRelativePath === repoRelativePath)
-    : null;
+  const manifestRepo = findManifestRepository(manifest, repoRelativePath);
   const fileName = metadata?.attachment?.fileName || manifestRepo?.attachment?.fileName || UI_TEXT.unknown;
   const itemKey = metadata?.item?.itemKey || manifestRepo?.item?.itemKey || UI_TEXT.unknown;
   return formatText("archiveImportSourceLabel", {
@@ -464,6 +551,68 @@ function formatImportSourceLabel(repoRelativePath, repoEntries = [], manifest = 
     itemKey,
     repoRelativePath
   });
+}
+
+function createItemImportPreview({
+  manifest,
+  picked,
+  sourceRepoRelativePath,
+  sourceMetadata,
+  sourceRepository,
+  targetRepoRelativePath,
+  targetRepoPath,
+  targetExists,
+  attachment
+}) {
+  const manifestRepo = findManifestRepository(manifest, sourceRepoRelativePath);
+  const repository = {
+    ...sourceRepository,
+    ...manifestRepo,
+    compatibleFormat: manifestRepo?.compatibleFormat ?? sourceRepository.compatibleFormat,
+    versionCount: manifestRepo?.versionCount ?? sourceRepository.versionCount,
+    latestVersionAt: manifestRepo?.latestVersionAt ?? sourceRepository.latestVersionAt,
+    latestVersionHash: manifestRepo?.latestVersionHash ?? sourceRepository.latestVersionHash
+  };
+  const latestVersion = sourceMetadata?.versions?.[0] ?? null;
+  const sourceFileName = sourceMetadata?.attachment?.fileName
+    || repository?.attachment?.fileName
+    || latestVersion?.fileName
+    || UI_TEXT.unknown;
+  const targetFileName = attachment?.fileName || UI_TEXT.unknown;
+  return {
+    path: picked?.path ?? "",
+    archiveKind: manifest?.archiveKind || (manifest?.scope === "item" ? "item-history" : "legacy-history"),
+    manifestSchemaVersion: manifest?.schemaVersion ?? null,
+    pluginVersion: manifest?.pluginVersion ?? "",
+    sourceRepoRelativePath,
+    sourceFileName,
+    sourceItemKey: sourceMetadata?.item?.itemKey || repository?.item?.itemKey || UI_TEXT.unknown,
+    sourceAttachmentKey: sourceMetadata?.attachment?.attachmentKey || repository?.attachment?.attachmentKey || "",
+    versionCount: repository?.versionCount ?? sourceMetadata?.versions?.length ?? 0,
+    latestVersionAt: repository?.latestVersionAt ?? latestVersion?.createdAt ?? null,
+    latestVersionHash: repository?.latestVersionHash ?? latestVersion?.commitHash ?? latestVersion?.hash ?? null,
+    compatibleFormat: repository?.compatibleFormat ?? createCompatibleFormat(null, sourceMetadata),
+    targetRepoRelativePath,
+    targetRepoPath,
+    targetFileName,
+    targetItemKey: attachment?.itemKey ?? UI_TEXT.unknown,
+    targetAttachmentKey: attachment?.attachmentKey ?? "",
+    targetExists,
+    willSkip: targetExists,
+    canImport: !targetExists,
+    resultMessage: targetExists
+      ? UI_TEXT.archiveImportPreviewWillSkipExisting
+      : UI_TEXT.archiveImportPreviewWillImport
+  };
+}
+
+function findManifestRepository(manifest = null, repoRelativePath = "") {
+  if (manifest?.sourceRepository?.repoRelativePath === repoRelativePath) {
+    return manifest.sourceRepository;
+  }
+  return Array.isArray(manifest?.repositories)
+    ? manifest.repositories.find((repo) => repo?.repoRelativePath === repoRelativePath)
+    : null;
 }
 
 function buildItemArchiveFileName(attachment = null) {

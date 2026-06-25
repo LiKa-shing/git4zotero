@@ -81,7 +81,7 @@ const requiredChineseText = [
   "首次使用向导",
   "支持工具",
   "选择迁移导出目录失败",
-  "自动生成备份 zip 文件名",
+  "版本摘要导出",
   "导出此条目版本历史",
   "导入版本历史到此条目",
   "历史详情",
@@ -125,8 +125,8 @@ assert(packageJson.scripts.verify.includes("scripts/inspect-xpi.mjs"));
 
 const changelog = await fs.readFile(path.join(root, "CHANGELOG.md"), "utf8");
 assert(changelog.includes(`## ${manifest.version}`), "CHANGELOG.md must contain the current release section");
-assert(changelog.includes("重要更新"), "CHANGELOG.md must label 0.4.0 as an important update");
-assert(changelog.includes("Important update"), "CHANGELOG.md must label 0.4.0 as an important update in English");
+assert(changelog.includes("重要更新"), "CHANGELOG.md must label the current release as an important update");
+assert(changelog.includes("Important update"), "CHANGELOG.md must label the current release as an important update in English");
 assert(changelog.includes("历史详情"), "CHANGELOG.md must mention the history detail feature");
 assert(changelog.includes("右侧栏内嵌详情面板"), "Unreleased section should mention the inline history detail panel fix");
 assert(changelog.includes("最大化/还原"), "Unreleased section should mention the Zotero window state fix");
@@ -376,9 +376,14 @@ assert(menuModule.includes("createVersion"));
 assert(menuModule.includes("restoreVersion"));
 assert(menuModule.includes("exportItemRepositoryArchive"));
 assert(menuModule.includes("importItemRepositoryArchive"));
+assert(menuModule.includes("prepareItemRepositoryArchiveImport"));
+assert(menuModule.includes("commitItemRepositoryArchiveImport"));
+assert(menuModule.includes("formatItemArchiveImportPreview"));
+assert(menuModule.includes("archiveImportPreviewTitle"));
 assert(menuModule.includes("menuExportItemArchiveLabel"));
 assert(menuModule.includes("menuImportItemArchiveLabel"));
 assert(menuModule.includes("PREFS.archiveExportDirectory"));
+assert(menuModule.includes("initialDirectory: this.platform.getPref(PREFS.archiveExportDirectory"));
 assert(menuModule.includes("configureGit"));
 assert(menuModule.includes("updateRootVisibility"));
 assert(menuModule.includes("updateActionVisibility"));
@@ -398,9 +403,15 @@ assert(!menuModule.includes("data-git4zotero-status"), "context menus should not
 
 const platformModule = await fs.readFile(path.join(root, "chrome/content/src/platform.mjs"), "utf8");
 assert(platformModule.includes("stdout: \"pipe\""));
+assert(platformModule.includes("async saveTextFile({"));
+assert(platformModule.includes("initialDirectory = \"\""));
+assert(platformModule.includes("const exportDirectory = normalizeExecutablePath(initialDirectory)"));
+assert(platformModule.includes("await this.assertDirectoryAvailable(exportDirectory)"));
 assert(platformModule.includes("normalizeExecutablePath"));
 assert(platformModule.includes("checkGitAvailability"));
 assert(platformModule.includes("findGitExecutable"));
+assert(platformModule.includes("listGitExecutableCandidates"));
+assert(platformModule.includes("findGitExecutablesFromPath"));
 assert(platformModule.includes("normalizeJoinParts"));
 assert(platformModule.includes("value.split(/[\\\\/]+/)"));
 assert(platformModule.includes("promptText"));
@@ -443,6 +454,13 @@ assert(platformModule.includes("browsingContext"));
 assert(!platformModule.includes("this.initFilePicker"), "file picker must retry initialization with fresh picker instances");
 assert(!platformModule.includes("picker.init(null"), "file picker must use a real parent window when available");
 
+const versionServiceModule = await fs.readFile(path.join(root, "chrome/content/src/version-service.mjs"), "utf8");
+assert(versionServiceModule.includes("exportVersionSummary"));
+assert(versionServiceModule.includes("formatSingleVersionSummaryMarkdown"));
+assert(versionServiceModule.includes("exportSingleVersionSummary"));
+assert(versionServiceModule.includes("exportTitleSingleVersion"));
+assert(versionServiceModule.includes("initialDirectory: options.initialDirectory || \"\""));
+
 const cleanupModule = await fs.readFile(path.join(root, "chrome/content/src/cleanup.mjs"), "utf8");
 assert(cleanupModule.includes("RepositoryIndexStore"));
 assert(cleanupModule.includes("RepositoryCleanupService"));
@@ -461,6 +479,13 @@ assert(archiveModule.includes("exportRepositoryArchive"));
 assert(archiveModule.includes("importRepositoryArchive"));
 assert(archiveModule.includes("exportItemRepositoryArchive"));
 assert(archiveModule.includes("importItemRepositoryArchive"));
+assert(archiveModule.includes("prepareItemRepositoryArchiveImport"));
+assert(archiveModule.includes("commitItemRepositoryArchiveImport"));
+assert(archiveModule.includes("ARCHIVE_SCHEMA_VERSION = 2"));
+assert(archiveModule.includes("sourceRepository"));
+assert(archiveModule.includes("compatibleFormat"));
+assert(archiveModule.includes("internalCompatibilityOnly"));
+assert(archiveModule.includes("internal-all-history-compat"));
 assert(archiveModule.includes("selectItemImportSource"));
 assert(archiveModule.includes("rewriteRepositoryMetadata"));
 assert(archiveModule.includes("archiveImportFormatMismatch"));
@@ -474,6 +499,11 @@ assert(archiveModule.includes("archiveInvalidEntry"));
 assert(archiveModule.includes("archiveInvalidManifest"));
 assert(archiveModule.includes("archiveUnsupportedSchemaVersion"));
 assert(!archiveModule.includes("removeDirectory"), "archive import/export must not delete repositories");
+
+const metadataModuleText = await fs.readFile(path.join(root, "chrome/content/src/metadata.mjs"), "utf8");
+assert(metadataModuleText.includes("migrateMetadata"));
+assert(metadataModuleText.includes("METADATA_SCHEMA_VERSION"));
+assert(metadataModuleText.includes("normalizeVersionRecord"));
 
 const diagnosticsModuleText = await fs.readFile(path.join(root, "chrome/content/src/diagnostics.mjs"), "utf8");
 assert(diagnosticsModuleText.includes("DiagnosticService"));
@@ -493,13 +523,25 @@ assert(contentDiffModule.includes("totalParagraphChanges"));
 
 const styleModule = await fs.readFile(path.join(root, "chrome/content/style.css"), "utf8");
 assert(styleModule.includes("item-pane-sidenav .btn[data-pane$=\"git4zotero-paper-versions\"]"));
+assert(styleModule.includes("git4zotero-item-pane-header"), "style sheet must style git4zotero item pane header");
+assert(styleModule.includes("item-pane-custom-section"), "item pane header style must cover Zotero custom item pane sections");
+assert(styleModule.includes("git4zotero-pane-header-icon"), "style sheet must style injected item pane header icon");
+assert(styleModule.includes("git4zotero-pane-header-row"), "style sheet must include item pane header fallback row layout");
+assert(styleModule.includes("gap: 6px"), "item pane header icon and label should share a compact gap");
+assert(styleModule.includes("paper-version-16.png"), "item pane header style must reference the plugin icon");
+assert(styleModule.includes("var(--font-family, system-ui"), "item pane header style must use Zotero/system UI font fallback");
 assert(!styleModule.includes("font-size: 0"), "sidenav button text/icon should not be hidden by zero font sizing");
 assert(styleModule.includes("git4zotero-panel-root"));
 assert(styleModule.includes("[data-git4zotero-body=\"true\"]"));
 assert(styleModule.includes("git4zotero-timeline"));
 assert(styleModule.includes("git4zotero-version-detail-panel"));
 assert(styleModule.includes("git4zotero-version-detail-button"));
-assert(styleModule.includes("var(--material-background, var(--zotero-item-pane-background, #202124))"));
+assert(styleModule.includes("--git4zotero-surface"));
+assert(styleModule.includes("--git4zotero-detail-surface"));
+assert(styleModule.includes("git4zotero-version-detail-copy"));
+assert(styleModule.includes("git4zotero-version-detail-export"));
+assert(styleModule.includes("git4zotero-version-detail-toggle"));
+assert(styleModule.includes("git4zotero-version-detail-status"));
 assert(styleModule.includes("pointer-events: auto"));
 assert(styleModule.includes("min-height: 32px"));
 assert(styleModule.includes("min-width: 56px"));
@@ -535,12 +577,12 @@ assert(!preferencesXhtml.includes("onclick=\"Git4ZoteroPreferences.saveArchiveEx
 assert(!preferencesXhtml.includes("保存目录"));
 assert(preferencesXhtml.includes("可直接粘贴目录路径"));
 assert(preferencesXhtml.includes("按 Enter 或离开输入框后自动保存"));
-assert(preferencesXhtml.includes("自动生成备份 zip 文件名"));
+assert(preferencesXhtml.includes("版本摘要导出都会默认写入该目录"));
 assert(preferencesXhtml.includes("打开数据目录"));
 assert(preferencesXhtml.includes("复制 issue 模板"));
 assert(preferencesXhtml.includes("关于"));
 assert(preferencesXhtml.includes("LiKa-shing/git4zotero"));
-assert(preferencesXhtml.includes("git4zotero 版本 0.4.0"));
+assert(preferencesXhtml.includes(`git4zotero 版本 ${manifest.version}`));
 assert(preferencesXhtml.includes("MIT"));
 assert(preferencesXhtml.includes("Zotero 8.0"));
 assert(preferencesXhtml.includes(".docx/.doc"));
@@ -551,6 +593,10 @@ assert(preferencesXhtml.includes("git4zotero-about-github"));
 assert(preferencesXhtml.includes("git4zotero-about-feedback"));
 assert(preferencesXhtml.includes("git4zotero-about-qa"));
 assert(preferencesXhtml.includes("git4zotero-about-status"));
+assert(preferencesXhtml.includes("id=\"git4zotero-about-status\""));
+assert(preferencesXhtml.includes("hidden=\"hidden\""));
+assert(!preferencesXhtml.includes("aboutStatusInitial"));
+assert(!preferencesXhtml.includes("尚未打开项目链接"));
 assert(!preferencesXhtml.includes("git4zotero-about-repository"));
 assert(!preferencesXhtml.includes("git4zotero-about-releases"));
 assert(!preferencesXhtml.includes("git4zotero-about-issues"));
@@ -575,6 +621,8 @@ assert(preferencesScript.includes("document.readyState === \"loading\""));
 assert(preferencesScript.includes("requiredElementsReady"));
 assert(preferencesScript.includes("scheduleInit"));
 assert(preferencesScript.includes("checkGitAvailability"));
+assert(preferencesScript.includes("listGitExecutableCandidates"));
+assert(preferencesScript.includes("gitCandidateSelectTitle"));
 assert(preferencesScript.includes("checkOrphanHistory"));
 assert(preferencesScript.includes("cleanupOrphanHistory"));
 assert(preferencesScript.includes("copyDiagnostics"));
@@ -605,16 +653,19 @@ assert(!preferencesScript.includes("input?.value ?? Zotero.Prefs.get(\"extension
 assert(preferencesScript.includes("Zotero.Prefs.get(\"extensions.git4zotero.archiveExportDirectory\", true)"));
 assert(preferencesScript.includes("可直接粘贴目录路径"));
 assert(preferencesScript.includes("自动保存"));
-assert(preferencesScript.includes("自动生成备份 zip 文件名"));
+assert(preferencesScript.includes("版本摘要导出都会默认写入该目录"));
 assert(preferencesScript.includes("openDataDirectory"));
 assert(preferencesScript.includes("openGitGuide"));
 assert(preferencesScript.includes("PROJECT_LINKS"));
 assert(preferencesScript.includes("openProjectLink"));
+assert(preferencesScript.includes("https://github.com/LiKa-shing/"), "About Homepage must point to the LiKa-shing GitHub profile");
 assert(preferencesScript.includes("aboutLinkOpened"));
 assert(preferencesScript.includes("aboutMeta"));
 assert(preferencesScript.includes("aboutOpenHomepage"));
 assert(preferencesScript.includes("aboutOpenFeedback"));
-assert(preferencesScript.includes("git4zotero version 0.4.0"));
+assert(!preferencesScript.includes("aboutStatusInitial"));
+assert(!preferencesScript.includes("Project link has not been opened yet."));
+assert(preferencesScript.includes(`git4zotero version ${manifest.version}`));
 assert(!preferencesScript.includes("aboutRepository"));
 assert(!preferencesScript.includes("aboutOpenReadme"));
 assert(!preferencesScript.includes("aboutOpenLicense"));
@@ -628,9 +679,19 @@ assert(!runtimeLocalizationScript.includes("archiveExportDirectorySave:"));
 assert(runtimeConstantsScript.includes("自动保存迁移导出目录失败"));
 assert(runtimeLocalizationScript.includes("Could not auto-save the migration export directory"));
 assert(runtimeConstantsScript.includes("versionDetailButton"));
+assert(runtimeConstantsScript.includes("versionDetailCopy"));
+assert(runtimeConstantsScript.includes("versionDetailExport"));
+assert(runtimeConstantsScript.includes("versionDetailShowAll"));
+assert(runtimeConstantsScript.includes("healthNextStepsTitle"));
 assert(runtimeLocalizationScript.includes("History Details"));
+assert(runtimeLocalizationScript.includes("Copy Details"));
+assert(runtimeLocalizationScript.includes("Show All Changes"));
 assert(runtimeLocalizationScript.includes("全部已儲存修改"));
 assert(uiModule.includes("git4zotero-version-detail-panel"));
+assert(uiModule.includes("copyVersionDetail"));
+assert(uiModule.includes("exportVersionDetail"));
+assert(uiModule.includes("versionDetailHasMore"));
+assert(uiModule.includes("DETAIL_INITIAL_CHANGE_LIMIT"));
 assert(uiModule.includes("openVersionDetailPanel"));
 assert(uiModule.includes("versionDetailPanel"));
 assert(uiModule.includes("formatFullChangeText"));
@@ -645,7 +706,7 @@ assert(uiModule.includes("addEventListener?.(\"pointerdown\""));
 assert(uiModule.includes("addEventListener?.(\"mousedown\""));
 assert(uiModule.includes("addEventListener?.(\"command\""));
 assert(uiModule.includes("isVersionDetailCloseTarget"));
-assert(uiModule.includes("var(--material-background, var(--zotero-item-pane-background, #202124))"));
+assert(uiModule.includes("--git4zotero-detail-surface"));
 assert(!uiModule.includes("git4zotero-version-detail-dialog"));
 assert(!uiModule.includes("git4zotero-version-detail-backdrop"));
 assert(!uiModule.includes("position:fixed"));
@@ -678,6 +739,12 @@ for (const [locale, ftl] of localeFiles) {
     assert(ftl.slice(index, index + 140).includes(".label ="), `${id} must define .label in ${locale}`);
   }
 }
+assert(zhFtl.includes("git4zotero-item-pane-header = 版本管理"), "zh-CN item pane header must be 版本管理");
+assert(twFtl.includes("git4zotero-item-pane-header = 版本管理"), "zh-TW item pane header must be 版本管理");
+assert(enFtl.includes("git4zotero-item-pane-header = Version Management"), "en-US item pane header must be Version Management");
+assert(zhFtl.includes(".tooltiptext = 版本管理"), "zh-CN item pane tooltip must be 版本管理");
+assert(twFtl.includes(".tooltiptext = 版本管理"), "zh-TW item pane tooltip must be 版本管理");
+assert(enFtl.includes(".tooltiptext = Version Management"), "en-US item pane tooltip must be Version Management");
 const extractFtlIDs = (ftl) => [...ftl.matchAll(/^([a-z0-9-]+)\s*=/gmi)].map((match) => match[1]).sort();
 assert.deepEqual(extractFtlIDs(enFtl), extractFtlIDs(zhFtl), "en-US FTL ids must match zh-CN");
 assert.deepEqual(extractFtlIDs(twFtl), extractFtlIDs(zhFtl), "zh-TW FTL ids must match zh-CN");

@@ -33,9 +33,9 @@
 - **Content-level `.docx` diff**: reads document body, footnotes, and endnotes, excludes deleted revisions and comments, and reports added, removed, and modified paragraphs with word-count changes.
 - **File-level `.doc` tracking**: supports version creation and restore for binary Word files.
 - **Explainable restore safety check**: before restoring an old version, the plugin shows the target version, Git hash, current file hash, target file hash, backup path, write status, and Git working tree status.
-- **Local history backup and migration**: export all git4zotero version repositories from the settings pane, and import them on another device. Import only fills missing repositories and never overwrites existing history.
+- **Item-level history backup and migration**: export or import version history from the selected item's `Paper Versions` context menu. Import never overwrites existing history.
 - **Diagnostics and health check**: copy redacted diagnostics, run a health check, and copy an issue template from the settings pane.
-- **Paper Versions item pane**: view status cards, version count, latest check result, working tree status, and version history summaries in Zotero item details.
+- **Paper Versions item pane**: view status cards, version count, latest check result, working tree status, version history summaries, and per-version History Details in Zotero item details; details can be copied as Markdown or exported as a single-change summary.
 
 ## Use Cases
 
@@ -84,7 +84,7 @@ In the `Git` / `Paper Version Management` settings pane, you can configure:
 - `Create a safety version before restoring an old version`: recommended to keep enabled.
 - `First-use guide`: manually review Git detection, data directory, context-menu workflow, and `.docx` / `.doc` capability differences.
 - `Diagnostics and health check`: copy diagnostics, run health checks, open the data directory, and copy an issue template.
-- `Version history backup and migration`: export or import local git4zotero version history.
+- `Version history backup and migration`: configure only the default folder for item-level backup ZIP exports. Run import/export from the selected item's `Paper Versions` context menu.
 
 ## Quick Start
 
@@ -98,7 +98,7 @@ In the `Git` / `Paper Version Management` settings pane, you can configure:
 8. When you want to save the current changes, choose `Create Version...`.
 9. To roll back, choose `Restore Version...`, select the target version, review the restore safety check, and then continue.
 
-The `Paper Versions` menu contains:
+The `Paper Versions` menu and right-side pane contain:
 
 | Action | Description |
 | --- | --- |
@@ -106,8 +106,11 @@ The `Paper Versions` menu contains:
 | `Check Changes` | Compare the current manuscript file with the latest saved version. |
 | `Create Version...` | Save the current manuscript file as a new version. The confirmation shows file name, tracking mode, change summary, file hash, and working tree status. |
 | `Restore Version...` | Select a historical version and restore it to the current attachment. The restore check shows target version, current/target hashes, backup path, and safety results. |
+| `Export This Item Version History...` | Export git4zotero's local version history for the current item as a ZIP. Original Zotero attachment files are not included. |
+| `Import Version History to This Item...` | Import one source history from a backup ZIP into the current item. If the current item already has history, import is skipped without overwriting. |
 | `Configure Git Path...` | Quickly configure Git when it is unavailable. |
 | `Disable Version Management` | Stop version management for the current item without deleting existing history. |
+| `Details` | Open from a single history entry in the right-side `Paper Versions` pane to view the note, time, file information, change summary, and saved change records. Long diffs are collapsed first, can be expanded on demand, and can be copied or exported as a single-change summary. |
 
 The plugin supports single selection only. Version actions are unavailable when multiple Zotero items are selected.
 
@@ -134,12 +137,16 @@ Automatically created safety versions and pre-restore backups are stored in the 
 
 ## Import and Export
 
-The settings pane provides `Export All Version History...` and `Import Version History...`:
+Starting with `0.4.0`, version-history import/export works on one Zotero item at a time. The settings pane only configures the default folder for item-level backup ZIP exports.
 
-- Export files are named like `git4zotero-backup-<timestamp>.zip`.
-- The archive contains git4zotero local version repositories, `index.json`, and `export-manifest.json`. It does not contain original Zotero attachment files.
-- Import is intended for moving to another computer, backing up a Zotero profile, or migrating history. If a target `library-*/item-*` repository already exists, it is skipped and reported; existing history is never overwritten.
-- After import, the local repository index is refreshed so later health checks and item-deletion cleanup can work correctly.
+- To export the current item's history, right-click the target Zotero item or manuscript attachment and choose `Paper Versions -> Export This Item Version History...`.
+- To import history into the current item, right-click the target Zotero item or manuscript attachment and choose `Paper Versions -> Import Version History to This Item...`.
+- Item-level exports are named like `git4zotero-<item-key>-history-<timestamp>.zip`. If a migration export folder is configured in settings, the plugin automatically creates the backup ZIP filename in that folder.
+- The archive contains only git4zotero's local version history and `export-manifest.json`. It does not contain original Zotero attachment files.
+- When importing a backup from another device or another item, you can choose one source history from the backup and map it to the current item.
+- If the current item already has version history, import is skipped and reported without overwriting existing records.
+
+Older all-history backups named like `git4zotero-backup-<timestamp>.zip` can still be selected from the current item's import action. If the backup contains multiple histories, choose the one you want to map to the current item.
 
 ## Diagnostics and Health Check
 
@@ -151,13 +158,14 @@ The `Diagnostics and Health Check` area in settings is designed for troubleshoot
 - `Open Data Directory`: opens the Zotero profile `git4zotero` directory for backup or manual inspection.
 - `Open Git Installation Guide`: opens [Git 安装指南（Windows 小白版）](docs/GIT-INSTALL-zh.md).
 
-Health checks only diagnose and suggest actions. They do not automatically repair repositories, clean history, or overwrite local files. If metadata, Git history, or index consistency problems are reported, copy diagnostics and open an issue before making manual changes.
+Health checks only diagnose and suggest actions. They do not automatically repair repositories, clean history, or overwrite local files. After a check completes, the `Next Steps` section helps decide whether to configure Git, inspect the data directory, clean history for deleted items, or copy diagnostics for an issue. If metadata, Git history, or index consistency problems are reported, copy diagnostics and open an issue before making manual changes.
 
 ## Boundaries
 
 - This plugin provides local version management. It is not cloud sync, a backup drive, or a real-time collaboration system.
 - This plugin does not replace Track Changes in Word, WPS, or LibreOffice. It stores attachment file versions at different points in time.
 - The right-side `Paper Versions` pane is mainly for status display. Use the item-list context menu for write operations such as enable, check, create, and restore.
+- The settings pane configures Git, default notes, diagnostics, and the default item-level export folder. Run version-history import/export from the selected item's context menu.
 - Do not manually modify the Git repositories, `index.json`, or `.git4zotero` metadata under the Zotero profile `git4zotero` folder.
 - When a Zotero item is moved to Trash, version history is kept. After the item is permanently deleted or Trash is emptied, the plugin cleans up the corresponding history.
 
@@ -185,12 +193,25 @@ Add a `.docx` or `.doc` attachment to the current Zotero item. Web snapshots, PD
 
 Before restoring, save and close the same file in Word, WPS, or LibreOffice. Some word processors may write to the file again on exit or autosave, which can overwrite the version just restored by the plugin. If the restore preflight says the current file is not writable, the hash changed after confirmation, or there is a file-state error, close the editor and run `Restore Version...` again.
 
+### Where are History Details?
+
+Select an item with version management enabled, then open the right-side `Paper Versions` pane in Zotero item details. Click `Details` on a history entry to view that version's note, creation time, file information, change summary, and saved change records. The details panel provides `Copy Details` and `Export This Change Summary`, which are useful for sending to an advisor or filing an issue. Long document diffs are collapsed by default; click `Show All Changes` to expand the full record.
+
+### Why are there no import/export buttons in settings?
+
+Starting with `0.4.0`, import/export is item-level to avoid accidental whole-library operations. The settings pane keeps only the default export-folder configuration. To import or export version history, right-click the target item or attachment and use the `Paper Versions` menu.
+
+### What happens after I set the migration export folder?
+
+You can paste a folder path in settings, then press Enter or leave the input to auto-save it. Later, `Export This Item Version History...` writes the generated backup ZIP filename to that folder by default. This folder affects only the default export location; it does not affect imports, original Zotero attachments, or the plugin data directory.
+
 ### How do I move version history to a new computer?
 
-1. On the old computer, click `Export All Version History...` in the Zotero settings pane and save `git4zotero-backup-<timestamp>.zip`.
-2. On the new computer, install Zotero, Git, and git4zotero, and make sure Zotero uses the same set of library items.
-3. On the new computer, click `Import Version History...` in settings and choose the backup archive.
-4. After import, run `Run Health Check` and confirm that Git, data directory, metadata, and index status are normal.
+1. On the old computer, right-click the Zotero item or manuscript attachment you want to migrate and choose `Paper Versions -> Export This Item Version History...`.
+2. On the new computer, install Zotero, Git, and git4zotero, and make sure the target manuscript item exists with a `.docx` or `.doc` attachment.
+3. Right-click the target item or attachment and choose `Paper Versions -> Import Version History to This Item...`, then select the backup ZIP from the old computer.
+4. If the backup contains multiple source histories, choose the one to import into the current item. If the current item already has history, import is skipped without overwriting.
+5. After import, run `Run Health Check` and confirm that Git, data directory, metadata, and index status are normal.
 
 ### History remains after deleting a Zotero item
 
@@ -220,4 +241,11 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Acknowledgements
 
-Thanks to [Zotero](https://www.zotero.org/) for providing an open reference management platform, [Git](https://git-scm.com/) for stable and reliable version management, and the Zotero plugin community for its accumulated development experience and documentation. Special thanks to Meng L. and Liu G. for their valuable suggestions during development.
+Thanks to the following projects, communities, and contributors for the foundations, references, and suggestions behind git4zotero:
+
+- [zotero/zotero](https://github.com/zotero/zotero)
+- [windingwind/zotero-plugin-template](https://github.com/windingwind/zotero-plugin-template)
+- [Git](https://git-scm.com/)
+- [Zotero Chinese Community](https://zotero-chinese.com)
+- [Zeng Jin](https://medgs.xjtu.edu.cn/info/1408/12084.htm) (advisor)
+- Meng L. and Liu G.

@@ -28,6 +28,7 @@ import {
   createVersionRecord,
   METADATA_SCHEMA_VERSION,
   MetadataStore,
+  migrateMetadata,
   normalizeVersionNote,
   sortNewestFirst
 } from "../chrome/content/src/metadata.mjs";
@@ -375,7 +376,7 @@ assert.throws(() => assertSafeCommitHash("../HEAD"));
     Services: {
       appinfo: { OS: "WINNT" },
       dirsvc: {
-        get: (key) => ({ path: key === "ProfD" ? "C:\\Profile" : "C:\\Users\\Tester" })
+        get: (key) => ({ path: key === "WinD" ? "C:\\Windows" : (key === "ProfD" ? "C:\\Profile" : "C:\\Users\\Tester") })
       },
       prompt: {}
     },
@@ -403,6 +404,50 @@ assert.throws(() => assertSafeCommitHash("../HEAD"));
   assert.equal(result.version, "git version 2.44.0");
   assert.equal(prefs.get(PREFS.gitPath), discoveredGit);
   assert.equal(subprocessCalls[0].command, discoveredGit);
+}
+
+{
+  const knownGit = "C:\\Program Files\\Git\\cmd\\git.exe";
+  const userGit = "C:\\Users\\Tester\\AppData\\Local\\Programs\\Git\\cmd\\git.exe";
+  const pathGit = "D:\\PortableGit\\cmd\\git.exe";
+  const subprocessCalls = [];
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: {
+      appinfo: { OS: "WINNT" },
+      dirsvc: {
+        get: (key) => ({ path: key === "WinD" ? "C:\\Windows" : (key === "ProfD" ? "C:\\Profile" : "C:\\Users\\Tester") })
+      },
+      prompt: {}
+    },
+    Cc: {},
+    Ci: { nsIFile: function nsIFile() {} },
+    ChromeUtils: {
+      importESModule: () => ({
+        Subprocess: {
+          call: async ({ command, arguments: args }) => {
+            subprocessCalls.push({ command, args });
+            if (command.endsWith("where.exe")) {
+              return makeSubprocessProc({ exitCode: 0, stdout: `${pathGit}\n${knownGit}\n` });
+            }
+            return makeSubprocessProc({ exitCode: 0, stdout: `git version for ${command}\n` });
+          }
+        }
+      })
+    },
+    IOUtils: {
+      exists: async (target) => [knownGit, userGit, "C:\\Windows\\System32\\where.exe"].includes(target)
+    },
+    PathUtils: null
+  });
+  const candidates = await platform.listGitExecutableCandidates();
+  assert.deepEqual(candidates.map((candidate) => candidate.command), [knownGit, userGit, pathGit]);
+  assert(candidates.every((candidate) => candidate.available));
+  assert(candidates.every((candidate) => candidate.version.startsWith("git version for ")));
+  assert(subprocessCalls.some((call) => call.command.endsWith("where.exe")));
 }
 
 {
@@ -1205,6 +1250,51 @@ assert.throws(() => assertSafeCommitHash("../HEAD"));
 }
 
 {
+  const writes = [];
+  let saveDialogCalls = 0;
+  const platform = new ZoteroPlatform({
+    Zotero: {
+      Prefs: { get: () => "" },
+      debug() {}
+    },
+    Services: {
+      dirsvc: { get: () => ({ path: "C:\\Profile" }) },
+      prompt: {}
+    },
+    Cc: {},
+    Ci: { nsIFile: function nsIFile() {} },
+    ChromeUtils: {},
+    IOUtils: {
+      exists: async (target) => target === "D:\\SummaryExports",
+      makeDirectory: async () => {},
+      stat: async (target) => ({ type: target === "D:\\SummaryExports" ? "directory" : "file" }),
+      writeUTF8: async (target, content) => writes.push([target, content])
+    },
+    PathUtils: null
+  });
+  platform.pickSavePath = async () => {
+    saveDialogCalls += 1;
+    throw new Error("save dialog should not be used for configured export directory");
+  };
+  const savedPath = await platform.saveTextFile({
+    defaultFileName: "summary.md",
+    content: "# Summary\n",
+    initialDirectory: "D:\\SummaryExports"
+  });
+  assert.equal(savedPath, "D:\\SummaryExports\\summary.md");
+  assert.equal(saveDialogCalls, 0);
+  assert.deepEqual(writes, [["D:\\SummaryExports\\summary.md", "# Summary\n"]]);
+  await assert.rejects(
+    () => platform.saveTextFile({
+      defaultFileName: "summary.md",
+      content: "# Summary\n",
+      initialDirectory: "D:\\Missing"
+    }),
+    /迁移导出目录不可用|Migration export directory is unavailable/
+  );
+}
+
+{
   const parentItem = {
     id: 10,
     key: "PARENT",
@@ -1366,6 +1456,33 @@ const explicitlyDisabledStore = new MetadataStore({
   readText: async () => JSON.stringify({ enabled: false, versions: [older] })
 });
 assert.equal((await explicitlyDisabledStore.read("disabled-repo")).enabled, false);
+const migratedMetadata = migrateMetadata({
+  schemaVersion: 1,
+  versions: [oldest, {
+    id: "legacy-no-hash",
+    commitHash: "fedcba9876543210",
+    shortHash: "fedcba98",
+    createdAt: "2026-01-04T00:00:00.000Z",
+    kind: "manual",
+    note: "",
+    fileName: "legacy.docx",
+    trackedRelativePath: "tracked/document.docx"
+  }],
+  item: "invalid",
+  attachment: null,
+  trackedFile: "invalid"
+}, {
+  item: { itemKey: "FALLBACK" },
+  attachment: { fileName: "fallback.docx" },
+  trackedFile: { trackedRelativePath: "tracked/document.docx" }
+});
+assert.equal(migratedMetadata.schemaVersion, METADATA_SCHEMA_VERSION);
+assert.equal(migratedMetadata.enabled, true);
+assert.equal(migratedMetadata.item.itemKey, "FALLBACK");
+assert.equal(migratedMetadata.attachment.fileName, "fallback.docx");
+assert.deepEqual(migratedMetadata.versions.map((version) => version.id), ["legacy-no-hash", "oldest"]);
+assert.equal(migratedMetadata.versions[0].contentHash, null);
+assert.deepEqual(migratedMetadata.versions[0].zotero, {});
 
 const service = new VersionService({});
 const merged = service.mergeHistoryWithMetadata(
@@ -1544,7 +1661,12 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
   const sourceFiles = new Map([
     ["C:/Profile/git4zotero/index.json", encoder.encode("{\"repositories\":[]}")],
     ["C:/Profile/git4zotero/library-1/item-ITEM/.git/config", encoder.encode("[core]\n")],
-    ["C:/Profile/git4zotero/library-1/item-ITEM/.git4zotero/versions.json", encoder.encode("{\"versions\":[]}")]
+    ["C:/Profile/git4zotero/library-1/item-ITEM/.git4zotero/versions.json", encoder.encode(JSON.stringify({
+      ...createEmptyMetadata(),
+      item: { libraryID: 1, itemID: 10, itemKey: "ITEM" },
+      attachment: { attachmentID: 20, attachmentKey: "ATTACH", fileName: "paper.docx" },
+      versions: [older, newer]
+    }))]
   ]);
   const sourceDirectories = new Set([
     "C:/Profile/git4zotero",
@@ -1598,6 +1720,7 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
   assert(exportedZip instanceof Uint8Array);
   assert.equal(saveRequests.at(-1).initialDirectory, "C:/backup");
   assert(saveRequests.at(-1).defaultFileName.startsWith("git4zotero-backup-"));
+  const globalExportedZip = exportedZip;
 
   const itemArchiveAttachment = {
     libraryID: 1,
@@ -1625,8 +1748,23 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
   assert(itemExportNames.includes("library-1/item-ITEM/.git/config"));
   assert(itemExportNames.every((name) => name === "export-manifest.json" || name.startsWith("library-1/item-ITEM/")));
   const itemExportManifest = JSON.parse(new TextDecoder().decode(itemExportEntries.find((entry) => entry.name === "export-manifest.json").bytes));
+  assert.equal(itemExportManifest.schemaVersion, 2);
   assert.equal(itemExportManifest.scope, "item");
+  assert.equal(itemExportManifest.archiveKind, "item-history");
+  assert.equal(itemExportManifest.pluginVersion, "0.2.4");
+  assert.equal(itemExportManifest.sourceRepository.repoRelativePath, "library-1/item-ITEM");
+  assert.equal(itemExportManifest.sourceRepository.compatibleFormat.extension, ".docx");
+  assert.equal(itemExportManifest.sourceRepository.compatibleFormat.supportsContentDiff, true);
+  assert.equal(itemExportManifest.sourceRepository.versionCount, 2);
+  assert.equal(itemExportManifest.sourceRepository.latestVersionAt, newer.createdAt);
   assert.equal(itemExportManifest.repositories[0].repoRelativePath, "library-1/item-ITEM");
+  assert.equal(itemExportManifest.repositories[0].metadataSchemaVersion, METADATA_SCHEMA_VERSION);
+
+  const globalExportEntries = archiveService.readArchiveEntries(globalExportedZip);
+  const globalExportManifest = JSON.parse(new TextDecoder().decode(globalExportEntries.find((entry) => entry.name === "export-manifest.json").bytes));
+  assert.equal(globalExportManifest.scope, "all");
+  assert.equal(globalExportManifest.archiveKind, "internal-all-history-compat");
+  assert.equal(globalExportManifest.internalCompatibilityOnly, true);
 
   const targetFiles = new Map();
   const targetDirectories = new Set(["D:/Profile/git4zotero"]);
@@ -1816,7 +1954,7 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
     },
     cleanupService: { ensureIndex: async () => { itemImportEnsureIndexCalls += 1; } }
   });
-  const itemImportResult = await itemImportService.importItemRepositoryArchive({
+  const itemImportRequest = {
     targetRepoRelativePath: "library-2/item-TARGET",
     targetRepoPath: "F:/Profile/git4zotero/library-2/item-TARGET",
     attachment: {
@@ -1828,6 +1966,17 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
       fileName: "target.docx",
       extension: ".docx"
     }
+  };
+  const itemImportPreview = await itemImportService.prepareItemRepositoryArchiveImport(itemImportRequest);
+  assert.equal(itemImportPreview.sourceFileName, "source.docx");
+  assert.equal(itemImportPreview.versionCount, 1);
+  assert.equal(itemImportPreview.targetFileName, "target.docx");
+  assert.equal(itemImportPreview.targetRepoRelativePath, "library-2/item-TARGET");
+  assert.equal(itemImportPreview.canImport, true);
+  assert.equal(itemImportPreview.willSkip, false);
+  assert.equal(itemImportPreview.compatibleFormat.extension, ".docx");
+  const itemImportResult = await itemImportService.importItemRepositoryArchive({
+    preparedImport: itemImportPreview
   });
   assert.deepEqual(itemImportResult.imported, ["library-2/item-TARGET"]);
   assert.equal(itemImportResult.sourceRepoRelativePath, "library-9/item-SOURCE");
@@ -1911,7 +2060,7 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
     },
     cleanupService: { ensureIndex: async () => {} }
   });
-  const existingTargetResult = await existingTargetService.importItemRepositoryArchive({
+  const existingTargetRequest = {
     targetRepoRelativePath: "library-2/item-TARGET",
     targetRepoPath: "H:/Profile/git4zotero/library-2/item-TARGET",
     attachment: {
@@ -1923,6 +2072,13 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
       fileName: "target.docx",
       extension: ".docx"
     }
+  };
+  const existingTargetPreview = await existingTargetService.prepareItemRepositoryArchiveImport(existingTargetRequest);
+  assert.equal(existingTargetPreview.willSkip, true);
+  assert.equal(existingTargetPreview.canImport, false);
+  assert.equal(existingTargetPreview.resultMessage, UI_TEXT.archiveImportPreviewWillSkipExisting);
+  const existingTargetResult = await existingTargetService.importItemRepositoryArchive({
+    preparedImport: existingTargetPreview
   });
   assert.equal(existingTargetResult.imported.length, 0);
   assert.equal(existingTargetResult.skipped[0].reason, UI_TEXT.archiveImportSkippedExisting);
@@ -2198,8 +2354,13 @@ const exportService = new VersionService({
   },
   pluginVersion: "0.2.2"
 });
-const historyExport = await exportService.exportVersionSummary({}, { scope: "history", format: "markdown" });
+const historyExport = await exportService.exportVersionSummary({}, {
+  scope: "history",
+  format: "markdown",
+  initialDirectory: "D:/SummaryExports"
+});
 assert(historyExport.path.includes("git4zotero-history-ITEM"));
+assert.equal(exportedFiles.at(-1).initialDirectory, "D:/SummaryExports");
 assert(exportedFiles.at(-1).content.includes("# git4zotero 版本历史"));
 assert(exportedFiles.at(-1).content.includes("Hash：0123abcd"));
 assert(exportedFiles.at(-1).content.includes("位置摘要"));
@@ -2208,6 +2369,33 @@ const diffExport = await exportService.exportVersionSummary({}, { scope: "last-c
 assert(diffExport.path.endsWith(".txt"));
 assert(exportedFiles.at(-1).content.includes("git4zotero 最近检查差异"));
 assert(exportedFiles.at(-1).content.includes("引言 · 第 1 段"));
+const singleVersionMarkdown = exportService.formatSingleVersionSummaryMarkdown({
+  ...older,
+  note: "导师反馈后修改",
+  changeSummary: {
+    summary: "正文内容已修改；修改 1 段。",
+    paragraphChanges: [{ type: "modified", oldText: "旧讨论", newText: "新讨论", locationLabel: "讨论 · 第 1 段" }],
+    totalParagraphChanges: 1
+  }
+});
+assert(singleVersionMarkdown.includes("# git4zotero 单次版本修改摘要"));
+assert(singleVersionMarkdown.includes("导师反馈后修改"));
+assert(singleVersionMarkdown.includes("Hash：0123abcd"));
+assert(singleVersionMarkdown.includes("讨论 · 第 1 段"));
+const singleVersionExport = await exportService.exportSingleVersionSummary({
+  ...older,
+  note: "导师反馈后修改",
+  fileName: "paper.docx",
+  changeSummary: {
+    summary: "正文内容已修改；修改 1 段。",
+    paragraphChanges: [{ type: "modified", oldText: "旧讨论", newText: "新讨论", locationLabel: "讨论 · 第 1 段" }],
+    totalParagraphChanges: 1
+  }
+}, { initialDirectory: "D:/SummaryExports" });
+assert(singleVersionExport.path.includes("git4zotero-version-paper-0123abcd"));
+assert.equal(exportedFiles.at(-1).title, UI_TEXT.versionDetailExport);
+assert.equal(exportedFiles.at(-1).initialDirectory, "D:/SummaryExports");
+assert(exportedFiles.at(-1).content.includes("# git4zotero 单次版本修改摘要"));
 await assert.rejects(
   () => new VersionService({
     platform: { getRepoPath: () => "repo", saveTextFile: async () => "unused" },
@@ -2418,7 +2606,21 @@ assert(historyPaneText.includes("修改前：旧引言段"));
 assert(historyPaneText.includes("修改后：新引言段"));
 assert(historyPaneText.includes(UI_TEXT.versionDetailButton));
 
-const detailLongText = "第三段完整修改内容 ".repeat(18) + "DETAIL_END";
+const detailLongText = "第二十五段完整修改内容 ".repeat(18) + "DETAIL_END";
+const detailChanges = Array.from({ length: 25 }, (_value, index) => {
+  if (index === 24) {
+    return { type: "modified", oldText: "第二十五段旧内容", newText: detailLongText, oldIndex: 24, newIndex: 24, source: "document" };
+  }
+  if (index % 3 === 0) {
+    return { type: "modified", oldText: `第 ${index + 1} 段旧内容`, newText: `第 ${index + 1} 段新内容`, oldIndex: index, newIndex: index, source: "document" };
+  }
+  if (index % 3 === 1) {
+    return { type: "added", newText: `第 ${index + 1} 段新增内容`, newIndex: index, source: "document" };
+  }
+  return { type: "deleted", oldText: `第 ${index + 1} 段删除内容`, oldIndex: index, source: "document" };
+});
+const copiedVersionDetails = [];
+const exportedVersionDetails = [];
 const detailHarness = await renderPaneHarness({
   stateProvider: () => ({
     attachment: managedAttachment,
@@ -2432,17 +2634,27 @@ const detailHarness = await renderPaneHarness({
       commitHash: "0123456789abcdef0123456789abcdef01234567",
       shortHash: "01234567",
       changeSummary: {
-        summary: "正文内容已修改；新增 1 段；删除 1 段；修改 1 段。",
-        paragraphChanges: [
-          { type: "modified", oldText: "第一段旧内容", newText: "第一段新内容", oldIndex: 0, newIndex: 0, source: "document" },
-          { type: "added", newText: "第二段新增内容", newIndex: 1, source: "document" },
-          { type: "modified", oldText: "第三段旧内容", newText: detailLongText, oldIndex: 2, newIndex: 2, source: "document" }
-        ],
-        totalParagraphChanges: 4,
-        omittedChanges: 1
+        summary: "正文内容已修改；共 25 处修改。",
+        paragraphChanges: detailChanges,
+        totalParagraphChanges: 25,
+        omittedChanges: 0
       }
     }]
-  })
+  }),
+  serviceOverrides: {
+    formatSingleVersionSummaryMarkdown: (version) => {
+      const content = `# git4zotero ${UI_TEXT.exportTitleSingleVersion}\n\n${version.note}\n${version.commitHash}\n${detailLongText}\n`;
+      return content;
+    },
+    exportSingleVersionSummary: async (version, options = {}) => {
+      exportedVersionDetails.push({ version, options });
+      return { path: `${options.initialDirectory}\\${version.shortHash}.md` };
+    }
+  },
+  platformOverrides: {
+    getPref: (key, fallback) => key === PREFS.archiveExportDirectory ? "D:\\PaneExports" : fallback,
+    copyTextToClipboard: (text) => copiedVersionDetails.push(text)
+  }
 });
 assert(!detailHarness.body.textContent.includes("DETAIL_END"), "timeline preview should stay short");
 assert.equal(findAllByClass(detailHarness.body, "git4zotero-version-detail-button").length, 1);
@@ -2456,14 +2668,28 @@ assert(detailPanel.textContent.includes(UI_TEXT.versionDetailTitle));
 assert(detailPanel.textContent.includes("详情版本"));
 assert(detailPanel.textContent.includes("0123456789abcdef0123456789abcdef01234567"));
 assert(detailPanel.textContent.includes(UI_TEXT.versionDetailAllStoredChanges));
-assert.equal(findAllByClass(detailPanel, "git4zotero-change").length, 3);
-assert(detailPanel.textContent.includes("第一段旧内容"));
-assert(detailPanel.textContent.includes("第二段新增内容"));
-assert(detailPanel.textContent.includes("DETAIL_END"), "panel should show full stored change text");
-assert(detailPanel.textContent.includes("未在弹窗中展开"));
+assert(detailPanel.textContent.includes(UI_TEXT.versionDetailCopy));
+assert(detailPanel.textContent.includes(UI_TEXT.versionDetailExport));
+assert.equal(findAllByClass(detailPanel, "git4zotero-change").length, 20);
+assert(detailPanel.textContent.includes("第 1 段旧内容"));
+assert(detailPanel.textContent.includes("第 2 段新增内容"));
+assert(!detailPanel.textContent.includes("DETAIL_END"), "panel should defer very long stored change text");
+assert(detailPanel.textContent.includes("暂未渲染"));
+await findButton(detailPanel, UI_TEXT.versionDetailShowAll).click();
+assert.equal(findAllByClass(detailPanel, "git4zotero-change").length, 25);
+assert(detailPanel.textContent.includes("DETAIL_END"), "expanded panel should show full stored change text");
+await findButton(detailPanel, UI_TEXT.versionDetailCollapse).click();
+assert(!detailPanel.textContent.includes("DETAIL_END"), "collapsed panel should hide long tail again");
+await findButton(detailPanel, UI_TEXT.versionDetailCopy).click();
+assert.equal(copiedVersionDetails.length, 1);
+assert(copiedVersionDetails[0].includes("DETAIL_END"));
+assert(detailPanel.textContent.includes(UI_TEXT.versionDetailCopySuccess));
+await findButton(detailPanel, UI_TEXT.versionDetailExport).click();
+assert.equal(exportedVersionDetails.length, 1);
+assert.equal(exportedVersionDetails[0].options.initialDirectory, "D:\\PaneExports");
+assert(detailPanel.textContent.includes("D:\\PaneExports\\01234567.md"));
 let detailCloseButton = findButton(detailPanel, UI_TEXT.versionDetailClose);
-assert(detailPanel.getAttribute("style").includes("var(--material-background"));
-assert(detailPanel.getAttribute("style").includes("#202124"));
+assert(detailPanel.getAttribute("style").includes("var(--git4zotero-detail-surface"));
 assert(detailPanel.getAttribute("style").includes("pointer-events:auto"));
 assert(!detailPanel.getAttribute("style").includes("position:fixed"));
 assert(!detailPanel.getAttribute("style").includes("2147483647"));
@@ -2858,6 +3084,35 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(section.getAttribute("hidden"), null);
   assert.equal(section.className, "");
   assert.equal(expandCalls, 1);
+}
+
+{
+  const doc = new FakeDocument();
+  const actualPaneID = "git4zotero\\@paper-version\\.local-git4zotero-paper-versions";
+  const section = doc.createElement("item-pane-custom-section");
+  const header = doc.createElement("label");
+  const staleIcon = doc.createElement("span");
+  const body = doc.createElement("div");
+  header.setAttribute("data-l10n-id", "git4zotero-item-pane-header");
+  header.textContent = "版本管理";
+  staleIcon.className = "git4zotero-pane-header-icon";
+  staleIcon.setAttribute("class", "git4zotero-pane-header-icon");
+  section.setAttribute("data-pane", actualPaneID);
+  section.append(staleIcon, header, body);
+  doc.documentElement.append(section);
+  const pane = new PaperVersionPane({
+    service: { getPanelState: async () => ({ attachment: null, enabled: false, versions: [] }) },
+    platform: makePanePlatform()
+  });
+  pane.renderShell({ body, item: {}, paneID: actualPaneID, setSectionSummary: () => {} });
+  pane.renderShell({ body, item: {}, paneID: actualPaneID, setSectionSummary: () => {} });
+  const headerIcon = findByClass(section, "git4zotero-pane-header-icon");
+  assert(headerIcon, "item pane header should receive plugin icon fallback");
+  assert.equal(headerIcon.getAttribute("data-git4zotero-pane-header-icon"), "true");
+  assert(String(header.className).split(/\s+/).includes("git4zotero-pane-header-label"));
+  assert.equal(findAllByClass(section, "git4zotero-pane-header-icon").length, 1);
+  assert.equal(header.childNodes[0], headerIcon);
+  assert.equal(section.childNodes.includes(staleIcon), false);
 }
 
 {
@@ -3534,7 +3789,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
         };
       },
       exportVersionSummary: async (selected, options) => {
-        calls.push(["export", selected, options.scope, options.format]);
+        calls.push(["export", selected, options.scope, options.format, options.initialDirectory]);
         return { path: "exports/history.txt" };
       },
       getPanelState: async () => {
@@ -3549,6 +3804,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       getRestoreCandidates: async () => [newer, older, oldest]
     },
     platformOverrides: {
+      getPref: (key, fallback) => key === PREFS.archiveExportDirectory ? "D:\\SummaryExports" : fallback,
       selectFromList: (_title, _message, options) => {
         if (options.length === 3) {
           restoreOptions = options;
@@ -3607,6 +3863,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   const exportCall = calls.find((call) => call[0] === "export");
   assert.equal(exportCall[2], "history");
   assert.equal(exportCall[3], "text");
+  assert.equal(exportCall[4], "D:\\SummaryExports");
   assert(harness.alerts.some(([_title, message]) => message.includes("目标版本") && message.includes("safe1234")));
   assert(harness.alerts.some(([_title, message]) => message.includes("版本摘要已导出")));
   assert.equal(harness.refreshCount, 5);
@@ -3935,6 +4192,8 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   const item = { id: 1 };
   let exportArchiveOptions = null;
   let importArchiveOptions = null;
+  let committedPreparedImport = null;
+  const importPreviewConfirms = [];
   const harness = makeMenuHarness({
     serviceOverrides: {
       getPanelState: async () => ({
@@ -3950,8 +4209,23 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
         exportArchiveOptions = options;
         return { path: "D:\\ArchiveDir\\git4zotero-ITEM-history.zip", fileCount: 4 };
       },
-      importItemRepositoryArchive: async (options = {}) => {
+      prepareItemRepositoryArchiveImport: async (options = {}) => {
         importArchiveOptions = options;
+        return {
+          sourceRepoRelativePath: "library-9/item-SOURCE",
+          sourceFileName: "source.docx",
+          versionCount: 2,
+          latestVersionAt: "2026-01-02T00:00:00.000Z",
+          targetRepoRelativePath: "library-1/item-ITEM",
+          targetFileName: "paper.docx",
+          compatibleFormat: { extension: ".docx", supportsContentDiff: true },
+          willSkip: false,
+          canImport: true,
+          resultMessage: UI_TEXT.archiveImportPreviewWillImport
+        };
+      },
+      commitItemRepositoryArchiveImport: async (preparedImport = {}) => {
+        committedPreparedImport = preparedImport;
         return {
           imported: ["library-1/item-ITEM"],
           skipped: [],
@@ -3963,7 +4237,11 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
     },
     platformOverrides: {
       exists: async (path) => path === "C:\\Profile\\git4zotero\\library-1\\item-ITEM",
-      getPref: (key, fallback) => key === PREFS.archiveExportDirectory ? "D:\\ArchiveDir" : fallback
+      getPref: (key, fallback) => key === PREFS.archiveExportDirectory ? "D:\\ArchiveDir" : fallback,
+      confirm: (title, message) => {
+        importPreviewConfirms.push({ title, message });
+        return true;
+      }
     }
   });
   harness.menu.register({ id: "git4zotero@paper-version.local", rootURI: "chrome://git4zotero/content/" });
@@ -3986,6 +4264,9 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   await rootMenu.menus[6].onCommand({}, { items: [item] });
   assert.equal(importArchiveOptions.targetRepoRelativePath, "library-1/item-ITEM");
   assert.equal(typeof importArchiveOptions.selectSourceRepository, "function");
+  assert.equal(importPreviewConfirms.at(-1).title, UI_TEXT.archiveImportPreviewTitle);
+  assert(importPreviewConfirms.at(-1).message.includes("source.docx"));
+  assert.equal(committedPreparedImport.sourceRepoRelativePath, "library-9/item-SOURCE");
   assert(harness.alerts.at(-1)[1].includes("library-9/item-SOURCE"));
 }
 
@@ -4098,6 +4379,51 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(successPrefs.prefs.get(PREFS.gitPath), "C:\\Program Files\\Git\\cmd\\git.exe");
   assert.equal(successPrefs.elements["git4zotero-git-path"].value, "C:\\Program Files\\Git\\cmd\\git.exe");
   assert.equal(successPrefs.elements["git4zotero-test-git"].disabled, false);
+
+  const candidatePrefs = await runPreferencesScript();
+  const candidateWindow = candidatePrefs.context.window.Git4ZoteroPreferences;
+  let candidateSelectionShown = false;
+  candidateWindow.getPlatform = () => ({
+    listGitExecutableCandidates: async () => [
+      { command: "C:\\GitA\\cmd\\git.exe", version: "git version A" },
+      { command: "C:\\GitB\\cmd\\git.exe", version: "git version B" }
+    ],
+    selectFromList: (title, message, options) => {
+      candidateSelectionShown = true;
+      assert.equal(title, "选择 Git 可执行文件");
+      assert(message.includes("多个可用 Git"));
+      assert(options[0].includes("C:\\GitA\\cmd\\git.exe"));
+      assert(options[1].includes("C:\\GitB\\cmd\\git.exe"));
+      return 1;
+    },
+    checkGitAvailability: async (value, options = {}) => {
+      assert.equal(value, "C:\\GitB\\cmd\\git.exe");
+      assert.equal(options.persist, true);
+      candidatePrefs.prefs.set(PREFS.gitPath, value);
+      return { available: true, command: value, version: "git version B", detail: "git version B" };
+    }
+  });
+  await candidateWindow.testGit();
+  assert.equal(candidateSelectionShown, true);
+  assert.equal(candidatePrefs.prefs.get(PREFS.gitPath), "C:\\GitB\\cmd\\git.exe");
+  assert.equal(candidatePrefs.elements["git4zotero-git-path"].value, "C:\\GitB\\cmd\\git.exe");
+
+  const manualCandidatePrefs = await runPreferencesScript();
+  const manualCandidateWindow = manualCandidatePrefs.context.window.Git4ZoteroPreferences;
+  manualCandidatePrefs.elements["git4zotero-git-path"].value = "C:\\Manual\\git.exe";
+  let manualCandidateLookupCalled = false;
+  manualCandidateWindow.getPlatform = () => ({
+    listGitExecutableCandidates: async () => {
+      manualCandidateLookupCalled = true;
+      return [];
+    },
+    checkGitAvailability: async (value) => {
+      assert.equal(value, "C:\\Manual\\git.exe");
+      return { available: true, command: value, version: "git version manual", detail: "git version manual" };
+    }
+  });
+  await manualCandidateWindow.testGit();
+  assert.equal(manualCandidateLookupCalled, false);
 
   const savedPrefs = await runPreferencesScript({
     prefValue: "C:\\Saved\\Git\\cmd\\git.exe"
@@ -4295,6 +4621,8 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("健康检查完成"));
   assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("测试 Git"));
   assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("检查 Git/index/metadata 一致性"));
+  assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("下一步建议"));
+  assert(diagnosticsPrefs.elements["git4zotero-health-status"].textContent.includes("健康检查不会自动修复或清理历史"));
   await diagnosticsWindow.openFirstUseGuide();
   assert.equal(diagnosticsPrefs.elements["git4zotero-first-use-dialog"].hidden, false);
   assert.equal(diagnosticsPrefs.elements["git4zotero-first-use-output"].hidden, true);
@@ -4422,7 +4750,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert(platformActions.some((action) => action[0] === "openURL" && action[1].includes("GIT-INSTALL-zh.md")));
 
   const projectLinks = [
-    ["homepage", "https://github.com/LiKa-shing/git4zotero#readme"],
+    ["homepage", "https://github.com/LiKa-shing/"],
     ["github", "https://github.com/LiKa-shing/git4zotero"],
     ["feedback", "https://github.com/LiKa-shing/git4zotero/issues"],
     ["qa", "https://github.com/LiKa-shing/git4zotero/issues"]
@@ -4432,6 +4760,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
     assert(platformActions.some((action) => action[0] === "openURL" && action[1] === expectedURL), `${linkID} must open ${expectedURL}`);
   }
   assert(guidePrefs.elements["git4zotero-about-status"].textContent.includes("已打开项目链接"));
+  assert.equal(guidePrefs.elements["git4zotero-about-status"].hidden, false);
   const openURLCountAfterProjectLinks = platformActions.filter((action) => action[0] === "openURL").length;
   guideWindow.openProjectLink("missing");
   assert.equal(platformActions.filter((action) => action[0] === "openURL").length, openURLCountAfterProjectLinks);
@@ -4867,6 +5196,11 @@ async function renderPaneHarness({
     }),
     createVersion: async () => ({}),
     restoreVersion: async () => {},
+    formatSingleVersionSummaryMarkdown: (version) => `# git4zotero ${UI_TEXT.exportTitleSingleVersion}\n\n${version.note || UI_TEXT.defaultNote}\n${version.commitHash || version.id || ""}\n`,
+    exportSingleVersionSummary: async (version, options = {}) => ({
+      path: `${options.initialDirectory || "exports"}\\${version.shortHash || "version"}.md`,
+      options
+    }),
     ...serviceOverrides
   };
   const platform = makePanePlatform(platformOverrides);
@@ -4897,6 +5231,7 @@ function makePanePlatform(overrides = {}) {
     alert() {},
     confirm: () => false,
     getPref: (_key, fallback) => fallback,
+    copyTextToClipboard: () => {},
     promptGitPath: () => false,
     ...overrides
   };

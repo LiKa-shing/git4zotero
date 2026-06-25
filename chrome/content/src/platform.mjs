@@ -146,6 +146,45 @@ export class ZoteroPlatform {
     return this.findGitExecutableFromPath();
   }
 
+  async listGitExecutableCandidates() {
+    const commands = [];
+    for (const candidate of this.getGitExecutableCandidates()) {
+      if (await this.safeExists(candidate)) {
+        commands.push({ command: candidate, source: "known" });
+      }
+    }
+    for (const command of await this.findGitExecutablesFromPath()) {
+      commands.push({ command, source: "path" });
+    }
+
+    const unique = [];
+    const seen = new Set();
+    for (const candidate of commands) {
+      const key = normalizeExecutablePath(candidate.command).toLowerCase();
+      if (!key || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      try {
+        const result = await this.runProcess(candidate.command, ["--version"]);
+        const detail = result.stdout.trim() || result.stderr.trim();
+        if (result.exitCode === 0) {
+          unique.push({
+            available: true,
+            command: candidate.command,
+            source: candidate.source,
+            version: detail,
+            detail
+          });
+        }
+      }
+      catch (error) {
+        this.Zotero.debug?.(`git4zotero: Git candidate rejected: ${candidate.command}: ${error?.stack || error}`);
+      }
+    }
+    return unique;
+  }
+
   getGitExecutableCandidates() {
     const candidates = this.isWindows() ? [...WINDOWS_GIT_CANDIDATES] : [...POSIX_GIT_CANDIDATES];
     const home = this.getHomeDirectory();
@@ -156,7 +195,13 @@ export class ZoteroPlatform {
   }
 
   async findGitExecutableFromPath() {
+    const candidates = await this.findGitExecutablesFromPath();
+    return candidates[0] || "";
+  }
+
+  async findGitExecutablesFromPath() {
     const lookupCommands = this.getPathLookupCommands();
+    const candidates = [];
     for (const lookup of lookupCommands) {
       if (lookup.mustExist && !(await this.safeExists(lookup.command))) {
         continue;
@@ -166,19 +211,19 @@ export class ZoteroPlatform {
         if (result.exitCode !== 0 || !result.stdout.trim()) {
           continue;
         }
-        const command = result.stdout
+        const commands = result.stdout
           .split(/\r?\n/)
           .map((line) => normalizeExecutablePath(line))
-          .find(Boolean);
-        if (command) {
-          return command;
+          .filter(Boolean);
+        for (const command of commands) {
+          candidates.push(command);
         }
       }
       catch (error) {
         this.Zotero.debug?.(`git4zotero: Git path lookup failed: ${error?.stack || error}`);
       }
     }
-    return "";
+    return [...new Set(candidates)];
   }
 
   getPathLookupCommands() {
@@ -365,7 +410,19 @@ export class ZoteroPlatform {
     return accepted ? selected.value : -1;
   }
 
-  async saveTextFile({ title = UI_TEXT.saveFileTitle, defaultFileName = "git4zotero-export.txt", content = "" } = {}) {
+  async saveTextFile({
+    title = UI_TEXT.saveFileTitle,
+    defaultFileName = "git4zotero-export.txt",
+    content = "",
+    initialDirectory = ""
+  } = {}) {
+    const exportDirectory = normalizeExecutablePath(initialDirectory);
+    if (exportDirectory) {
+      await this.assertDirectoryAvailable(exportDirectory);
+      const targetPath = this.join(exportDirectory, defaultFileName);
+      await this.writeText(targetPath, content);
+      return targetPath;
+    }
     const fallbackPath = this.join(this.getPluginDataDirectory(), "exports", defaultFileName);
     try {
       const targetPath = await this.pickSavePath(title, defaultFileName, "");

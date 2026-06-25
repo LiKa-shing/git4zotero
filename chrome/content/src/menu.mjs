@@ -759,7 +759,8 @@ export class PaperVersionMenu {
     }
     const result = await this.service.exportVersionSummary(item, {
       scope: scopeIndex === 1 ? "last-check" : "history",
-      format: formatIndex === 1 ? "text" : "markdown"
+      format: formatIndex === 1 ? "text" : "markdown",
+      initialDirectory: this.platform.getPref(PREFS.archiveExportDirectory, "")
     });
     if (!result) {
       return;
@@ -791,14 +792,34 @@ export class PaperVersionMenu {
   async importItemArchive(eventContext) {
     const item = this.requireSingleItem(eventContext);
     const target = await this.getArchiveTarget(item);
-    const result = await this.archiveService.importItemRepositoryArchive({
+    const request = {
       targetRepoRelativePath: target.repoRelativePath,
       targetRepoPath: target.repoPath,
       attachment: target.attachment,
       selectSourceRepository: (title, message, labels) => {
         return this.platform.selectFromList(title, message, labels);
       }
-    });
+    };
+    const supportsPreparedImport = typeof this.archiveService.prepareItemRepositoryArchiveImport === "function";
+    const prepared = supportsPreparedImport
+      ? await this.archiveService.prepareItemRepositoryArchiveImport(request)
+      : null;
+    if (supportsPreparedImport && !prepared) {
+      return;
+    }
+    if (prepared) {
+      const previewMessage = this.formatItemArchiveImportPreview(prepared.preview ?? prepared);
+      if (prepared.willSkip) {
+        this.platform.alert(UI_TEXT.archiveImportPreviewTitle, previewMessage);
+        return;
+      }
+      if (!this.platform.confirm(UI_TEXT.archiveImportPreviewTitle, previewMessage)) {
+        return;
+      }
+    }
+    const result = prepared && typeof this.archiveService.commitItemRepositoryArchiveImport === "function"
+      ? await this.archiveService.commitItemRepositoryArchiveImport(prepared)
+      : await this.archiveService.importItemRepositoryArchive(request);
     if (!result) {
       return;
     }
@@ -988,6 +1009,33 @@ export class PaperVersionMenu {
     }
     lines.push("", UI_TEXT.createPreviewProceed);
     return lines.filter((line) => line !== undefined && line !== null).join("\n");
+  }
+
+  formatItemArchiveImportPreview(preview = {}) {
+    const lines = [
+      UI_TEXT.archiveImportPreviewMessage,
+      "",
+      `${UI_TEXT.archiveImportPreviewSourceFile}${UI_TEXT.colon}${preview.sourceFileName || UI_TEXT.unknown}`,
+      `${UI_TEXT.archiveImportPreviewSourceRepo}${UI_TEXT.colon}${preview.sourceRepoRelativePath || UI_TEXT.unknown}`,
+      `${UI_TEXT.archiveImportPreviewVersionCount}${UI_TEXT.colon}${preview.versionCount ?? 0}`,
+      `${UI_TEXT.archiveImportPreviewLatestVersion}${UI_TEXT.colon}${preview.latestVersionAt ? this.formatDate(preview.latestVersionAt) : UI_TEXT.unknown}`,
+      `${UI_TEXT.archiveImportPreviewTargetFile}${UI_TEXT.colon}${preview.targetFileName || UI_TEXT.unknown}`,
+      `${UI_TEXT.archiveImportPreviewTargetRepo}${UI_TEXT.colon}${preview.targetRepoRelativePath || UI_TEXT.unknown}`,
+      `${UI_TEXT.archiveImportPreviewCompatibleFormat}${UI_TEXT.colon}${this.formatCompatibleFormat(preview.compatibleFormat)}`,
+      `${UI_TEXT.archiveImportPreviewResult}${UI_TEXT.colon}${preview.resultMessage || UI_TEXT.archiveImportPreviewWillImport}`
+    ];
+    if (!preview.willSkip) {
+      lines.push("", UI_TEXT.archiveImportPreviewProceed);
+    }
+    return lines.join("\n");
+  }
+
+  formatCompatibleFormat(format = {}) {
+    const extension = format?.extension || UI_TEXT.unknown;
+    const trackingMode = format?.supportsContentDiff
+      ? UI_TEXT.contentModeDocx
+      : UI_TEXT.contentModeFileOnly;
+    return `${extension} ${trackingMode}`;
   }
 
   formatRestorePreflight(preflight, { blocked = false } = {}) {

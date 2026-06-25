@@ -1,6 +1,6 @@
-git4zotero-item-pane-header = 论文版本
+git4zotero-item-pane-header = 版本管理
 git4zotero-item-pane-sidenav =
-    .tooltiptext = 论文版本
+    .tooltiptext = 版本管理
 git4zotero-create-version =
     .label = 创建版本
 git4zotero-check-changes =

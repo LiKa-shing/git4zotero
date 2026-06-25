@@ -51,6 +51,46 @@ export function sortNewestFirst(versions) {
   return [...versions].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
+export function migrateMetadata(rawMetadata = {}, context = {}) {
+  const source = rawMetadata && typeof rawMetadata === "object" ? rawMetadata : {};
+  const versions = Array.isArray(source.versions) ? source.versions : [];
+  const enabled = typeof source.enabled === "boolean"
+    ? source.enabled
+    : versions.length > 0;
+  return {
+    ...createEmptyMetadata(context),
+    ...source,
+    schemaVersion: METADATA_SCHEMA_VERSION,
+    enabled,
+    item: normalizeObject(source.item, context.item ?? null),
+    attachment: normalizeObject(source.attachment, context.attachment ?? null),
+    trackedFile: normalizeObject(source.trackedFile, context.trackedFile ?? null),
+    versions: sortNewestFirst(versions.map(normalizeVersionRecord)),
+    lastRestored: source.lastRestored ?? null,
+    lastCheck: source.lastCheck ?? null
+  };
+}
+
+function normalizeObject(value, fallback = null) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+  return fallback;
+}
+
+function normalizeVersionRecord(version = {}) {
+  const source = version && typeof version === "object" ? version : {};
+  return {
+    ...source,
+    note: normalizeVersionNote(source.note),
+    contentHash: source.contentHash ?? null,
+    contentSummary: source.contentSummary ?? null,
+    contentSnapshot: source.contentSnapshot ?? null,
+    changeSummary: source.changeSummary ?? null,
+    zotero: normalizeObject(source.zotero, {})
+  };
+}
+
 export class MetadataStore {
   constructor(platform) {
     this.platform = platform;
@@ -72,25 +112,12 @@ export class MetadataStore {
 
     const raw = await this.platform.readText(metadataPath);
     const parsed = JSON.parse(raw);
-    return {
-      ...createEmptyMetadata(),
-      ...parsed,
-      enabled: typeof parsed.enabled === "boolean"
-        ? parsed.enabled
-        : (parsed.versions?.length ?? 0) > 0,
-      schemaVersion: parsed.schemaVersion ?? 1,
-      versions: sortNewestFirst(parsed.versions ?? [])
-    };
+    return migrateMetadata(parsed);
   }
 
   async write(repoPath, metadata) {
     await this.platform.makeDirectory(this.getMetadataDirectory(repoPath));
-    const normalized = {
-      ...createEmptyMetadata(),
-      ...metadata,
-      schemaVersion: METADATA_SCHEMA_VERSION,
-      versions: sortNewestFirst(metadata.versions ?? [])
-    };
+    const normalized = migrateMetadata(metadata);
     await this.platform.writeText(
       this.getMetadataPath(repoPath),
       `${JSON.stringify(normalized, null, 2)}\n`

@@ -127,12 +127,32 @@ export class VersionService {
     const path = await this.platform.saveTextFile({
       title: UI_TEXT.menuExportSummary,
       defaultFileName,
-      content
+      content,
+      initialDirectory: options.initialDirectory || ""
     });
     if (!path) {
       return null;
     }
     return { path, scope, format, fileName: defaultFileName };
+  }
+
+  formatSingleVersionSummaryMarkdown(version) {
+    return renderMarkdownSingleVersion(version);
+  }
+
+  async exportSingleVersionSummary(version, options = {}) {
+    const content = this.formatSingleVersionSummaryMarkdown(version);
+    const defaultFileName = buildSingleVersionExportFileName(version, ".md");
+    const path = await this.platform.saveTextFile({
+      title: UI_TEXT.versionDetailExport,
+      defaultFileName,
+      content,
+      initialDirectory: options.initialDirectory || ""
+    });
+    if (!path) {
+      return null;
+    }
+    return { path, format: "markdown", fileName: defaultFileName };
   }
 
   async loadVersionHistory(repoPath, metadata, attachment) {
@@ -906,6 +926,24 @@ function buildExportFileName(attachment, scope, extension) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const kind = scope === "last-check" ? "diff" : "history";
   return `git4zotero-${kind}-${key}-${timestamp}${extension}`;
+}
+
+function buildSingleVersionExportFileName(version, extension) {
+  const baseName = String(version?.fileName || "manuscript").replace(/\.[^.\\/]+$/, "");
+  const file = (sanitizeForPath(baseName) || "manuscript").slice(0, 64);
+  const hash = (sanitizeForPath(version?.shortHash || version?.commitHash || version?.id || "version") || "version").slice(0, 16);
+  const rawTime = version?.createdAt ? new Date(version.createdAt) : new Date();
+  const timestamp = Number.isFinite(rawTime.getTime()) ? rawTime.toISOString().replace(/[:.]/g, "-") : new Date().toISOString().replace(/[:.]/g, "-");
+  return `git4zotero-version-${file}-${hash}-${timestamp}${extension}`;
+}
+
+function renderMarkdownSingleVersion(version) {
+  const lines = [
+    `# git4zotero ${UI_TEXT.exportTitleSingleVersion}`,
+    "",
+    ...renderMarkdownVersion(version)
+  ];
+  return `${lines.join("\n").trimEnd()}\n`;
 }
 
 function renderMarkdownExport({ scope, attachment, versions, lastCheck }) {

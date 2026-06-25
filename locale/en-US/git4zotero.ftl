@@ -1,6 +1,6 @@
-git4zotero-item-pane-header = Paper Versions
+git4zotero-item-pane-header = Version Management
 git4zotero-item-pane-sidenav =
-    .tooltiptext = Paper Versions
+    .tooltiptext = Version Management
 git4zotero-create-version =
     .label = Create Version
 git4zotero-check-changes =
