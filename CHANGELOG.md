@@ -6,11 +6,28 @@
 
 ### 中文
 
+### English
+
+
+## 0.5.0
+
+### 中文
+
+- 新增面向大规模论文改写的可扩展 `.docx` 差异引擎，使用唯一锚点、受限精确匹配和结构感知近似匹配，避免为大型文档构建完整二维 LCS 矩阵。
+- 完整段落差异现在按章节和来源分页保存在仓库 sidecar 中，metadata schema 升级至 5，并兼容旧版本摘要和懒重建。
+- 新增独立的完整修改对比窗口，支持章节导航、搜索、变化类型筛选、分页、移动段落识别和中英文词元高亮。
+- 右侧历史详情改为紧凑摘要和按需增量加载，复制及 Markdown 导出可读取完整差异，不再受 20 条记录上限影响。
+- 检查和创建版本共用同一次附件字节读取，并增加短期分析缓存、取消机制、路径安全校验和完整差异健康检查。
 - 修复右侧“版本管理”标题图标与文字分离的问题。
 - 设置页 About 区块中的 Homepage 现在指向开发者 GitHub 主页。
 
 ### English
 
+- Added a scalable `.docx` diff engine for large manuscript rewrites using unique anchors, bounded exact matching, and structure-aware approximate matching without allocating a full document-wide LCS matrix.
+- Complete paragraph diffs are now stored as section/source-based sidecar pages. Metadata schema 5 preserves compatibility with legacy summaries and supports lazy reconstruction.
+- Added a full comparison window with section navigation, search, change-type filters, pagination, moved-paragraph detection, and token-level highlighting for Chinese and Latin text.
+- History Details now use compact summaries and incremental loading. Copy and Markdown export read the complete diff instead of being limited to 20 stored records.
+- Change checks and version creation share one attachment byte read and add short-lived analysis caching, cancellation, path validation, and diff-storage health reporting.
 - Fixed an issue where the right-pane "Version Management" icon could be separated from the title text.
 - The Homepage link in the preferences About section now opens the developer's GitHub profile.
 

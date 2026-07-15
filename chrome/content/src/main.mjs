@@ -21,6 +21,7 @@ import { PaperVersionMenu } from "./menu.mjs";
 import { ZoteroPlatform } from "./platform.mjs";
 import { PaperVersionPane } from "./ui.mjs";
 import { VersionService } from "./version-service.mjs";
+import { ReviewWindowManager } from "./review-window-manager.mjs";
 
 export const Git4Zotero = {
   context: null,
@@ -31,6 +32,8 @@ export const Git4Zotero = {
   menu: null,
   archive: null,
   cleanup: null,
+  service: null,
+  reviewWindowManager: null,
   notifierObserverID: null,
   notifierObserver: null,
 
@@ -62,6 +65,8 @@ export const Git4Zotero = {
       indexStore,
       pluginVersion: context.version
     });
+    this.service = service;
+    this.reviewWindowManager = new ReviewWindowManager({ platform: this.platform, service });
     this.cleanup = new RepositoryCleanupService({
       platform: this.platform,
       metadataStore,
@@ -73,7 +78,7 @@ export const Git4Zotero = {
       pluginVersion: context.version
     });
 
-    this.pane = new PaperVersionPane({ service, platform: this.platform });
+    this.pane = new PaperVersionPane({ service, platform: this.platform, reviewWindowManager: this.reviewWindowManager });
     this.menu = new PaperVersionMenu({ service, archiveService: this.archive, platform: this.platform });
     await this.registerPreferencePane(context);
 
@@ -101,6 +106,8 @@ export const Git4Zotero = {
 
     this.unregisterItemDeletionObserver();
     this.menu?.unregister();
+    this.reviewWindowManager?.shutdown();
+    this.service?.shutdown();
 
     for (const win of zotero?.getMainWindows?.() ?? []) {
       this.onMainWindowUnload(win);
@@ -110,6 +117,8 @@ export const Git4Zotero = {
     this.menu = null;
     this.archive = null;
     this.cleanup = null;
+    this.service = null;
+    this.reviewWindowManager = null;
     this.platform = null;
     this.context = null;
   },

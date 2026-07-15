@@ -1,6 +1,6 @@
 import { UI_TEXT } from "./constants.mjs";
 
-export const METADATA_SCHEMA_VERSION = 4;
+export const METADATA_SCHEMA_VERSION = 5;
 
 export function normalizeVersionNote(note, fallback = UI_TEXT.defaultNote) {
   const normalized = String(note ?? "").trim();
@@ -35,6 +35,7 @@ export function createVersionRecord(input) {
     contentSummary: input.contentSummary ?? null,
     contentSnapshot: input.contentSnapshot ?? null,
     changeSummary: input.changeSummary ?? null,
+    diffRef: normalizeDiffRef(input.diffRef),
     trackedRelativePath: input.trackedRelativePath,
     zotero: {
       libraryID: input.libraryID,
@@ -67,7 +68,7 @@ export function migrateMetadata(rawMetadata = {}, context = {}) {
     trackedFile: normalizeObject(source.trackedFile, context.trackedFile ?? null),
     versions: sortNewestFirst(versions.map(normalizeVersionRecord)),
     lastRestored: source.lastRestored ?? null,
-    lastCheck: source.lastCheck ?? null
+    lastCheck: normalizeLastCheck(source.lastCheck)
   };
 }
 
@@ -87,7 +88,42 @@ function normalizeVersionRecord(version = {}) {
     contentSummary: source.contentSummary ?? null,
     contentSnapshot: source.contentSnapshot ?? null,
     changeSummary: source.changeSummary ?? null,
+    diffRef: normalizeDiffRef(source.diffRef),
     zotero: normalizeObject(source.zotero, {})
+  };
+}
+
+function normalizeLastCheck(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return {
+    ...value,
+    diffRef: normalizeDiffRef(value.diffRef)
+  };
+}
+
+function normalizeDiffRef(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const path = String(value.path ?? "").trim().replace(/\\/g, "/");
+  const safePath = path
+    && !path.startsWith("/")
+    && !/^[a-zA-Z]:/.test(path)
+    && !path.split("/").includes("..")
+    && path.startsWith(".git4zotero/diffs/")
+      ? path
+      : "";
+  return {
+    schemaVersion: Number(value.schemaVersion) || 1,
+    scope: value.scope === "check-current" ? "check-current" : "version",
+    path: safePath,
+    status: value.status === "complete" && safePath ? "complete" : "summary-only",
+    quality: value.quality === "approximate" ? "approximate" : "exact",
+    baseCommitHash: value.baseCommitHash ?? null,
+    totalChanges: Number.isFinite(value.totalChanges) ? value.totalChanges : 0,
+    groupCount: Number.isFinite(value.groupCount) ? value.groupCount : 0
   };
 }
 

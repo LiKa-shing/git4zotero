@@ -1078,6 +1078,9 @@ export class PaperVersionMenu {
     if (change.type === "modified") {
       return `${location}${UI_TEXT.changeKindModified}${UI_TEXT.colon}${change.oldText} → ${change.newText}`;
     }
+    if (change.type === "moved") {
+      return `${location}${UI_TEXT.changeKindMoved}${UI_TEXT.colon}${change.moveFrom ?? change.oldIndex ?? ""} → ${change.moveTo ?? change.newIndex ?? ""}`;
+    }
     return `${location}${change.newText || change.oldText || UI_TEXT.actionCompleted}`;
   }
 

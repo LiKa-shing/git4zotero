@@ -211,6 +211,7 @@ const SCOPED_TIMELINE_STYLE = `
 .git4zotero-panel-root .git4zotero-version-detail-button,
 .git4zotero-panel-root .git4zotero-version-detail-copy,
 .git4zotero-panel-root .git4zotero-version-detail-export,
+.git4zotero-panel-root .git4zotero-version-detail-review,
 .git4zotero-panel-root .git4zotero-version-detail-toggle,
 .git4zotero-panel-root .git4zotero-version-detail-close {
   color: var(--git4zotero-text);
@@ -305,9 +306,10 @@ const SCOPED_TIMELINE_STYLE = `
 `;
 
 export class PaperVersionPane {
-  constructor({ service, platform }) {
+  constructor({ service, platform, reviewWindowManager = null }) {
     this.service = service;
     this.platform = platform;
+    this.reviewWindowManager = reviewWindowManager;
     this.renderTokens = new WeakMap();
     this.asyncStates = new WeakMap();
     this.revealStates = new WeakMap();
@@ -822,6 +824,23 @@ export class PaperVersionPane {
     if (changes) {
       section.append(changes);
     }
+    if (lastCheck.diffRef && lastCheck.repoPath) {
+      const button = this.el(doc, "button", "git4zotero-version-detail-review");
+      button.setAttribute?.("type", "button");
+      button.textContent = UI_TEXT.versionDetailOpenReview;
+      button.addEventListener?.("click", async (event) => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        try {
+          await this.reviewWindowManager?.open(lastCheck);
+        }
+        catch (error) {
+          recordLastError(this.platform, error, { operation: "open current diff review" });
+          section.append(this.hint(doc, UI_TEXT.reviewWindowUnavailable));
+        }
+      });
+      section.append(button);
+    }
     return section;
   }
 
@@ -933,6 +952,9 @@ export class PaperVersionPane {
       [UI_TEXT.safetyBackupLabel, version.kind === "safety" ? UI_TEXT.safetyBackupYes : UI_TEXT.safetyBackupNo],
       [UI_TEXT.changeSummaryLabel, version.changeSummary?.summary || UI_TEXT.actionCompleted]
     ];
+    if (version.diffRef) {
+      rows.push([UI_TEXT.diffQualityLabel, version.diffRef.quality === "approximate" ? UI_TEXT.diffQualityApproximate : UI_TEXT.diffQualityExact]);
+    }
     if (version.contentSummary?.extension === ".doc") {
       rows.push([UI_TEXT.trackingModeLabel, UI_TEXT.docFileOnlyTracking]);
     }
@@ -1004,16 +1026,20 @@ export class PaperVersionPane {
     const headerActions = this.el(doc, "div", "git4zotero-version-detail-header-actions");
     const copyButton = this.versionDetailHeaderButton(doc, "git4zotero-version-detail-copy", UI_TEXT.versionDetailCopy);
     const exportButton = this.versionDetailHeaderButton(doc, "git4zotero-version-detail-export", UI_TEXT.versionDetailExport);
+    const reviewButton = this.versionDetailHeaderButton(doc, "git4zotero-version-detail-review", UI_TEXT.versionDetailOpenReview);
     const closeButton = this.el(doc, "button", "git4zotero-version-detail-close");
     closeButton.setAttribute?.("type", "button");
     closeButton.setAttribute?.("data-git4zotero-version-detail-close", "true");
     closeButton.textContent = UI_TEXT.versionDetailClose;
 
     copyButton.addEventListener?.("click", (event) => {
-      this.copyVersionDetail(panel, version, event);
+      return this.copyVersionDetail(panel, version, event);
     });
     exportButton.addEventListener?.("click", (event) => {
       return this.exportVersionDetail(panel, version, event);
+    });
+    reviewButton.addEventListener?.("click", (event) => {
+      return this.openFullReview(panel, version, event);
     });
 
     const close = (event) => this.dismissVersionDetailPanel(panel, event, triggerButton);
@@ -1038,7 +1064,7 @@ export class PaperVersionPane {
       close(event);
     });
 
-    headerActions.append(copyButton, exportButton, closeButton);
+    headerActions.append(reviewButton, copyButton, exportButton, closeButton);
     header.append(title, headerActions);
     const body = this.el(doc, "div", "git4zotero-version-detail-body");
     const status = this.el(doc, "div", "git4zotero-version-detail-status");
@@ -1064,11 +1090,13 @@ export class PaperVersionPane {
     return button;
   }
 
-  copyVersionDetail(panel, version, event = null) {
+  async copyVersionDetail(panel, version, event = null) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     try {
-      const content = this.service.formatSingleVersionSummaryMarkdown(version);
+      const content = this.service.buildCompleteVersionMarkdownForVersion
+        ? await this.service.buildCompleteVersionMarkdownForVersion(version)
+        : this.service.formatSingleVersionSummaryMarkdown(version);
       this.platform.copyTextToClipboard(content);
       this.setVersionDetailStatus(panel, UI_TEXT.versionDetailCopySuccess, "success");
     }
@@ -1079,6 +1107,22 @@ export class PaperVersionPane {
         formatText("versionDetailCopyFailed", { message: error?.message || String(error) }),
         "error"
       );
+    }
+  }
+
+  async openFullReview(panel, version, event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    try {
+      if (!this.reviewWindowManager) {
+        throw new Error(UI_TEXT.reviewWindowUnavailable);
+      }
+      await this.reviewWindowManager.open(version);
+      this.setVersionDetailStatus(panel, "", "");
+    }
+    catch (error) {
+      recordLastError(this.platform, error, { operation: "open full diff review" });
+      this.setVersionDetailStatus(panel, UI_TEXT.reviewWindowUnavailable, "warning");
     }
   }
 
@@ -1211,6 +1255,9 @@ export class PaperVersionPane {
       [UI_TEXT.safetyBackupLabel, version.kind === "safety" ? UI_TEXT.safetyBackupYes : UI_TEXT.safetyBackupNo],
       [UI_TEXT.changeSummaryLabel, version.changeSummary?.summary || UI_TEXT.actionCompleted]
     ];
+    if (version.diffRef) {
+      rows.push([UI_TEXT.diffQualityLabel, version.diffRef.quality === "approximate" ? UI_TEXT.diffQualityApproximate : UI_TEXT.diffQualityExact]);
+    }
     if (version.contentSummary?.extension === ".doc") {
       rows.push([UI_TEXT.trackingModeLabel, UI_TEXT.docFileOnlyTracking]);
     }
@@ -1239,7 +1286,10 @@ export class PaperVersionPane {
     });
     if (changes) {
       section.append(changes);
-      if (hasMore) {
+      if (hasMore && version.repoPath && version.diffRef) {
+        section.append(this.versionDetailLoadButton(doc, version, section, expanded ? 100 : 0));
+      }
+      else if (hasMore) {
         section.append(this.versionDetailToggleButton(doc, version, expanded, section));
       }
       return section;
@@ -1250,6 +1300,43 @@ export class PaperVersionPane {
       : UI_TEXT.versionDetailNoChanges;
     section.append(this.hint(doc, message));
     return section;
+  }
+
+  versionDetailLoadButton(doc, version, section, loadedLimit = 20) {
+    const button = this.el(doc, "button", "git4zotero-version-detail-toggle");
+    button.setAttribute?.("type", "button");
+    button.textContent = UI_TEXT.versionDetailLoadMore;
+    button.addEventListener?.("click", async (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      button.disabled = true;
+      try {
+        const nextLimit = Math.min(100, loadedLimit + 20);
+        const result = await this.service.searchVersionDiff(
+          { repoPath: version.repoPath },
+          version,
+          { cursor: 0, limit: nextLimit, rebuild: true }
+        );
+        const next = this.changeList(doc, {
+          paragraphChanges: result.changes,
+          totalParagraphChanges: result.total
+        }, Number.POSITIVE_INFINITY, { full: true, omittedKey: "omittedParagraphChangesPanel" });
+        section.querySelector?.(".git4zotero-change-list")?.replaceWith?.(next);
+        if (nextLimit >= result.total || nextLimit >= 100) {
+          button.remove?.();
+        }
+        else {
+          const replacement = this.versionDetailLoadButton(doc, version, section, nextLimit);
+          button.replaceWith?.(replacement);
+        }
+      }
+      catch (error) {
+        recordLastError(this.platform, error, { operation: "load version diff page" });
+        button.disabled = false;
+        button.textContent = UI_TEXT.reviewWindowUnavailable;
+      }
+    });
+    return button;
   }
 
   versionDetailToggleButton(doc, version, expanded, section) {
@@ -1419,6 +1506,14 @@ export class PaperVersionPane {
       return wrapper;
     }
 
+    if (change.type === "moved") {
+      wrapper.append(
+        this.changeText(doc, UI_TEXT.changeBefore, change.oldText, options),
+        this.changeText(doc, UI_TEXT.changeAfter, change.newText, options)
+      );
+      return wrapper;
+    }
+
     wrapper.append(this.changeText(doc, UI_TEXT.changeAdded, change.newText, options));
     return wrapper;
   }
@@ -1438,6 +1533,9 @@ export class PaperVersionPane {
     }
     if (change.type === "modified") {
       return UI_TEXT.changeKindModified;
+    }
+    if (change.type === "moved") {
+      return UI_TEXT.changeKindMoved;
     }
     return UI_TEXT.changeKindParagraph;
   }
@@ -2703,6 +2801,7 @@ export class PaperVersionPane {
     if (has("git4zotero-version-detail-button")
       || has("git4zotero-version-detail-copy")
       || has("git4zotero-version-detail-export")
+      || has("git4zotero-version-detail-review")
       || has("git4zotero-version-detail-toggle")
       || has("git4zotero-version-detail-close")) {
       styles.push(DETAIL_BUTTON_INLINE_STYLE);

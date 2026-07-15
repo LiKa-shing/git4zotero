@@ -31,6 +31,9 @@ const requiredFiles = [
   "chrome/content/preferences.xhtml",
   "chrome/content/preferences.mjs",
   "chrome/content/preferences.css",
+  "chrome/content/review.xhtml",
+  "chrome/content/review.css",
+  "chrome/content/review-window.js",
   "chrome/content/style.css",
   "chrome/content/icons/paper-version.svg",
   "chrome/content/icons/paper-version-16.png",
@@ -38,6 +41,9 @@ const requiredFiles = [
   "chrome/content/icons/paper-version-48.png",
   "chrome/content/icons/paper-version-96.png",
   "chrome/content/src/content-diff.mjs",
+  "chrome/content/src/scalable-diff.mjs",
+  "chrome/content/src/diff-store.mjs",
+  "chrome/content/src/review-window-manager.mjs",
   "chrome/content/src/cleanup.mjs",
   "chrome/content/src/archive.mjs",
   "chrome/content/src/diagnostics.mjs",
@@ -520,6 +526,22 @@ const contentDiffModule = await fs.readFile(path.join(root, "chrome/content/src/
 assert(contentDiffModule.includes("paragraphChanges"));
 assert(contentDiffModule.includes("displayChanges"));
 assert(contentDiffModule.includes("totalParagraphChanges"));
+assert(contentDiffModule.includes("completeDiff"));
+assert(!contentDiffModule.includes("Array.from({ length: rows }, () => Array(cols)"), "content diff must not allocate a full document-wide LCS matrix");
+const scalableDiffModule = await fs.readFile(path.join(root, "chrome/content/src/scalable-diff.mjs"), "utf8");
+assert(scalableDiffModule.includes("EXACT_GAP_CELL_LIMIT = 50_000"));
+assert(scalableDiffModule.includes("APPROXIMATE_WINDOW = 12"));
+assert(scalableDiffModule.includes("SIMILARITY_THRESHOLD = 0.35"));
+const diffStoreModule = await fs.readFile(path.join(root, "chrome/content/src/diff-store.mjs"), "utf8");
+assert(diffStoreModule.includes(".git4zotero/diffs"));
+assert(diffStoreModule.includes("DIFF_PAGE_SIZE = 100"));
+assert(diffStoreModule.includes("validateDiffPath"));
+const reviewWindowManagerModule = await fs.readFile(path.join(root, "chrome/content/src/review-window-manager.mjs"), "utf8");
+assert(reviewWindowManagerModule.includes("chrome://git4zotero/content/review.xhtml"));
+const reviewWindowScript = await fs.readFile(path.join(root, "chrome/content/review-window.js"), "utf8");
+assert(reviewWindowScript.includes("review-query"));
+assert(reviewWindowScript.includes("review-type"));
+assert(reviewWindowScript.includes("tokenDiff"));
 
 const styleModule = await fs.readFile(path.join(root, "chrome/content/style.css"), "utf8");
 assert(styleModule.includes("item-pane-sidenav .btn[data-pane$=\"git4zotero-paper-versions\"]"));

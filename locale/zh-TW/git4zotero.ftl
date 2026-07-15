@@ -1,6 +1,10 @@
 git4zotero-item-pane-header = 版本管理
 git4zotero-item-pane-sidenav =
     .tooltiptext = 版本管理
+
+git4zotero-review-window-title = 完整修改對比
+git4zotero-review-open =
+    .label = 開啟完整對比
 git4zotero-create-version =
     .label = 建立版本
 git4zotero-check-changes =

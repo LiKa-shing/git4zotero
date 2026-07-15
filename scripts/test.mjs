@@ -12,7 +12,10 @@ import {
   isManageablePath,
   sanitizeForPath
 } from "../chrome/content/src/attachments.mjs";
-import { ContentAnalyzer } from "../chrome/content/src/content-diff.mjs";
+import { ContentAnalyzer, diffParagraphs, diffParagraphTokens } from "../chrome/content/src/content-diff.mjs";
+import { DiffStore, validateDiffPath } from "../chrome/content/src/diff-store.mjs";
+import { EXACT_GAP_CELL_LIMIT } from "../chrome/content/src/scalable-diff.mjs";
+import { ReviewWindowManager } from "../chrome/content/src/review-window-manager.mjs";
 import {
   RepositoryCleanupService,
   RepositoryIndexStore,
@@ -4978,6 +4981,124 @@ const docPrevious = { fileHash: await platform.hashBytes(new Uint8Array([1, 2]))
 const docAnalysis = await analyzer.analyze("legacy.doc", docPrevious);
 assert.equal(docAnalysis.contentHash, null);
 assert.equal(docAnalysis.changeSummary.changeType, "file-level");
+
+assert.equal(EXACT_GAP_CELL_LIMIT, 50_000);
+const largeOldParagraphs = Array.from({ length: 5000 }, (_, index) => `old-${index}-alpha`);
+const largeNewParagraphs = Array.from({ length: 5000 }, (_, index) => `new-${index}-omega`);
+const largeDiffStarted = Date.now();
+const largeDiff = diffParagraphs(largeOldParagraphs, largeNewParagraphs);
+assert.equal(largeDiff.quality, "approximate");
+assert.equal(largeDiff.modifiedParagraphs, 0);
+assert.equal(largeDiff.deletedParagraphs, 5000);
+assert.equal(largeDiff.addedParagraphs, 5000);
+assert.equal(largeDiff.paragraphChanges.length, 10000);
+assert(Date.now() - largeDiffStarted < 5000, "5000x5000 rewrite should avoid a document-wide LCS matrix");
+
+const movedDiff = diffParagraphs(["alpha", "move me", "omega"], ["alpha", "omega", "move me"]);
+assert.equal(movedDiff.movedParagraphs, 1);
+assert(movedDiff.paragraphChanges.some((change) => change.type === "moved" && change.moveFrom !== undefined && change.moveTo !== undefined));
+const repeatedMoveDiff = diffParagraphs(["repeat", "repeat", "tail"], ["tail", "repeat", "repeat"]);
+assert.equal(repeatedMoveDiff.movedParagraphs, 0, "repeated text must not be inferred as a move");
+
+const cjkTokenDiff = diffParagraphTokens("论文方法已经更新", "论文实验方法已经全面更新");
+assert(cjkTokenDiff.segments.some((segment) => segment.type === "added"));
+const longTokenDiff = diffParagraphTokens(`prefix-${"a".repeat(300)}`, `prefix-${"b".repeat(300)}`);
+assert.equal(longTokenDiff.simplified, true);
+
+class DiffMemoryPlatform {
+  constructor() {
+    this.files = new Map();
+  }
+
+  join(...parts) {
+    return parts.join("/").replace(/\/+/g, "/");
+  }
+
+  async exists(path) {
+    return this.files.has(path);
+  }
+
+  async writeText(path, value) {
+    this.files.set(path, value);
+  }
+
+  async readText(path) {
+    return this.files.get(path);
+  }
+}
+
+const diffMemoryPlatform = new DiffMemoryPlatform();
+const diffStore = new DiffStore(diffMemoryPlatform);
+const storedChanges = Array.from({ length: 205 }, (_, index) => ({
+  id: `change-${index}`,
+  type: index % 2 ? "modified" : "added",
+  oldIndex: index,
+  newIndex: index,
+  oldText: `old ${index}`,
+  newText: `new ${index}`,
+  locationLabel: `Paragraph ${index + 1}`
+}));
+const storedRef = await diffStore.writeVersionDiff("repo", "abcdef123456", {
+  quality: "approximate",
+  baseCommitHash: "base123",
+  counts: { added: 103, deleted: 0, modified: 102, moved: 0 },
+  groups: [{ id: "body", label: "Body", changes: storedChanges }]
+});
+assert.equal(storedRef.totalChanges, 205);
+assert.equal(storedRef.quality, "approximate");
+const storedIndex = await diffStore.readIndex("repo", storedRef);
+assert.equal(storedIndex.groups[0].pages.length, 3);
+assert(storedIndex.groups[0].pages.every((page) => page.count <= 100));
+assert.equal((await diffStore.loadPage("repo", storedIndex, { groupID: "body", page: 3 })).changes.length, 5);
+assert.equal((await diffStore.search("repo", storedIndex, { query: "new 204", types: ["added"] })).total, 1);
+assert.throws(() => validateDiffPath("../outside.json"), /Invalid git4zotero diff path/);
+assert.throws(() => validateDiffPath("C:/outside.json"), /Invalid git4zotero diff path/);
+const damagedPagePath = diffStore.resolve("repo", storedIndex.groups[0].pages[0].path);
+diffMemoryPlatform.files.set(damagedPagePath, "{");
+diffStore.readCache.delete(damagedPagePath);
+await assert.rejects(
+  diffStore.loadPage("repo", storedIndex, { groupID: "body", page: 1 }),
+  /Could not read git4zotero diff file/
+);
+
+const schemaFourMigration = migrateMetadata({
+  schemaVersion: 4,
+  versions: [{ id: "legacy", commitHash: "legacy", note: "Legacy", diffRef: { status: "complete", path: "../bad" } }]
+});
+assert.equal(schemaFourMigration.schemaVersion, 5);
+assert.equal(schemaFourMigration.versions[0].diffRef.status, "summary-only");
+assert.equal(schemaFourMigration.versions[0].diffRef.path, "");
+
+let openedReviewWindows = 0;
+const fakeReviewWindow = {
+  closed: false,
+  focused: 0,
+  addEventListener() {},
+  focus() { this.focused += 1; },
+  close() { this.closed = true; }
+};
+const reviewManager = new ReviewWindowManager({
+  platform: {
+    Zotero: {
+      getMainWindow: () => ({
+        openDialog: () => {
+          openedReviewWindows += 1;
+          return fakeReviewWindow;
+        }
+      })
+    },
+    getPref: () => "",
+    copyTextToClipboard() {}
+  },
+  service: {}
+});
+const reviewVersion = { repoPath: "repo", commitHash: "abcdef", id: "version" };
+await reviewManager.open(reviewVersion);
+await reviewManager.open(reviewVersion);
+assert.equal(openedReviewWindows, 1);
+assert.equal(fakeReviewWindow.focused, 1);
+reviewManager.shutdown();
+assert.equal(fakeReviewWindow.closed, true);
 assert(docAnalysis.changeSummary.summary.includes(".doc 仅支持文件级跟踪"));
 
 console.log("逻辑测试通过：附件识别、右键菜单、lastCheck、Git 工作树、只读面板、设置页 Git 测试和正文差异均已验证。");

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <title>git4zotero</title>
+  <link rel="stylesheet" href="chrome://git4zotero/content/review.css" />
+  <script src="chrome://git4zotero/content/review-window.js" defer="defer"></script>
+</head>
+<body>
+  <header class="review-header">
+    <div>
+      <h1 id="review-title">git4zotero</h1>
+      <div id="review-version-meta" class="review-meta"></div>
+    </div>
+    <div class="review-actions">
+      <button id="review-copy-filtered" type="button"></button>
+      <button id="review-copy-all" type="button"></button>
+      <button id="review-export" type="button"></button>
+    </div>
+  </header>
+  <div class="review-toolbar">
+    <label class="review-search"><span id="review-search-label"></span><input id="review-query" type="search" /></label>
+    <label><span class="visually-hidden">Filter</span><select id="review-type"></select></label>
+    <span id="review-quality" class="review-quality"></span>
+    <span id="review-status" class="review-status" role="status"></span>
+  </div>
+  <main class="review-layout">
+    <nav class="review-navigation" aria-labelledby="review-sections-title">
+      <h2 id="review-sections-title"></h2>
+      <button id="review-all-groups" class="review-group active" type="button"></button>
+      <div id="review-groups"></div>
+    </nav>
+    <section class="review-content" aria-live="polite">
+      <div id="review-list"></div>
+      <div class="review-pagination">
+        <button id="review-previous" type="button"></button>
+        <label><span id="review-page-label"></span><input id="review-page" type="number" min="1" value="1" /></label>
+        <span id="review-page-count"></span>
+        <button id="review-next" type="button"></button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

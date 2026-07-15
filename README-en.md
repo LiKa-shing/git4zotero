@@ -30,12 +30,12 @@
 
 - **Local Git version history**: each Zotero item with version management enabled gets its own local Git repository. No cloud service is required.
 - **Zotero-centered workflow**: use the `Paper Versions` context menu in the item list to enable tracking, check changes, create versions, restore versions, and disable tracking.
-- **Content-level `.docx` diff**: reads document body, footnotes, and endnotes, excludes deleted revisions and comments, and reports added, removed, and modified paragraphs with word-count changes.
+- **Content-level `.docx` diff for large papers**: reads body text, tables, footnotes, and endnotes; reports added, removed, modified, and moved paragraphs without allocating a document-wide comparison matrix for large rewrites.
 - **File-level `.doc` tracking**: supports version creation and restore for binary Word files.
 - **Explainable restore safety check**: before restoring an old version, the plugin shows the target version, Git hash, current file hash, target file hash, backup path, write status, and Git working tree status.
 - **Item-level history backup and migration**: export or import version history from the selected item's `Paper Versions` context menu. Import never overwrites existing history.
 - **Diagnostics and health check**: copy redacted diagnostics, run a health check, and copy an issue template from the settings pane.
-- **Paper Versions item pane**: view status cards, version count, latest check result, working tree status, version history summaries, and per-version History Details in Zotero item details; details can be copied as Markdown or exported as a single-change summary.
+- **Paper Versions pane and full comparison window**: the item pane shows compact summaries with incremental loading; the separate review window adds section navigation, search, type filters, pagination, token highlighting, and complete Markdown copy/export.
 
 ## Use Cases
 
@@ -110,7 +110,7 @@ The `Paper Versions` menu and right-side pane contain:
 | `Import Version History to This Item...` | Import one source history from a backup ZIP into the current item. If the current item already has history, import is skipped without overwriting. |
 | `Configure Git Path...` | Quickly configure Git when it is unavailable. |
 | `Disable Version Management` | Stop version management for the current item without deleting existing history. |
-| `Details` | Open from a single history entry in the right-side `Paper Versions` pane to view the note, time, file information, change summary, and saved change records. Long diffs are collapsed first, can be expanded on demand, and can be copied or exported as a single-change summary. |
+| `Details` | View a compact summary and incrementally load changes in the right-side pane. Use `Open Full Comparison` for section navigation, search, type filters, pagination, complete copy, and Markdown export. |
 
 The plugin supports single selection only. Version actions are unavailable when multiple Zotero items are selected.
 
@@ -195,7 +195,7 @@ Before restoring, save and close the same file in Word, WPS, or LibreOffice. Som
 
 ### Where are History Details?
 
-Select an item with version management enabled, then open the right-side `Paper Versions` pane in Zotero item details. Click `Details` on a history entry to view that version's note, creation time, file information, change summary, and saved change records. The details panel provides `Copy Details` and `Export This Change Summary`, which are useful for sending to an advisor or filing an issue. Long document diffs are collapsed by default; click `Show All Changes` to expand the full record.
+Select an item with version management enabled, then open the right-side `Paper Versions` pane in Zotero item details. Click `Details` to view the note, creation time, file information, and compact change summary. The pane can incrementally load changes; `Open Full Comparison` adds section navigation, search, type filters, and pagination. `Copy Details` and `Export This Change Summary` read the complete saved diff for advisor review or issue reports.
 
 ### Why are there no import/export buttons in settings?
 

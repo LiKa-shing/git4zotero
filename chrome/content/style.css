@@ -356,6 +356,7 @@
 .git4zotero-version-detail-button,
 .git4zotero-version-detail-copy,
 .git4zotero-version-detail-export,
+.git4zotero-version-detail-review,
 .git4zotero-version-detail-toggle,
 .git4zotero-version-detail-close {
   background: var(--git4zotero-detail-surface);

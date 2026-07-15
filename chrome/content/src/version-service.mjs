@@ -1,6 +1,7 @@
 import { PREFS, UI_TEXT } from "./constants.mjs";
 import { buildTrackedFileName, sanitizeForPath } from "./attachments.mjs";
-import { ContentAnalyzer } from "./content-diff.mjs";
+import { ContentAnalyzer, summarizeDocxChange } from "./content-diff.mjs";
+import { DiffStore } from "./diff-store.mjs";
 import { formatText } from "./localization.mjs";
 import {
   createVersionRecord,
@@ -17,7 +18,8 @@ export class VersionService {
     metadataStore,
     indexStore = null,
     pluginVersion,
-    contentAnalyzer = null
+    contentAnalyzer = null,
+    diffStore = null
   }) {
     this.platform = platform;
     this.attachmentFinder = attachmentFinder;
@@ -26,6 +28,7 @@ export class VersionService {
     this.indexStore = indexStore;
     this.pluginVersion = pluginVersion;
     this.contentAnalyzer = contentAnalyzer ?? new ContentAnalyzer({ platform });
+    this.diffStore = diffStore ?? new DiffStore(platform);
   }
 
   async getPanelState(item) {
@@ -38,6 +41,13 @@ export class VersionService {
     const repoPath = this.platform.getRepoPath(attachment.libraryID, attachment.itemKey);
     const metadata = await this.metadataStore.read(repoPath);
     const enabled = this.isEnabled(metadata);
+    const panelLastCheck = metadata.lastCheck ? {
+      ...metadata.lastCheck,
+      id: `check-${metadata.lastCheck.checkedAt || "current"}`,
+      createdAt: metadata.lastCheck.checkedAt,
+      note: UI_TEXT.lastCheck,
+      repoPath
+    } : null;
 
     if (!enabled) {
       return {
@@ -46,27 +56,29 @@ export class VersionService {
         repoPath,
         enabled: false,
         versions: [],
-        lastCheck: metadata.lastCheck ?? null,
+        lastCheck: panelLastCheck,
         workingTree: null
       };
     }
 
     const git = await this.gitBackend.checkAvailability();
     if (!git.available) {
+      const offlineVersions = this.mergeHistoryWithMetadata([], metadata, attachment)
+        .map((version) => ({ ...version, repoPath }));
       return {
         git,
         attachment,
         repoPath,
         enabled: true,
-        versions: this.mergeHistoryWithMetadata([], metadata, attachment),
-        lastCheck: metadata.lastCheck ?? null,
+        versions: offlineVersions,
+        lastCheck: panelLastCheck,
         workingTree: null,
         health: await this.buildRepositoryHealth({
           attachment,
           repoPath,
           metadata,
           git,
-          versions: this.mergeHistoryWithMetadata([], metadata, attachment),
+          versions: offlineVersions,
           workingTree: null
         })
       };
@@ -88,7 +100,7 @@ export class VersionService {
       repoPath,
       enabled: true,
       versions,
-      lastCheck: metadata.lastCheck ?? null,
+      lastCheck: panelLastCheck,
       workingTree,
       health
     };
@@ -141,7 +153,7 @@ export class VersionService {
   }
 
   async exportSingleVersionSummary(version, options = {}) {
-    const content = this.formatSingleVersionSummaryMarkdown(version);
+    const content = await this.buildCompleteVersionMarkdownForVersion(version, options.filters);
     const defaultFileName = buildSingleVersionExportFileName(version, ".md");
     const path = await this.platform.saveTextFile({
       title: UI_TEXT.versionDetailExport,
@@ -155,24 +167,146 @@ export class VersionService {
     return { path, format: "markdown", fileName: defaultFileName };
   }
 
+  async getVersionDiffIndex(item, version, options = {}) {
+    const context = await this.resolveDiffContext(item, version);
+    let target = context.version;
+    if (target?.diffRef?.status === "complete") {
+      try {
+        return await this.diffStore.readIndex(context.repoPath, target.diffRef);
+      }
+      catch (error) {
+        this.platform.Zotero?.debug?.(`git4zotero: saved diff index unavailable: ${error?.stack || error}`);
+        if (options.rebuild === false) {
+          throw error;
+        }
+      }
+    }
+    if (options.rebuild === false) {
+      return createLegacyDiffIndex(target);
+    }
+    const rebuilt = await this.rebuildVersionDiff(context.repoPath, context.metadata, target);
+    target = rebuilt.version;
+    return rebuilt.index;
+  }
+
+  async loadVersionDiffPage(item, version, options = {}) {
+    const context = await this.resolveDiffContext(item, version);
+    const index = await this.getVersionDiffIndex({ repoPath: context.repoPath, metadata: context.metadata }, context.version, { rebuild: options.rebuild !== false });
+    if (index.legacy) {
+      const group = index.groups.find((candidate) => candidate.id === options.groupID) || index.groups[0] || null;
+      return { group, page: 1, pageCount: group ? 1 : 0, totalChanges: group?.totalChanges ?? 0, changes: group?.changes ?? [] };
+    }
+    return this.diffStore.loadPage(context.repoPath, index, options);
+  }
+
+  async searchVersionDiff(item, version, options = {}) {
+    const context = await this.resolveDiffContext(item, version);
+    const index = await this.getVersionDiffIndex({ repoPath: context.repoPath, metadata: context.metadata }, context.version, { rebuild: options.rebuild !== false });
+    if (index.legacy) {
+      return searchLegacyDiff(index, options);
+    }
+    return this.diffStore.search(context.repoPath, index, options);
+  }
+
+  async buildCompleteVersionMarkdown(item, version, filters = {}) {
+    const context = await this.resolveDiffContext(item, version);
+    let changes = [];
+    try {
+      const index = await this.getVersionDiffIndex({ repoPath: context.repoPath, metadata: context.metadata }, context.version, { rebuild: filters.rebuild !== false });
+      if (index.legacy) {
+        changes = index.groups.flatMap((group) => group.changes ?? []);
+      }
+      else {
+        changes = (await this.diffStore.loadAll(context.repoPath, index)).changes;
+      }
+    }
+    catch (error) {
+      this.platform.Zotero?.debug?.(`git4zotero: complete markdown fell back to summary: ${error?.stack || error}`);
+    }
+    const typeSet = new Set((filters.types ?? []).filter(Boolean));
+    const query = String(filters.query ?? "").trim().toLocaleLowerCase();
+    const filtered = changes.filter((change) => {
+      if (filters.groupID && change.groupID !== filters.groupID) {
+        return false;
+      }
+      if (typeSet.size && !typeSet.has(change.type)) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      return `${change.oldText || ""}\n${change.newText || ""}\n${change.locationLabel || ""}`.toLocaleLowerCase().includes(query);
+    });
+    return renderMarkdownSingleVersion(context.version, filtered);
+  }
+
+  async buildCompleteVersionMarkdownForVersion(version, filters = {}) {
+    if (!version?.repoPath) {
+      return this.formatSingleVersionSummaryMarkdown(version);
+    }
+    return this.buildCompleteVersionMarkdown({ repoPath: version.repoPath }, version, filters);
+  }
+
+  async resolveDiffContext(item, version) {
+    if (item?.repoPath) {
+      const metadata = item.metadata ?? await this.metadataStore.read(item.repoPath);
+      const target = findMetadataVersion(metadata, version) || version;
+      return { repoPath: item.repoPath, metadata, version: { ...target, repoPath: item.repoPath } };
+    }
+    const { repoPath, metadata } = await this.requireEnabledAttachment(item);
+    const target = findMetadataVersion(metadata, version) || version;
+    return { repoPath, metadata, version: { ...target, repoPath } };
+  }
+
+  async rebuildVersionDiff(repoPath, metadata, version) {
+    const versions = metadata.versions ?? [];
+    const index = versions.findIndex((candidate) => sameVersion(candidate, version));
+    const target = index >= 0 ? versions[index] : version;
+    const previous = index >= 0 ? versions[index + 1] ?? null : null;
+    if (!target?.contentSnapshot) {
+      return { version: target, index: createLegacyDiffIndex(target) };
+    }
+    const changeSummary = summarizeDocxChange({
+      current: target.contentSnapshot,
+      currentContentHash: target.contentHash,
+      previousVersion: previous,
+      fileChanged: true
+    });
+    const completeDiff = completeDiffFromSummary(changeSummary, previous);
+    if (!completeDiff || !target.commitHash) {
+      return { version: target, index: createLegacyDiffIndex({ ...target, changeSummary: compactChangeSummary(changeSummary) }) };
+    }
+    const diffRef = await this.diffStore.writeVersionDiff(repoPath, target.commitHash, completeDiff);
+    const updatedVersion = { ...target, changeSummary: compactChangeSummary(changeSummary), diffRef };
+    if (index >= 0) {
+      const updatedVersions = [...versions];
+      updatedVersions[index] = updatedVersion;
+      await this.metadataStore.write(repoPath, { ...metadata, versions: updatedVersions });
+    }
+    return { version: { ...updatedVersion, repoPath }, index: await this.diffStore.readIndex(repoPath, diffRef) };
+  }
+
   async loadVersionHistory(repoPath, metadata, attachment) {
     const history = await this.gitBackend.listHistory(repoPath);
-    return this.mergeHistoryWithMetadata(history, metadata, attachment);
+    return this.mergeHistoryWithMetadata(history, metadata, attachment)
+      .map((version) => ({ ...version, repoPath }));
   }
 
   async checkCurrentChange(item) {
     const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
     const git = await this.requireGitAvailable();
     const previousVersion = this.getLatestVersion(metadata);
-    const analysis = await this.contentAnalyzer.analyze(attachment.filePath, previousVersion);
-    const trackedFile = await this.writeWorkingTreeSnapshot(attachment, repoPath);
+    const analysis = await this.contentAnalyzer.analyze(attachment.filePath, previousVersion, { repoPath });
+    const trackedFile = await this.writeWorkingTreeSnapshot(attachment, repoPath, analysis.fileBytes);
     const workingTree = await this.gitBackend.getWorkingTreeStatus(repoPath);
+    const diffRef = await this.storeCurrentDiff(repoPath, analysis, previousVersion);
     const lastCheck = this.createLastCheck({
       attachment,
       analysis,
       checkedAt: new Date().toISOString(),
       previousVersion,
-      workingTree
+      workingTree,
+      diffRef
     });
 
     await this.metadataStore.write(repoPath, {
@@ -200,7 +334,7 @@ export class VersionService {
     const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
     const git = await this.requireGitAvailable();
     const previousVersion = this.getLatestVersion(metadata);
-    const analysis = await this.contentAnalyzer.analyze(attachment.filePath, previousVersion);
+    const analysis = await this.contentAnalyzer.analyze(attachment.filePath, previousVersion, { repoPath });
     let workingTree = null;
     try {
       workingTree = await this.gitBackend.getWorkingTreeStatus(repoPath);
@@ -222,7 +356,7 @@ export class VersionService {
   async createVersion(item, note, options = {}) {
     const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
     const previousVersion = this.getLatestVersion(metadata);
-    const analysis = await this.contentAnalyzer.analyze(attachment.filePath, previousVersion);
+    const analysis = await this.contentAnalyzer.analyze(attachment.filePath, previousVersion, { repoPath });
 
     if (!analysis.shouldCreateVersion && (options.kind ?? "manual") === "manual") {
       throw new Error(UI_TEXT.noChangesToSave);
@@ -238,7 +372,7 @@ export class VersionService {
     }
 
     await this.requireGitAvailable();
-    const trackedFile = await this.writeWorkingTreeSnapshot(attachment, repoPath);
+    const trackedFile = await this.writeWorkingTreeSnapshot(attachment, repoPath, analysis.fileBytes);
     const { trackedRelativePath } = trackedFile;
 
     const commit = await this.gitBackend.commitSnapshot(repoPath, {
@@ -247,8 +381,10 @@ export class VersionService {
       trackedRelativePath,
       kind: options.kind ?? "manual",
       createdAt,
-      changeSummary: analysis.changeSummary
+      changeSummary: compactChangeSummary(analysis.changeSummary)
     });
+
+    const diffRef = await this.storeVersionDiff(repoPath, commit.hash, analysis, previousVersion);
 
     const record = createVersionRecord({
       id: `${createdAt}-${commit.hash.slice(0, 8)}`,
@@ -262,7 +398,8 @@ export class VersionService {
       contentHash: analysis.contentHash,
       contentSummary: analysis.contentSummary,
       contentSnapshot: toStoredSnapshot(analysis.contentSnapshot),
-      changeSummary: analysis.changeSummary,
+      changeSummary: compactChangeSummary(analysis.changeSummary),
+      diffRef,
       trackedRelativePath,
       libraryID: attachment.libraryID,
       itemID: attachment.itemID,
@@ -278,7 +415,8 @@ export class VersionService {
       analysis,
       checkedAt: createdAt,
       previousVersion,
-      workingTree
+      workingTree,
+      diffRef
     });
 
     await this.metadataStore.write(repoPath, {
@@ -291,8 +429,9 @@ export class VersionService {
       versions: [record, ...(metadata.versions ?? [])]
     });
     await this.recordRepositoryIndex(attachment, true);
+    this.contentAnalyzer.invalidate?.(repoPath);
 
-    return record;
+    return { ...record, repoPath };
   }
 
   async buildRestorePreflight(item, versionRecord, options = {}) {
@@ -435,6 +574,7 @@ export class VersionService {
       }
     });
     await this.recordRepositoryIndex(attachment, true);
+    this.contentAnalyzer.invalidate?.(repoPath);
 
     return {
       attachment,
@@ -514,7 +654,7 @@ export class VersionService {
     return git;
   }
 
-  async writeWorkingTreeSnapshot(attachment, repoPath) {
+  async writeWorkingTreeSnapshot(attachment, repoPath, fileBytes = null) {
     if (!(await this.platform.exists(attachment.filePath))) {
       throw new Error(formatText("fileDoesNotExist", { path: attachment.filePath }));
     }
@@ -523,8 +663,59 @@ export class VersionService {
     const trackedRelativePath = `tracked/${trackedFileName}`;
     const trackedPath = this.platform.join(repoPath, "tracked", trackedFileName);
     await this.gitBackend.ensureRepo(repoPath);
-    await this.platform.copyFile(attachment.filePath, trackedPath);
+    if (fileBytes) {
+      await this.platform.writeBytes(trackedPath, fileBytes);
+    }
+    else {
+      await this.platform.copyFile(attachment.filePath, trackedPath);
+    }
     return { trackedRelativePath, trackedFileName };
+  }
+
+  async storeCurrentDiff(repoPath, analysis, previousVersion) {
+    if (!analysis.completeDiff) {
+      return null;
+    }
+    try {
+      return await this.diffStore.writeCurrentDiff(repoPath, {
+        ...analysis.completeDiff,
+        baseCommitHash: previousVersion?.commitHash ?? null
+      });
+    }
+    catch (error) {
+      this.platform.Zotero?.debug?.(`git4zotero: current diff storage failed: ${error?.stack || error}`);
+      return this.diffStore.createSummaryOnlyRef({
+        scope: "check-current",
+        path: ".git4zotero/diffs/check-current/index.json",
+        quality: analysis.completeDiff.quality,
+        baseCommitHash: previousVersion?.commitHash ?? null,
+        totalChanges: analysis.changeSummary?.totalParagraphChanges ?? 0,
+        groupCount: analysis.changeSummary?.groupedChangeCount ?? 0
+      });
+    }
+  }
+
+  async storeVersionDiff(repoPath, commitHash, analysis, previousVersion) {
+    if (!analysis.completeDiff) {
+      return null;
+    }
+    try {
+      return await this.diffStore.writeVersionDiff(repoPath, commitHash, {
+        ...analysis.completeDiff,
+        baseCommitHash: previousVersion?.commitHash ?? null
+      });
+    }
+    catch (error) {
+      this.platform.Zotero?.debug?.(`git4zotero: version diff storage failed: ${error?.stack || error}`);
+      return this.diffStore.createSummaryOnlyRef({
+        scope: "version",
+        path: `.git4zotero/diffs/versions/${String(commitHash).replace(/[^a-zA-Z0-9._-]+/g, "-")}/index.json`,
+        quality: analysis.completeDiff.quality,
+        baseCommitHash: previousVersion?.commitHash ?? null,
+        totalChanges: analysis.changeSummary?.totalParagraphChanges ?? 0,
+        groupCount: analysis.changeSummary?.groupedChangeCount ?? 0
+      });
+    }
   }
 
   assertRestorePreflightAllowed(preflight) {
@@ -719,6 +910,36 @@ export class VersionService {
       );
     }
 
+    const summaryOnlyDiffs = metadataVersions.filter((version) => version.diffRef?.status === "summary-only").length
+      + (metadata.lastCheck?.diffRef?.status === "summary-only" ? 1 : 0);
+    if (summaryOnlyDiffs) {
+      add(
+        "diff-storage",
+        UI_TEXT.diffStorageHealth,
+        "warning",
+        formatText("diffStorageSummaryOnly", { count: summaryOnlyDiffs })
+      );
+    }
+    let missingDiffFiles = 0;
+    for (const version of metadataVersions) {
+      if (version.diffRef?.status === "complete"
+          && !(await this.safeExists(this.pathFromRelative(repoPath, version.diffRef.path)))) {
+        missingDiffFiles += 1;
+      }
+    }
+    if (metadata.lastCheck?.diffRef?.status === "complete"
+        && !(await this.safeExists(this.pathFromRelative(repoPath, metadata.lastCheck.diffRef.path)))) {
+      missingDiffFiles += 1;
+    }
+    if (missingDiffFiles) {
+      add(
+        "diff-storage-missing",
+        UI_TEXT.diffStorageHealth,
+        "warning",
+        formatText("diffStorageMissing", { count: missingDiffFiles })
+      );
+    }
+
     const errorCount = checks.filter((check) => check.status === "error").length;
     const warningCount = checks.filter((check) => check.status === "warning").length;
     return {
@@ -757,7 +978,7 @@ export class VersionService {
     };
   }
 
-  createLastCheck({ attachment, analysis, checkedAt, previousVersion, workingTree }) {
+  createLastCheck({ attachment, analysis, checkedAt, previousVersion, workingTree, diffRef = null }) {
     return {
       checkedAt,
       fileName: attachment.fileName,
@@ -765,7 +986,8 @@ export class VersionService {
       fileSize: analysis.fileSize,
       contentHash: analysis.contentHash,
       contentSummary: analysis.contentSummary,
-      changeSummary: analysis.changeSummary,
+      changeSummary: compactChangeSummary(analysis.changeSummary),
+      diffRef,
       previousVersionID: previousVersion?.id ?? null,
       previousCommitHash: previousVersion?.commitHash ?? null,
       workingTree
@@ -856,6 +1078,7 @@ export class VersionService {
       contentSummary: version.contentSummary ?? null,
       contentSnapshot: version.contentSnapshot ?? null,
       changeSummary: this.normalizeChangeSummary(version.changeSummary ?? commit?.changeSummary),
+      diffRef: version.diffRef ?? null,
       trackedRelativePath,
       zotero: version.zotero ?? {
         libraryID: attachment.libraryID,
@@ -906,6 +1129,129 @@ export class VersionService {
     }
     return normalized;
   }
+
+  shutdown() {
+    this.contentAnalyzer.shutdown?.();
+  }
+}
+
+function compactChangeSummary(changeSummary) {
+  if (!changeSummary || typeof changeSummary !== "object") {
+    return changeSummary ?? null;
+  }
+  const previews = (changeSummary.paragraphChanges ?? changeSummary.displayChanges ?? []).slice(0, 3);
+  let remainingPreviews = 3;
+  const groups = (changeSummary.changeGroups ?? []).map((group) => {
+    const changes = (group.changes ?? []).slice(0, remainingPreviews);
+    remainingPreviews -= changes.length;
+    return {
+      key: group.key,
+      label: group.label,
+      areaType: group.areaType,
+      sourceLabel: group.sourceLabel,
+      headingPath: group.headingPath ?? [],
+      tableIndex: group.tableIndex ?? null,
+      addedParagraphs: group.addedParagraphs || 0,
+      deletedParagraphs: group.deletedParagraphs || 0,
+      modifiedParagraphs: group.modifiedParagraphs || 0,
+      movedParagraphs: group.movedParagraphs || 0,
+      totalChanges: group.totalChanges || group.changes?.length || 0,
+      summary: group.summary || "",
+      changes
+    };
+  });
+  return {
+    ...changeSummary,
+    paragraphChanges: previews,
+    displayChanges: previews,
+    changeGroups: groups,
+    omittedChanges: Math.max(0, (changeSummary.totalParagraphChanges ?? previews.length) - previews.length)
+  };
+}
+
+function completeDiffFromSummary(changeSummary, previousVersion) {
+  if (!changeSummary?.totalParagraphChanges) {
+    return null;
+  }
+  return {
+    quality: changeSummary.quality === "approximate" ? "approximate" : "exact",
+    baseCommitHash: previousVersion?.commitHash ?? null,
+    counts: {
+      added: changeSummary.addedParagraphs || 0,
+      deleted: changeSummary.deletedParagraphs || 0,
+      modified: changeSummary.modifiedParagraphs || 0,
+      moved: changeSummary.movedParagraphs || 0
+    },
+    groups: (changeSummary.changeGroups ?? []).map((group, index) => ({
+      ...group,
+      id: `group-${index + 1}`
+    }))
+  };
+}
+
+function findMetadataVersion(metadata, version) {
+  return (metadata?.versions ?? []).find((candidate) => sameVersion(candidate, version)) ?? null;
+}
+
+function sameVersion(left, right) {
+  if (!left || !right) {
+    return false;
+  }
+  return !!(
+    (left.commitHash && right.commitHash && left.commitHash === right.commitHash)
+    || (left.id && right.id && left.id === right.id)
+  );
+}
+
+function createLegacyDiffIndex(version) {
+  const summary = version?.changeSummary ?? {};
+  const groups = summary.changeGroups?.length
+    ? summary.changeGroups.map((group, index) => ({
+      ...group,
+      id: group.id || `legacy-${index + 1}`,
+      pages: [],
+      changes: group.changes ?? [],
+      totalChanges: group.totalChanges ?? group.changes?.length ?? 0
+    }))
+    : [{
+      id: "legacy-document",
+      key: "document",
+      label: UI_TEXT.concreteChanges,
+      pages: [],
+      changes: summary.paragraphChanges ?? summary.displayChanges ?? [],
+      totalChanges: summary.totalParagraphChanges ?? summary.paragraphChanges?.length ?? 0
+    }];
+  return {
+    schemaVersion: 1,
+    scope: "version",
+    legacy: true,
+    quality: summary.quality === "approximate" ? "approximate" : "exact",
+    totalChanges: summary.totalParagraphChanges ?? groups.reduce((total, group) => total + group.totalChanges, 0),
+    groupCount: groups.length,
+    groups
+  };
+}
+
+function searchLegacyDiff(index, options = {}) {
+  const query = String(options.query ?? "").trim().toLocaleLowerCase();
+  const types = new Set((options.types ?? []).filter(Boolean));
+  const start = Math.max(0, Number(options.cursor) || 0);
+  const limit = Math.max(1, Math.min(100, Number(options.limit) || 100));
+  const changes = index.groups
+    .filter((group) => !options.groupID || group.id === options.groupID)
+    .flatMap((group) => group.changes ?? [])
+    .filter((change) => {
+      if (types.size && !types.has(change.type)) {
+        return false;
+      }
+      return !query || `${change.oldText || ""}\n${change.newText || ""}\n${change.locationLabel || ""}`.toLocaleLowerCase().includes(query);
+    });
+  return {
+    total: changes.length,
+    cursor: start,
+    nextCursor: start + limit < changes.length ? start + limit : null,
+    changes: changes.slice(start, start + limit)
+  };
 }
 
 function toStoredSnapshot(snapshot) {
@@ -937,11 +1283,11 @@ function buildSingleVersionExportFileName(version, extension) {
   return `git4zotero-version-${file}-${hash}-${timestamp}${extension}`;
 }
 
-function renderMarkdownSingleVersion(version) {
+function renderMarkdownSingleVersion(version, completeChanges = null) {
   const lines = [
     `# git4zotero ${UI_TEXT.exportTitleSingleVersion}`,
     "",
-    ...renderMarkdownVersion(version)
+    ...renderMarkdownVersion(version, completeChanges)
   ];
   return `${lines.join("\n").trimEnd()}\n`;
 }
@@ -982,8 +1328,8 @@ function renderMarkdownCheck(lastCheck) {
   ];
 }
 
-function renderMarkdownVersion(version) {
-  return [
+function renderMarkdownVersion(version, completeChanges = null) {
+  const lines = [
     `## ${version.note || UI_TEXT.defaultNote}`,
     "",
     `- ${UI_TEXT.exportFieldTime}${UI_TEXT.colon}${version.createdAt || UI_TEXT.unknown}`,
@@ -993,9 +1339,21 @@ function renderMarkdownVersion(version) {
     `- ${UI_TEXT.exportFieldType}${UI_TEXT.colon}${formatVersionKind(version)}`,
     `- ${UI_TEXT.safetyBackupLabel}${UI_TEXT.colon}${version.kind === "safety" ? UI_TEXT.yes : UI_TEXT.no}`,
     `- ${UI_TEXT.exportFieldSummary}${UI_TEXT.colon}${version.changeSummary?.summary || UI_TEXT.actionCompleted}`,
-    "",
-    ...renderMarkdownChangeSummary(version.changeSummary)
+    ""
   ];
+  if (Array.isArray(completeChanges)) {
+    if (completeChanges.length) {
+      lines.push(
+        `### ${UI_TEXT.concreteChanges}`,
+        "",
+        ...completeChanges.map((change) => `- ${formatParagraphChange(change)}`)
+      );
+    }
+  }
+  else {
+    lines.push(...renderMarkdownChangeSummary(version.changeSummary));
+  }
+  return lines;
 }
 
 function renderMarkdownChangeSummary(changeSummary) {
@@ -1111,6 +1469,9 @@ function formatParagraphChange(change) {
   }
   if (change.type === "modified") {
     return `${location}${UI_TEXT.changeKindModified}${UI_TEXT.colon}${change.oldText || ""} -> ${change.newText || ""}`;
+  }
+  if (change.type === "moved") {
+    return `${location}${UI_TEXT.changeKindMoved}${UI_TEXT.colon}${change.moveFrom ?? change.oldIndex ?? ""} -> ${change.moveTo ?? change.newIndex ?? ""}${UI_TEXT.semicolon}${change.newText || change.oldText || ""}`;
   }
   return `${location}${change.newText || change.oldText || UI_TEXT.actionCompleted}`;
 }
