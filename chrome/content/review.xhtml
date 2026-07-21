@@ -21,7 +21,10 @@
   </header>
   <div class="review-toolbar">
     <label class="review-search"><span id="review-search-label"></span><input id="review-query" type="search" /></label>
-    <label><span class="visually-hidden">Filter</span><select id="review-type"></select></label>
+    <fieldset id="review-type-filter" class="review-type-filter">
+      <legend id="review-type-label" class="visually-hidden"></legend>
+      <div id="review-type-options" class="review-type-options"></div>
+    </fieldset>
     <span id="review-quality" class="review-quality"></span>
     <span id="review-status" class="review-status" role="status"></span>
   </div>

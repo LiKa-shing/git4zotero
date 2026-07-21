@@ -162,6 +162,7 @@ export const UI_TEXT = {
   reviewWindowUnavailable: "当前 Zotero 窗口无法打开独立对比窗口，已保留右侧栏审阅方式。",
   reviewSections: "章节与来源",
   reviewSearch: "搜索修改",
+  reviewFilterLabel: "修改类型",
   reviewFilterAll: "全部",
   reviewFilterModified: "修改",
   reviewFilterAdded: "新增",

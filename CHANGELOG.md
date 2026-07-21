@@ -6,8 +6,11 @@
 
 ### 中文
 
+- 修复独立“完整修改对比”窗口中类型筛选下拉重复显示且无法选择的问题，改用兼容 Zotero chrome/XHTML 窗口的分段单选控件。
+
 ### English
 
+- Fixed duplicated, unresponsive change-type options in the standalone Full Change Comparison window by replacing the native popup selector with a Zotero chrome/XHTML-compatible segmented radio control.
 
 ## 0.5.0
 

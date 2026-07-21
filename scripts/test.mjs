@@ -60,13 +60,16 @@ setUILocale("en-US");
 assert.equal(UI_TEXT.menuRoot, "Paper Versions");
 assert.equal(UI_TEXT.preferences.testGit, "Test Git");
 assert.equal(UI_TEXT.preferences.copyDiagnostics, "Copy Diagnostics");
+assert.equal(UI_TEXT.reviewFilterLabel, "Change type");
 assert(!/[\u4e00-\u9fff]/.test(JSON.stringify(UI_TEXT)));
 setUILocale("zh-TW");
 assert.equal(UI_TEXT.menuRoot, "論文版本");
 assert.equal(UI_TEXT.preferences.testGit, "測試 Git");
 assert.equal(UI_TEXT.preferences.copyDiagnostics, "複製診斷資訊");
+assert.equal(UI_TEXT.reviewFilterLabel, "修改類型");
 setUILocale("zh-CN");
 assert.equal(UI_TEXT.menuRoot, "论文版本");
+assert.equal(UI_TEXT.reviewFilterLabel, "修改类型");
 
 class TestPlatform {
   constructor(files) {
@@ -5068,6 +5071,143 @@ const schemaFourMigration = migrateMetadata({
 assert.equal(schemaFourMigration.schemaVersion, 5);
 assert.equal(schemaFourMigration.versions[0].diffRef.status, "summary-only");
 assert.equal(schemaFourMigration.versions[0].diffRef.path, "");
+
+{
+  const reviewElementIDs = [
+    ["review-title", "h1"],
+    ["review-sections-title", "h2"],
+    ["review-search-label", "span"],
+    ["review-type-label", "legend"],
+    ["review-type-options", "div"],
+    ["review-query", "input"],
+    ["review-previous", "button"],
+    ["review-next", "button"],
+    ["review-page-label", "span"],
+    ["review-page", "input"],
+    ["review-page-count", "span"],
+    ["review-copy-filtered", "button"],
+    ["review-copy-all", "button"],
+    ["review-export", "button"],
+    ["review-version-meta", "div"],
+    ["review-quality", "span"],
+    ["review-status", "span"],
+    ["review-all-groups", "button"],
+    ["review-groups", "div"],
+    ["review-list", "div"]
+  ];
+  const createReviewDocument = () => {
+    const fakeDocument = new FakeDocument();
+    fakeDocument.querySelectorAll = () => [];
+    for (const [id, tagName] of reviewElementIDs) {
+      const element = fakeDocument.createElement(tagName);
+      element.id = id;
+      fakeDocument.documentElement.append(element);
+    }
+    return fakeDocument;
+  };
+  const reviewDocument = createReviewDocument();
+  const domReadyListeners = [];
+  const reviewContext = vm.createContext({
+    window: {
+      arguments: [],
+      addEventListener(type, handler) {
+        if (type === "DOMContentLoaded") {
+          domReadyListeners.push(handler);
+        }
+      }
+    },
+    document: reviewDocument,
+    setTimeout,
+    clearTimeout,
+    console
+  });
+  vm.runInContext(await fs.readFile("chrome/content/review-window.js", "utf8"), reviewContext);
+  const ReviewWindow = vm.runInContext("Git4ZoteroReviewWindow", reviewContext);
+  assert.equal(domReadyListeners.length, 1);
+
+  const reviewLabels = {
+    title: "Full Change Comparison",
+    sections: "Sections and Sources",
+    search: "Search changes",
+    filterLabel: "Change type",
+    all: "All",
+    modified: "Modified",
+    added: "Added",
+    deleted: "Deleted",
+    moved: "Moved",
+    previous: "Previous",
+    next: "Next",
+    page: "Page",
+    copyFiltered: "Copy filtered results",
+    copyAll: "Copy all changes",
+    exportMarkdown: "Export Markdown",
+    qualityExact: "Exact diff",
+    qualityApproximate: "Approximate diff"
+  };
+  const reviewController = new ReviewWindow({
+    labels: reviewLabels,
+    version: { note: "Review", createdAt: "2026-07-21", commitHash: "abcdef" },
+    loadIndex: async () => ({ quality: "exact", totalChanges: 0, groups: [] })
+  });
+  let initialPageLoads = 0;
+  reviewController.loadPage = () => {
+    initialPageLoads += 1;
+  };
+  await reviewController.init();
+  await reviewController.init();
+  const typeOptions = reviewDocument.getElementById("review-type-options");
+  assert.equal(typeOptions.children.length, 5);
+  assert.equal(initialPageLoads, 1);
+  assert.equal(typeOptions.listeners.get("change").length, 1);
+  assert.equal(reviewDocument.getElementById("review-type-label").textContent, "Change type");
+  const typeInputs = typeOptions.children.map((label) => label.children[0]);
+  assert(typeInputs.every((input) => input.type === "radio" && input.name === "review-type"));
+  assert.deepEqual(typeInputs.map((input) => input.value), ["", "modified", "added", "deleted", "moved"]);
+  assert.equal(typeInputs.filter((input) => input.checked).length, 1);
+  assert.equal(typeInputs.find((input) => input.checked).value, "");
+  reviewController.populateTypeFilters();
+  assert.equal(typeOptions.children.length, 5);
+  reviewController.bindEvents();
+  assert.equal(typeOptions.listeners.get("change").length, 1);
+
+  const appliedFilters = [];
+  reviewController.loadPage = () => {
+    appliedFilters.push([...reviewController.filters().types]);
+  };
+  const typeChange = typeOptions.listeners.get("change")[0];
+  for (const type of ["modified", "added", "deleted", "moved", ""]) {
+    reviewController.page = 7;
+    typeChange({ target: { type: "radio", name: "review-type", value: type } });
+    assert.equal(reviewController.page, 1);
+  }
+  assert.deepEqual(appliedFilters, [["modified"], ["added"], ["deleted"], ["moved"], []]);
+  typeChange({ target: { type: "radio", name: "review-type", value: "invalid" } });
+  assert.equal(appliedFilters.length, 5);
+
+  reviewContext.document = createReviewDocument();
+  const pendingSearches = [];
+  const searchArguments = [];
+  const staleController = new ReviewWindow({
+    labels: reviewLabels,
+    version: {},
+    search: (filters) => {
+      searchArguments.push(filters);
+      return new Promise((resolve) => pendingSearches.push(resolve));
+    }
+  });
+  const renderedPages = [];
+  staleController.renderChanges = (changes) => renderedPages.push(changes[0]);
+  const firstLoad = staleController.loadPage();
+  staleController.type = "modified";
+  const secondLoad = staleController.loadPage();
+  pendingSearches[1]({ total: 1, changes: ["latest"] });
+  await secondLoad;
+  pendingSearches[0]({ total: 1, changes: ["stale"] });
+  await firstLoad;
+  assert.deepEqual([...searchArguments[0].types], []);
+  assert.deepEqual([...searchArguments[1].types], ["modified"]);
+  assert.deepEqual(renderedPages, ["latest"]);
+}
 
 let openedReviewWindows = 0;
 const fakeReviewWindow = {

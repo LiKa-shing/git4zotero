@@ -1,10 +1,23 @@
 "use strict";
 
+const REVIEW_TYPE_OPTIONS = Object.freeze([
+  { value: "", labelKey: "all", id: "all" },
+  { value: "modified", labelKey: "modified", id: "modified" },
+  { value: "added", labelKey: "added", id: "added" },
+  { value: "deleted", labelKey: "deleted", id: "deleted" },
+  { value: "moved", labelKey: "moved", id: "moved" }
+]);
+const REVIEW_TYPE_VALUES = new Set(REVIEW_TYPE_OPTIONS.map(({ value }) => value));
+
 window.addEventListener("DOMContentLoaded", () => {
+  if (window.__git4zoteroReviewInitialized) {
+    return;
+  }
   const payload = window.arguments?.[0];
   if (!payload) {
     return;
   }
+  window.__git4zoteroReviewInitialized = true;
   new Git4ZoteroReviewWindow(payload).init();
 });
 
@@ -19,13 +32,20 @@ class Git4ZoteroReviewWindow {
     this.page = 1;
     this.pageSize = 100;
     this.requestToken = 0;
+    this.initialized = false;
+    this.eventsBound = false;
   }
 
   async init() {
+    if (this.initialized) {
+      return;
+    }
+    this.initialized = true;
     document.title = this.labels.title;
     this.text("review-title", this.labels.title);
     this.text("review-sections-title", this.labels.sections);
     this.text("review-search-label", this.labels.search);
+    this.text("review-type-label", this.labels.filterLabel);
     this.text("review-previous", this.labels.previous);
     this.text("review-next", this.labels.next);
     this.text("review-page-label", this.labels.page);
@@ -37,7 +57,7 @@ class Git4ZoteroReviewWindow {
       this.payload.version.createdAt,
       this.payload.version.commitHash
     ].filter(Boolean).join(" · "));
-    this.populateTypes();
+    this.populateTypeFilters();
     this.bindEvents();
     try {
       this.index = await this.payload.loadIndex();
@@ -50,23 +70,31 @@ class Git4ZoteroReviewWindow {
     }
   }
 
-  populateTypes() {
-    const select = document.getElementById("review-type");
-    for (const [value, label] of [
-      ["", this.labels.all],
-      ["modified", this.labels.modified],
-      ["added", this.labels.added],
-      ["deleted", this.labels.deleted],
-      ["moved", this.labels.moved]
-    ]) {
-      const option = document.createElement("option");
-      option.value = value;
-      option.textContent = label;
-      select.append(option);
+  populateTypeFilters() {
+    const container = document.getElementById("review-type-options");
+    container.replaceChildren();
+    for (const { value, labelKey, id } of REVIEW_TYPE_OPTIONS) {
+      const label = document.createElement("label");
+      label.className = "review-type-choice";
+      label.htmlFor = `review-type-${id}`;
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "review-type";
+      input.id = `review-type-${id}`;
+      input.value = value;
+      input.checked = value === this.type;
+      const text = document.createElement("span");
+      text.textContent = this.labels[labelKey];
+      label.append(input, text);
+      container.append(label);
     }
   }
 
   bindEvents() {
+    if (this.eventsBound) {
+      return;
+    }
+    this.eventsBound = true;
     let queryTimer = null;
     document.getElementById("review-query").addEventListener("input", (event) => {
       clearTimeout(queryTimer);
@@ -76,10 +104,12 @@ class Git4ZoteroReviewWindow {
         this.loadPage();
       }, 180);
     });
-    document.getElementById("review-type").addEventListener("change", (event) => {
-      this.type = event.target.value;
-      this.page = 1;
-      this.loadPage();
+    document.getElementById("review-type-options").addEventListener("change", (event) => {
+      const input = event.target;
+      if (input?.type !== "radio" || input.name !== "review-type" || !REVIEW_TYPE_VALUES.has(input.value)) {
+        return;
+      }
+      this.applyTypeFilter(input.value);
     });
     document.getElementById("review-previous").addEventListener("click", () => {
       this.page = Math.max(1, this.page - 1);
@@ -97,6 +127,15 @@ class Git4ZoteroReviewWindow {
     document.getElementById("review-copy-all").addEventListener("click", () => this.copy(true));
     document.getElementById("review-export").addEventListener("click", () => this.exportMarkdown());
     document.getElementById("review-all-groups").addEventListener("click", () => this.selectGroup(""));
+  }
+
+  applyTypeFilter(type) {
+    if (!REVIEW_TYPE_VALUES.has(type)) {
+      return;
+    }
+    this.type = type;
+    this.page = 1;
+    return this.loadPage();
   }
 
   renderGroups() {

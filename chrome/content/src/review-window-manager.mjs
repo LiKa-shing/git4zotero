@@ -52,6 +52,7 @@ export class ReviewWindowManager {
         title: UI_TEXT.reviewWindowTitle,
         sections: UI_TEXT.reviewSections,
         search: UI_TEXT.reviewSearch,
+        filterLabel: UI_TEXT.reviewFilterLabel,
         all: UI_TEXT.reviewFilterAll,
         modified: UI_TEXT.reviewFilterModified,
         added: UI_TEXT.reviewFilterAdded,
