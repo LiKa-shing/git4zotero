@@ -6,10 +6,19 @@
 
 ### 中文
 
+### English
+
+
+## 0.5.1
+
+### 中文
+
+- 修复论文修改内容较多或单段过长时“检查修改”和“创建版本”原生弹窗超过屏幕高度的问题；弹窗现在显示有长度上限的紧凑预览，完整差异仍可在右侧版本管理和完整对比窗口中查看。
 - 修复独立“完整修改对比”窗口中类型筛选下拉重复显示且无法选择的问题，改用兼容 Zotero chrome/XHTML 窗口的分段单选控件。
 
 ### English
 
+- Fixed Check Changes and Create Version dialogs growing beyond the screen for large or very long manuscript edits. Native dialogs now show a bounded compact preview while the complete diff remains available in Version Management and Full Comparison.
 - Fixed duplicated, unresponsive change-type options in the standalone Full Change Comparison window by replacing the native popup selector with a Zotero chrome/XHTML-compatible segmented radio control.
 
 ## 0.5.0

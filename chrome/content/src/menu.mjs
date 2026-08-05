@@ -4,6 +4,11 @@ import { classifyError, recordLastError } from "./diagnostics.mjs";
 import { formatText } from "./localization.mjs";
 
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+const DIALOG_PREVIEW_MAX_CHANGES = 3;
+const DIALOG_PREVIEW_MAX_TEXT_LENGTH = 160;
+const DIALOG_PREVIEW_MAX_LOCATION_LENGTH = 120;
+const DIALOG_PREVIEW_MAX_DETAILS_LENGTH = 1_200;
+const DIALOG_PREVIEW_MAX_MESSAGE_LENGTH = 1_800;
 
 export class PaperVersionMenu {
   constructor({ service, archiveService = null, platform }) {
@@ -648,9 +653,10 @@ export class PaperVersionMenu {
   async check(eventContext) {
     const item = this.requireSingleItem(eventContext);
     const result = await this.service.checkCurrentChange(item);
+    const message = `${result.attachment.fileName}\n${result.changeSummary?.summary ?? UI_TEXT.actionCompleted}${this.formatChangeDetails(result.changeSummary)}`;
     this.platform.alert(
       UI_TEXT.checkChanges,
-      `${result.attachment.fileName}\n${result.changeSummary?.summary ?? UI_TEXT.actionCompleted}${this.formatChangeDetails(result.changeSummary)}`
+      this.limitDialogMessage(message)
     );
     this.refresh();
   }
@@ -675,7 +681,11 @@ export class PaperVersionMenu {
     const version = await this.service.createVersion(item, note);
     this.platform.alert(
       UI_TEXT.createVersion,
-      `${UI_TEXT.createSuccess}\n${version.shortHash}\n${version.changeSummary?.summary ?? ""}${this.formatChangeDetails(version.changeSummary)}`
+      this.limitDialogMessage([
+        UI_TEXT.createSuccess,
+        version.shortHash,
+        version.changeSummary?.summary ?? ""
+      ].filter(Boolean).join("\n"), UI_TEXT.dialogChangePreviewHint)
     );
     this.refresh();
   }
@@ -962,29 +972,52 @@ export class PaperVersionMenu {
     return UI_TEXT.versionKindManual;
   }
 
-  formatChangeDetails(changeSummary, limit = 3) {
+  formatChangeDetails(changeSummary, limit = DIALOG_PREVIEW_MAX_CHANGES) {
+    const maxChanges = Math.max(1, Math.min(DIALOG_PREVIEW_MAX_CHANGES, Math.trunc(Number(limit)) || DIALOG_PREVIEW_MAX_CHANGES));
     if (changeSummary?.changeGroups?.length) {
       const lines = [];
-      for (const group of changeSummary.changeGroups.slice(0, limit)) {
-        lines.push(`- ${group.summary || group.label}`);
-        for (const change of (group.changes ?? []).slice(0, 2)) {
-          lines.push(`  - ${this.formatParagraphChange(change)}`);
+      let shownChanges = 0;
+      let textTruncated = false;
+      for (const group of changeSummary.changeGroups) {
+        if (shownChanges >= maxChanges) {
+          break;
+        }
+        const changes = (group.changes ?? []).slice(0, maxChanges - shownChanges);
+        if (!changes.length) {
+          continue;
+        }
+        const groupTitle = this.truncateDialogText(group.summary || group.label || UI_TEXT.unknown, DIALOG_PREVIEW_MAX_TEXT_LENGTH);
+        textTruncated ||= groupTitle.truncated;
+        lines.push(`- ${groupTitle.text}`);
+        for (const change of changes) {
+          const formatted = this.formatDialogParagraphChange(change);
+          textTruncated ||= formatted.truncated;
+          lines.push(`  - ${formatted.text}`);
+          shownChanges += 1;
         }
       }
-      const omitted = changeSummary.omittedChanges > 0
-        ? `\n- ${formatText("omittedParagraphChangesDialog", { count: changeSummary.omittedChanges })}`
-        : "";
-      return `\n\n${UI_TEXT.concreteChanges}${UI_TEXT.colon}\n${lines.join("\n")}${omitted}`;
+      return this.formatDialogDetailsBlock(lines, {
+        shownChanges,
+        totalChanges: this.countDialogChanges(changeSummary),
+        textTruncated
+      });
     }
     const changes = changeSummary?.displayChanges ?? changeSummary?.paragraphChanges ?? [];
     if (!changes.length) {
       return "";
     }
-    const lines = changes.slice(0, limit).map((change) => `- ${this.formatParagraphChange(change)}`);
-    const omitted = changeSummary.omittedChanges > 0
-      ? `\n- ${formatText("omittedParagraphChangesDialog", { count: changeSummary.omittedChanges })}`
-      : "";
-    return `\n\n${UI_TEXT.concreteChanges}${UI_TEXT.colon}\n${lines.join("\n")}${omitted}`;
+    let textTruncated = false;
+    const shown = changes.slice(0, maxChanges);
+    const lines = shown.map((change) => {
+      const formatted = this.formatDialogParagraphChange(change);
+      textTruncated ||= formatted.truncated;
+      return `- ${formatted.text}`;
+    });
+    return this.formatDialogDetailsBlock(lines, {
+      shownChanges: shown.length,
+      totalChanges: this.countDialogChanges(changeSummary),
+      textTruncated
+    });
   }
 
   formatCreatePreview(preview) {
@@ -1007,8 +1040,102 @@ export class PaperVersionMenu {
     if (details) {
       lines.push(details.trimEnd());
     }
-    lines.push("", UI_TEXT.createPreviewProceed);
-    return lines.filter((line) => line !== undefined && line !== null).join("\n");
+    return this.limitDialogMessage(
+      lines.filter((line) => line !== undefined && line !== null).join("\n"),
+      UI_TEXT.createPreviewProceed
+    );
+  }
+
+  formatDialogDetailsBlock(lines, { shownChanges = 0, totalChanges = 0, textTruncated = false } = {}) {
+    if (!lines.length) {
+      return "";
+    }
+    const omittedCount = Math.max(0, totalChanges - shownChanges);
+    const prefix = `\n\n${UI_TEXT.concreteChanges}${UI_TEXT.colon}\n`;
+    const suffixLines = [];
+    if (omittedCount > 0) {
+      suffixLines.push(`- ${formatText("omittedParagraphChangesDialog", { count: omittedCount })}`);
+    }
+    if (shownChanges > 0 || textTruncated || omittedCount > 0) {
+      suffixLines.push(`- ${UI_TEXT.dialogChangePreviewHint}`);
+    }
+    const suffix = suffixLines.length ? `\n${suffixLines.join("\n")}` : "";
+    const reservedLength = this.codePointLength(prefix) + this.codePointLength(suffix);
+    const bodyLimit = Math.max(1, DIALOG_PREVIEW_MAX_DETAILS_LENGTH - reservedLength);
+    const body = this.truncateDialogText(lines.join("\n"), bodyLimit, { collapseWhitespace: false }).text;
+    return `${prefix}${body}${suffix}`;
+  }
+
+  countDialogChanges(changeSummary) {
+    if (Number.isFinite(changeSummary?.totalParagraphChanges)) {
+      return Math.max(0, Number(changeSummary.totalParagraphChanges));
+    }
+    if (changeSummary?.changeGroups?.length) {
+      let hasDeclaredTotal = false;
+      const groupedTotal = changeSummary.changeGroups.reduce((total, group) => {
+        const declaredTotal = Number.isFinite(group?.totalChanges);
+        hasDeclaredTotal ||= declaredTotal;
+        const groupTotal = declaredTotal ? Number(group.totalChanges) : (group?.changes?.length ?? 0);
+        return total + Math.max(0, groupTotal);
+      }, 0);
+      return hasDeclaredTotal
+        ? groupedTotal
+        : groupedTotal + Math.max(0, Number(changeSummary.omittedChanges) || 0);
+    }
+    const changes = changeSummary?.displayChanges ?? changeSummary?.paragraphChanges ?? [];
+    return changes.length + Math.max(0, Number(changeSummary?.omittedChanges) || 0);
+  }
+
+  formatDialogParagraphChange(change = {}) {
+    const location = this.truncateDialogText(change.locationLabel || "", DIALOG_PREVIEW_MAX_LOCATION_LENGTH);
+    const oldText = this.truncateDialogText(change.oldText || "", DIALOG_PREVIEW_MAX_TEXT_LENGTH);
+    const newText = this.truncateDialogText(change.newText || "", DIALOG_PREVIEW_MAX_TEXT_LENGTH);
+    const prefix = location.text ? `${location.text}${UI_TEXT.colon}` : "";
+    let text;
+    if (change.type === "added") {
+      text = `${prefix}${UI_TEXT.changeAdded}${UI_TEXT.colon}${newText.text}`;
+    }
+    else if (change.type === "deleted") {
+      text = `${prefix}${UI_TEXT.changeDeleted}${UI_TEXT.colon}${oldText.text}`;
+    }
+    else if (change.type === "modified") {
+      text = `${prefix}${UI_TEXT.changeKindModified}${UI_TEXT.colon}${oldText.text} → ${newText.text}`;
+    }
+    else if (change.type === "moved") {
+      text = `${prefix}${UI_TEXT.changeKindMoved}${UI_TEXT.colon}${change.moveFrom ?? change.oldIndex ?? ""} → ${change.moveTo ?? change.newIndex ?? ""}`;
+    }
+    else {
+      text = `${prefix}${newText.text || oldText.text || UI_TEXT.actionCompleted}`;
+    }
+    return {
+      text,
+      truncated: location.truncated || oldText.truncated || newText.truncated
+    };
+  }
+
+  truncateDialogText(value, limit, { collapseWhitespace = true } = {}) {
+    const normalized = collapseWhitespace
+      ? String(value ?? "").replace(/\s+/gu, " ").trim()
+      : String(value ?? "");
+    const characters = Array.from(normalized);
+    const safeLimit = Math.max(1, Math.trunc(Number(limit)) || 1);
+    if (characters.length <= safeLimit) {
+      return { text: normalized, truncated: false };
+    }
+    return {
+      text: `${characters.slice(0, Math.max(0, safeLimit - 1)).join("")}…`,
+      truncated: true
+    };
+  }
+
+  limitDialogMessage(body, footer = "") {
+    const suffix = footer ? `\n\n${footer}` : "";
+    const bodyLimit = Math.max(1, DIALOG_PREVIEW_MAX_MESSAGE_LENGTH - this.codePointLength(suffix));
+    return `${this.truncateDialogText(body, bodyLimit, { collapseWhitespace: false }).text}${suffix}`;
+  }
+
+  codePointLength(value) {
+    return Array.from(String(value ?? "")).length;
   }
 
   formatItemArchiveImportPreview(preview = {}) {

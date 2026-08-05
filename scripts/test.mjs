@@ -61,15 +61,18 @@ assert.equal(UI_TEXT.menuRoot, "Paper Versions");
 assert.equal(UI_TEXT.preferences.testGit, "Test Git");
 assert.equal(UI_TEXT.preferences.copyDiagnostics, "Copy Diagnostics");
 assert.equal(UI_TEXT.reviewFilterLabel, "Change type");
+assert(UI_TEXT.dialogChangePreviewHint.includes("compact preview"));
 assert(!/[\u4e00-\u9fff]/.test(JSON.stringify(UI_TEXT)));
 setUILocale("zh-TW");
 assert.equal(UI_TEXT.menuRoot, "論文版本");
 assert.equal(UI_TEXT.preferences.testGit, "測試 Git");
 assert.equal(UI_TEXT.preferences.copyDiagnostics, "複製診斷資訊");
 assert.equal(UI_TEXT.reviewFilterLabel, "修改類型");
+assert(UI_TEXT.dialogChangePreviewHint.includes("精簡預覽"));
 setUILocale("zh-CN");
 assert.equal(UI_TEXT.menuRoot, "论文版本");
 assert.equal(UI_TEXT.reviewFilterLabel, "修改类型");
+assert(UI_TEXT.dialogChangePreviewHint.includes("精简预览"));
 
 class TestPlatform {
   constructor(files) {
@@ -2388,6 +2391,21 @@ assert(singleVersionMarkdown.includes("# git4zotero 单次版本修改摘要"));
 assert(singleVersionMarkdown.includes("导师反馈后修改"));
 assert(singleVersionMarkdown.includes("Hash：0123abcd"));
 assert(singleVersionMarkdown.includes("讨论 · 第 1 段"));
+const fullExportTail = "FULL_EXPORT_CONTENT_MUST_REMAIN";
+const fullLongMarkdown = exportService.formatSingleVersionSummaryMarkdown({
+  ...older,
+  changeSummary: {
+    summary: "正文内容已修改。",
+    paragraphChanges: [{
+      type: "modified",
+      oldText: `旧${"甲".repeat(1_000)}`,
+      newText: `新${"乙".repeat(1_000)}${fullExportTail}`,
+      locationLabel: "正文 · 第 1 段"
+    }],
+    totalParagraphChanges: 1
+  }
+});
+assert(fullLongMarkdown.includes(fullExportTail), "dialog preview limits must not truncate complete Markdown exports");
 const singleVersionExport = await exportService.exportSingleVersionSummary({
   ...older,
   note: "导师反馈后修改",
@@ -3913,6 +3931,131 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.deepEqual(calls.map((call) => call[0]), ["check", "disable"]);
   harness.menu.uninstallFallback(win);
   assert.equal(doc.getElementById("git4zotero-fallback-menu"), null);
+}
+
+{
+  const oldTail = "OLD_DIALOG_TAIL_MUST_NOT_APPEAR";
+  const newTail = "NEW_DIALOG_TAIL_MUST_NOT_APPEAR";
+  const longOldText = `旧😀段落\n\t${"甲".repeat(10_000)}${oldTail}`;
+  const longNewText = `新😀段落\n\t${"乙".repeat(10_000)}${newTail}`;
+  const largeChangeSummary = {
+    summary: "正文内容已修改；新增 1 段，删除 1 段，修改 6 段。",
+    totalParagraphChanges: 8,
+    omittedChanges: 5,
+    changeGroups: [
+      {
+        label: "摘要",
+        summary: "摘要 · 修改 1 段",
+        totalChanges: 1,
+        changes: [{
+          type: "modified",
+          oldText: longOldText,
+          newText: longNewText,
+          locationLabel: "摘要 · 第 1 段"
+        }]
+      },
+      {
+        label: "方法",
+        summary: "方法 · 新增 1 段",
+        totalChanges: 1,
+        changes: [{ type: "added", newText: "SECOND_VISIBLE", locationLabel: "方法 · 第 2 段" }]
+      },
+      {
+        label: "结果",
+        summary: "结果 · 2 处变化",
+        totalChanges: 2,
+        changes: [
+          { type: "deleted", oldText: "THIRD_VISIBLE", locationLabel: "结果 · 第 3 段" },
+          { type: "modified", oldText: "FOURTH_HIDDEN_OLD", newText: "FOURTH_HIDDEN_NEW", locationLabel: "结果 · 第 4 段" }
+        ]
+      },
+      {
+        label: "讨论",
+        summary: "讨论 · 4 处变化",
+        totalChanges: 4,
+        changes: [{ type: "added", newText: "LATER_GROUP_HIDDEN", locationLabel: "讨论 · 第 1 段" }]
+      }
+    ]
+  };
+  const formattingHarness = makeMenuHarness();
+  const compactDetails = formattingHarness.menu.formatChangeDetails(largeChangeSummary);
+  assert(Array.from(compactDetails).length <= 1_200);
+  assert(compactDetails.includes("旧😀段落 甲"));
+  assert(compactDetails.includes("新😀段落 乙"));
+  assert(compactDetails.includes("…"));
+  assert(compactDetails.includes("SECOND_VISIBLE"));
+  assert(compactDetails.includes("THIRD_VISIBLE"));
+  assert(!compactDetails.includes("FOURTH_HIDDEN"));
+  assert(!compactDetails.includes("LATER_GROUP_HIDDEN"));
+  assert(!compactDetails.includes(oldTail));
+  assert(!compactDetails.includes(newTail));
+  assert(compactDetails.includes("另有 5 处段落变化未在弹窗中展开"));
+  assert(!compactDetails.includes("另有 10 处"));
+  assert(compactDetails.includes(UI_TEXT.dialogChangePreviewHint));
+  const compactAdded = formattingHarness.menu.formatDialogParagraphChange({ type: "added", newText: longNewText });
+  const compactDeleted = formattingHarness.menu.formatDialogParagraphChange({ type: "deleted", oldText: longOldText });
+  assert.equal(compactAdded.truncated, true);
+  assert.equal(compactDeleted.truncated, true);
+  assert(!compactAdded.text.includes(newTail));
+  assert(!compactDeleted.text.includes(oldTail));
+  assert(Array.from(compactAdded.text).length < 200);
+  assert(Array.from(compactDeleted.text).length < 200);
+
+  const shortDetails = formattingHarness.menu.formatChangeDetails({
+    paragraphChanges: [{ type: "modified", oldText: "短旧文", newText: "短新文", locationLabel: "引言 · 第 1 段" }],
+    totalParagraphChanges: 1,
+    omittedChanges: 0
+  });
+  assert(shortDetails.includes("短旧文 → 短新文"));
+  assert(!shortDetails.includes("短旧文…"));
+
+  const previewMessage = formattingHarness.menu.formatCreatePreview({
+    attachment: { ...managedAttachment, extension: ".docx" },
+    trackingMode: UI_TEXT.contentModeDocx,
+    fileHash: "preview-file-hash",
+    workingTree: { clean: true, entries: [], summary: UI_TEXT.workingTreeClean },
+    changeSummary: largeChangeSummary
+  });
+  assert(Array.from(previewMessage).length <= 1_800);
+  assert(previewMessage.endsWith(UI_TEXT.createPreviewProceed));
+  assert(!previewMessage.includes(oldTail));
+  assert(!previewMessage.includes(newTail));
+
+  const confirmMessages = [];
+  const flowHarness = makeMenuHarness({
+    serviceOverrides: {
+      checkCurrentChange: async () => ({ attachment: managedAttachment, changeSummary: largeChangeSummary }),
+      buildCreateVersionPreview: async () => ({
+        attachment: { ...managedAttachment, extension: ".docx" },
+        trackingMode: UI_TEXT.contentModeDocx,
+        fileHash: "preview-file-hash",
+        workingTree: { clean: true, entries: [], summary: UI_TEXT.workingTreeClean },
+        changeSummary: largeChangeSummary,
+        shouldCreateVersion: true
+      }),
+      createVersion: async () => ({ ...older, shortHash: "bounded1", changeSummary: largeChangeSummary })
+    },
+    platformOverrides: {
+      confirm: (_title, message) => {
+        confirmMessages.push(message);
+        return true;
+      }
+    }
+  });
+  await flowHarness.menu.check({ items: [{ id: 1 }] });
+  await flowHarness.menu.create({ items: [{ id: 1 }] });
+  const checkAlert = flowHarness.alerts[0][1];
+  const successAlert = flowHarness.alerts[1][1];
+  assert(Array.from(checkAlert).length <= 1_800);
+  assert(checkAlert.includes(UI_TEXT.dialogChangePreviewHint));
+  assert(!checkAlert.includes(oldTail));
+  assert.equal(confirmMessages.length, 1);
+  assert(Array.from(confirmMessages[0]).length <= 1_800);
+  assert(confirmMessages[0].endsWith(UI_TEXT.createPreviewProceed));
+  assert(successAlert.includes("bounded1"));
+  assert(successAlert.includes(UI_TEXT.dialogChangePreviewHint));
+  assert(!successAlert.includes(UI_TEXT.concreteChanges));
+  assert(!successAlert.includes(oldTail));
 }
 
 {

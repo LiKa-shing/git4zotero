@@ -234,6 +234,7 @@ export const UI_TEXT = {
   omittedParagraphChangesDialog: "另有 {count} 处段落变化未在弹窗中展开。",
   omittedParagraphChangesPanel: "另有 {count} 处修改暂未渲染，点击“显示全部修改”后展开。",
   concreteChanges: "具体修改",
+  dialogChangePreviewHint: "弹窗仅显示精简预览；完整修改请在右侧“版本管理”或“打开完整对比”中查看。",
   changeBefore: "修改前",
   changeAfter: "修改后",
   changeDeleted: "删除",
