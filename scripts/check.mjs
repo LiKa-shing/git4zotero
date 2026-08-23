@@ -110,7 +110,7 @@ assert.equal(manifest.applications.zotero.id, "git4zotero@paper-version.local");
 assert.equal(manifest.applications.zotero.update_url, "https://github.com/LiKa-shing/git4zotero/releases/latest/download/updates.json");
 assert.match(manifest.applications.zotero.update_url, /^https:\/\//);
 assert.equal(manifest.applications.zotero.strict_min_version, "8.0");
-assert.equal(manifest.applications.zotero.strict_max_version, "9.0.*");
+assert.equal(manifest.applications.zotero.strict_max_version, "10.0.*");
 assert(!("browser_specific_settings" in manifest), "Zotero manifest should rely on applications.zotero metadata");
 
 for (const iconPath of Object.values(manifest.icons)) {
@@ -121,6 +121,7 @@ for (const iconPath of Object.values(manifest.icons)) {
 const packageJson = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
 assert.equal(packageJson.version, manifest.version);
 assert.equal(packageJson.author, "Li Ka-shing");
+assert(packageJson.description.includes("Zotero 8/9/10"));
 assert.equal(packageJson.devDependencies["zotero-types"], "^4.1.2");
 assert(packageJson.devDependencies.typescript);
 assert.equal(packageJson.scripts.typecheck, "tsc --noEmit");
@@ -205,7 +206,7 @@ assert(readmeEn.includes("docs/GIT-INSTALL-zh.md"), "English README must link to
 assert(readmeEn.includes("CONTRIBUTING.md"), "English README must link to contribution guidelines");
 assert(readmeEn.includes("docs/INSTALL.md"), "English README must link to development setup");
 assert(readmeEn.includes("LICENSE"), "English README must link to the license");
-assert(readmeEn.includes("Zotero `8.0` to `9.0.*`"), "English README must state the Zotero compatibility range");
+assert(readmeEn.includes("Zotero `8.0` to `10.0.*`"), "English README must state the Zotero compatibility range");
 assert(readmeEn.includes("Supported formats: `.docx`, `.doc`"), "English README must state supported formats");
 assert(readmeEn.includes("Content-level `.docx` diff"), "English README must state docx content-level diff support");
 assert(readmeEn.includes("File-level `.doc` tracking"), "English README must state doc file-level tracking");
@@ -219,6 +220,25 @@ assert(!/^\s*import\s/m.test(runtimeText), "generated runtime must not contain i
 assert(!/^\s*export\s/m.test(runtimeText), "generated runtime must not contain export statements");
 for (const runtimeModule of runtimeModuleOrder) {
   assert(runtimeText.includes(`// ${runtimeModule}`), `generated runtime must include ${runtimeModule}`);
+}
+
+const zotero10IncompatibleRuntimeAPIs = [
+  [/\bcollectionTreeRow\b/, "collectionTreeRow"],
+  [/\.getCollectionTreeRow\s*\(/, "getCollectionTreeRow()"],
+  [/\.getSelectedLibraryID\s*\(/, "getSelectedLibraryID()"],
+  [/\.getSelectedCollection\s*\(/, "getSelectedCollection()"],
+  [/\.getSelectedSavedSearch\s*\(/, "getSelectedSavedSearch()"],
+  [/\.getSelectedGroup\s*\(/, "getSelectedGroup()"],
+  [/\bZotero\.Search\b/, "Zotero.Search"],
+  [/\bZotero\.DB\b/, "Zotero.DB"],
+  [/\bZotero\.CookieSandbox\b/, "Zotero.CookieSandbox"],
+  [/\bZotero\.HTTP\.download\s*\(/, "Zotero.HTTP.download()"],
+  [/\bfulltextWord\b/, "fulltextWord"],
+  [/\bfulltextWords\b/, "fulltextWords"],
+  [/\bfulltextItemWords\b/, "fulltextItemWords"]
+];
+for (const [pattern, api] of zotero10IncompatibleRuntimeAPIs) {
+  assert(!pattern.test(runtimeText), `runtime must not use a removed or compatibility-sensitive Zotero 10 API: ${api}`);
 }
 
 const allSourceFiles = await listFiles(root);
@@ -817,7 +837,7 @@ for (const phrase of requiredChineseText) {
   assert(combinedText.includes(phrase), `missing Chinese UI phrase: ${phrase}`);
 }
 
-console.log("静态检查通过：manifest、Zotero 8/9 兼容声明、PNG 图标、中文文案和模块语法均已验证。");
+console.log("静态检查通过：manifest、Zotero 8/9/10 兼容声明、Zotero 10 API、PNG 图标、中文文案和模块语法均已验证。");
 
 async function listFiles(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true });

@@ -43,7 +43,7 @@ assert.equal(manifest.applications.zotero.id, "git4zotero@paper-version.local");
 assert.equal(manifest.applications.zotero.update_url, "https://github.com/LiKa-shing/git4zotero/releases/latest/download/updates.json");
 assert.match(manifest.applications.zotero.update_url, /^https:\/\//);
 assert.equal(manifest.applications.zotero.strict_min_version, "8.0");
-assert.equal(manifest.applications.zotero.strict_max_version, "9.0.*");
+assert.equal(manifest.applications.zotero.strict_max_version, "10.0.*");
 assert(!("browser_specific_settings" in manifest), "Zotero manifest should rely on applications.zotero metadata");
 
 await fs.mkdir(stagingDir, { recursive: true });
@@ -125,7 +125,7 @@ assert.equal(packagedManifest.author, "Li Ka-shing");
 assert.equal(packagedManifest.applications.zotero.update_url, "https://github.com/LiKa-shing/git4zotero/releases/latest/download/updates.json");
 assert.match(packagedManifest.applications.zotero.update_url, /^https:\/\//);
 assert.equal(packagedManifest.applications.zotero.strict_min_version, "8.0");
-assert.equal(packagedManifest.applications.zotero.strict_max_version, "9.0.*");
+assert.equal(packagedManifest.applications.zotero.strict_max_version, "10.0.*");
 assert(!("browser_specific_settings" in packagedManifest));
 
 for (const iconPath of Object.values(packagedManifest.icons)) {

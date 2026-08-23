@@ -9,6 +9,16 @@
 ### English
 
 
+## 0.5.2
+
+### 中文
+
+- 新增 Zotero 10 正式版支持，将插件兼容范围扩展为 Zotero `8.0` 到 `10.0.*`。
+
+### English
+
+- Added support for the Zotero 10 stable release and extended the compatibility range from Zotero `8.0` through `10.0.*`.
+
 ## 0.5.1
 
 ### 中文

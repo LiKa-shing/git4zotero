@@ -3893,6 +3893,33 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(harness.refreshCount, 5);
   assert.throws(() => harness.menu.requireSingleItem({ context: { items: [item, { id: 2 }] } }), /只选择一个/);
 
+  let removedCollectionTreeRowReads = 0;
+  let zotero10Visible = null;
+  const zotero10Context = {
+    items: [item],
+    collectionTreeRows: [{ id: "L1" }, { id: "C1" }],
+    get collectionTreeRow() {
+      removedCollectionTreeRowReads += 1;
+      throw new Error("collectionTreeRow was removed -- use collectionTreeRows");
+    },
+    setVisible(value) {
+      zotero10Visible = value;
+    }
+  };
+  await rootMenu.onShowing({}, zotero10Context);
+  assert.equal(zotero10Visible, true);
+  assert.equal(removedCollectionTreeRowReads, 0, "Zotero 10 removed collectionTreeRow getter must not be read");
+
+  calls.length = 0;
+  const alertCountBeforeMultiSelect = harness.alerts.length;
+  await rootMenu.menus[1].onCommand({}, {
+    items: [item, { id: 2 }],
+    collectionTreeRows: [{ id: "L1" }, { id: "C1" }]
+  });
+  assert.deepEqual(calls, [], "Zotero 10 multi-item context must not operate on an arbitrary item");
+  assert.equal(harness.alerts.length, alertCountBeforeMultiSelect + 1);
+  assert(harness.alerts.at(-1)[1].includes(UI_TEXT.menuMultiSelectUnsupported));
+
   calls.length = 0;
   harness.platform.Zotero.getActiveZoteroPane = () => ({
     getSelectedItems: () => [item]
@@ -3930,6 +3957,40 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   await fallbackDisable.listeners.get("command")[0]({ stopPropagation() {} });
   assert.deepEqual(calls.map((call) => call[0]), ["check", "disable"]);
   harness.menu.uninstallFallback(win);
+  assert.equal(doc.getElementById("git4zotero-fallback-menu"), null);
+}
+
+{
+  const selectedItem = { id: 10 };
+  const harness = makeMenuHarness({
+    platformOverrides: {
+      Zotero: {
+        debug() {},
+        getActiveZoteroPane: () => ({ getSelectedItems: () => [selectedItem] })
+      }
+    }
+  });
+  harness.menu.register({ id: "git4zotero@paper-version.local", rootURI: "chrome://git4zotero/content/" });
+  assert.equal(harness.registered, null, "registration should degrade cleanly when MenuManager is unavailable");
+
+  const doc = new FakeDocument();
+  const itemPopup = doc.createXULElement("menupopup");
+  itemPopup.id = "zotero-itemmenu";
+  doc.documentElement.append(itemPopup);
+  const win = {
+    document: doc,
+    setTimeout(callback) {
+      callback();
+      return 1;
+    }
+  };
+  harness.menu.installFallback(win, { rootURI: "chrome://git4zotero/content/" });
+  for (const listener of itemPopup.listeners.get("popupshowing") ?? []) {
+    listener({});
+  }
+  await waitForScheduledPaneRender();
+  assert(doc.getElementById("git4zotero-fallback-menu"), "fallback menu should remain available without MenuManager");
+  harness.menu.unregister();
   assert.equal(doc.getElementById("git4zotero-fallback-menu"), null);
 }
 

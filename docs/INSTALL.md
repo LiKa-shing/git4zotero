@@ -1,6 +1,6 @@
 # Windows + VSCode 开发环境搭建
 
-本文档用于在新的 Windows 设备上搭建 `git4zotero` 开发环境。目标是让本机可以完成代码编辑、类型检查、测试、打包，以及在 Zotero 8/9 中安装 XPI 做手动验证。
+本文档用于在新的 Windows 设备上搭建 `git4zotero` 开发环境。目标是让本机可以完成代码编辑、类型检查、测试、打包，以及在 Zotero 8/9/10 中安装 XPI 做手动验证。
 
 普通用户安装插件请参考仓库根目录的 [README.md](../README.md)。贡献和发布规范请参考 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 
@@ -9,7 +9,7 @@
 - 操作系统：Windows 10/11
 - 编辑器：VSCode
 - 终端：PowerShell
-- Zotero：`8.0` 到 `9.0.*`
+- Zotero：`8.0` 到 `10.0.*`
 - Node.js：与 CI 保持一致，使用 `24.16.0`
 - 支持附件格式：`.docx`、`.doc`
 
@@ -105,7 +105,7 @@ where npm
 
 建议使用 VSCode 内置 JavaScript/TypeScript 支持。项目没有 Prettier 或 ESLint 配置，不建议启用全仓库保存时自动格式化，以免产生无关 diff。
 
-### Zotero 8/9
+### Zotero 8/9/10
 
 安装 [Zotero](https://www.zotero.org/)。开发验证建议使用单独的测试 profile 或测试文献库，避免测试版本历史写入真实文献库。
 
@@ -148,7 +148,7 @@ code $env:USERPROFILE\Github\git4zotero
 - 文件编码使用 UTF-8。
 - 换行使用 LF，遵守 `.editorconfig` 和 `.gitattributes`。
 - 不全局安装 TypeScript、ESLint 或 Prettier；始终通过 `package.json` scripts 调用项目依赖。
-- 修改源码前先阅读相关测试和相邻模块，避免破坏 Zotero 8/9 兼容路径。
+- 修改源码前先阅读相关测试和相邻模块，避免破坏 Zotero 8/9/10 兼容路径。
 
 主要源码位于：
 

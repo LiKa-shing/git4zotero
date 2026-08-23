@@ -19,9 +19,9 @@
   简体中文 | <a href="README-en.md">English</a>
 </p>
 
-`git4zotero` ，即`git for zotero`，是一款面向 Zotero 8/9 的论文附件版本管理插件。它使用本机 Git 为 Zotero 条目中的 Word 论文文件建立本地版本历史，让初稿、修改稿、投稿稿和恢复点留在同一个文献条目旁边。
+`git4zotero` ，即`git for zotero`，是一款面向 Zotero 8/9/10 的论文附件版本管理插件。它使用本机 Git 为 Zotero 条目中的 Word 论文文件建立本地版本历史，让初稿、修改稿、投稿稿和恢复点留在同一个文献条目旁边。
 
-- 兼容 Zotero `8.0` 到 `9.0.*`
+- 兼容 Zotero `8.0` 到 `10.0.*`
 - 推荐格式：`.docx`
 - 支持格式：`.docx`、`.doc`
 - 数据位置：Zotero 配置目录中的 `git4zotero` 文件夹

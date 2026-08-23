@@ -19,9 +19,9 @@
   English | <a href="README.md">简体中文</a>
 </p>
 
-`git4zotero`, short for `git for zotero`, is a Zotero 8/9 plugin for manuscript attachment version management. It uses the local Git installation on your computer to keep version history for Word manuscript files attached to Zotero items, so drafts, revisions, submission copies, and restore points stay next to the same library item.
+`git4zotero`, short for `git for zotero`, is a Zotero 8/9/10 plugin for manuscript attachment version management. It uses the local Git installation on your computer to keep version history for Word manuscript files attached to Zotero items, so drafts, revisions, submission copies, and restore points stay next to the same library item.
 
-- Compatible with Zotero `8.0` to `9.0.*`
+- Compatible with Zotero `8.0` to `10.0.*`
 - Recommended format: `.docx`
 - Supported formats: `.docx`, `.doc`
 - Data location: the `git4zotero` folder under the Zotero profile directory
