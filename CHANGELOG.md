@@ -8,6 +8,58 @@
 
 ### English
 
+## 0.7.0
+
+### 中文
+
+#### 版本对比与逐条审阅
+
+- 支持比较任意两个历史版本，也可将历史版本与当前附件比较，方便回顾一轮修订或多轮修改的累计变化。
+- 完整对比窗口支持为每条修改标记“未审阅”“已确认”或“需处理”，添加备注和书签，并通过“下一条未审阅”继续检查；还可选择隐藏标点和格式变化，聚焦内容修改。
+- 改善 DOCX 内容识别，帮助发现数字、引用、缩写、题注、公式、图表引用、批注及修订痕迹等变化，并减少重复分析未修改内容的耗时。
+- 保留右侧版本管理面板、历史详情及独立对比窗口的现有操作方式。
+
+#### AI 审阅与报告
+
+- 新增可选的 AI 审阅摘要，支持 DeepSeek 和自定义 OpenAI 兼容服务。在完整对比窗口选中修改、查看并确认发送内容后，即可生成摘要和核验建议。AI 不会自动改写论文、创建或恢复版本。
+- AI 仅接收你选中并确认的修改，不发送未选中的论文内容、文件路径或 Zotero 条目信息。
+- AI 审阅结果以报告形式展示：总体摘要、分组摘要、关键变化、风险与核验建议分区呈现，重要变化和高风险事项优先显示。点击相关修改编号即可查看原始差异，便于逐项核验。
+- 支持一键复制完整 AI 审阅报告、单独复制建议版本说明，以及导出 Markdown 文件，方便留存或与导师、合作者分享。报告会显示所用模型、生成时间、审阅范围及是否来自缓存。
+- AI 审阅结果会在本机缓存，相同审阅条件下可复用已有结果，减少重复请求。支持清除单次对比或全部 AI 缓存；缓存不包含在导出的版本历史 ZIP 中。
+
+#### AI 设置与使用体验
+
+- AI 功能适用于 Zotero 9/10，可在设置页配置；Zotero 8 继续支持全部离线版本管理功能。
+- 获取模型列表后，可直接从下拉列表选择模型，选择会自动保存；切换供应商或 API 地址后会提示重新获取列表。
+- API 密钥输入或粘贴后自动保存，清空输入框即可删除，无需额外点击保存或清除按钮。密钥保存在本机 Zotero 设置中，采用明文存储，设置页提供了相应说明。
+- 修复获取模型列表、测试连接或生成 AI 审阅摘要时出现错误、无法继续的问题，并改善请求超时和取消操作的处理。
+- AI 服务出错时不会自动重复提交请求，减少意外重复计费的可能。
+
+### English
+
+#### Version comparison and change review
+
+- Compare any two saved versions, or compare a saved version with the current attachment, to review a single revision round or changes accumulated across several rounds.
+- Mark individual changes as Unreviewed, Confirmed, or Action Required, add notes and bookmarks, and use Next Unreviewed to continue checking. Hide punctuation and formatting changes when you want to focus on content edits.
+- Improved DOCX recognition to help identify changes to numbers, citations, abbreviations, captions, equations, figure and table references, comments, and tracked revisions, while reducing time spent reanalyzing unchanged content.
+- Kept the existing workflows in the right-side Version Management panel, History Details, and the standalone comparison window.
+
+#### AI review and reports
+
+- Added optional AI review summaries with DeepSeek and custom OpenAI-compatible services. Select changes in the full comparison window, preview and confirm what will be sent, then generate a summary and verification suggestions. AI does not automatically edit the manuscript or create or restore versions.
+- AI receives only the changes you select and confirm, excluding unselected manuscript content, file paths, and Zotero item information.
+- AI reviews appear as structured reports with overall and section summaries, key changes, risks, and verification suggestions. Important changes and higher-risk findings appear first, and related change references link to the original diff for verification.
+- Copy a complete AI report, copy the suggested version note separately, or export a Markdown file to keep or share with advisors and collaborators. Reports show the model, generation time, review scope, and whether the result came from the cache.
+- AI results are cached locally and can be reused under the same review conditions to reduce repeat requests. Clear the cache for one comparison or all AI results; cached reports are not included in exported version-history ZIP files.
+
+#### AI settings and usability
+
+- AI features are available in Zotero 9/10 and can be configured in settings. Zotero 8 retains all offline version-management features.
+- After loading the model list, choose a model directly from a dropdown; your selection is saved automatically. Changing the provider or API address prompts you to refresh the list.
+- API keys are saved automatically when typed or pasted and removed when the field is cleared, with no separate save or delete buttons. Keys are stored in plaintext in local Zotero settings, as explained on the settings page.
+- Fixed errors that prevented model-list loading, connection testing, or AI review generation, and improved request timeout and cancellation handling.
+- Failed AI requests are not automatically resubmitted, reducing the chance of unexpected duplicate charges.
+
 
 ## 0.5.2
 

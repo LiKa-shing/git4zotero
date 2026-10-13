@@ -975,6 +975,36 @@ export class ZoteroPlatform {
     await this.requireIOUtils().writeUTF8(path, content);
   }
 
+  async atomicWriteText(path, content) {
+    await this.makeDirectory(this.dirname(path));
+    const temporaryPath = `${path}.tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const io = this.requireIOUtils();
+    try {
+      await io.writeUTF8(temporaryPath, content);
+      if (typeof io.move === "function") {
+        await io.move(temporaryPath, path, { noOverwrite: false });
+      }
+      else {
+        if (await this.exists(path)) {
+          await io.remove(path);
+        }
+        await io.copy(temporaryPath, path);
+        await io.remove(temporaryPath);
+      }
+    }
+    catch (error) {
+      try {
+        if (await this.exists(temporaryPath)) {
+          await io.remove(temporaryPath);
+        }
+      }
+      catch {
+        // Preserve the original write failure.
+      }
+      throw error;
+    }
+  }
+
   async writeBytes(path, bytes) {
     await this.makeDirectory(this.dirname(path));
     await this.requireIOUtils().write(path, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));

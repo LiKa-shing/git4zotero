@@ -5,8 +5,9 @@ const DOCX_SOURCES = [
   { pattern: /^word\/document\.xml$/, source: "document", role: "core", order: 0 },
   { pattern: /^word\/footnotes\.xml$/, source: "footnotes", role: "core", order: 1 },
   { pattern: /^word\/endnotes\.xml$/, source: "endnotes", role: "core", order: 2 },
-  { pattern: /^word\/header\d+\.xml$/, source: "header", role: "context", order: 3 },
-  { pattern: /^word\/footer\d+\.xml$/, source: "footer", role: "context", order: 4 }
+  { pattern: /^word\/comments\.xml$/, source: "comments", role: "annotation", order: 3 },
+  { pattern: /^word\/header\d+\.xml$/, source: "header", role: "context", order: 4 },
+  { pattern: /^word\/footer\d+\.xml$/, source: "footer", role: "context", order: 5 }
 ];
 
 const REMOVED_CONTAINER_PATTERN = /<[\w.-]+:(?:del|moveFrom)\b[\s\S]*?<\/[\w.-]+:(?:del|moveFrom)>/g;
@@ -18,6 +19,8 @@ const STYLE_PATTERN = /<(?:[\w.-]+:)?pStyle\b[^>]*(?:[\w.-]+:)?val=["']([^"']+)[
 export class DocxReader {
   constructor(platform = null) {
     this.platform = platform;
+    this.partCache = new Map();
+    this.partCacheLimit = 48;
   }
 
   async read(path) {
@@ -45,9 +48,26 @@ export class DocxReader {
       if (!xml) {
         continue;
       }
-      const paragraphDetails = extractParagraphsFromXml(xml, descriptor);
+      const partHash = this.platform?.hashString
+        ? await this.platform.hashString(xml)
+        : simpleDocxTextHash(xml);
+      const cacheKey = `${name}:${partHash}`;
+      let paragraphDetails = this.partCache.get(cacheKey);
+      if (paragraphDetails) {
+        this.partCache.delete(cacheKey);
+        this.partCache.set(cacheKey, paragraphDetails);
+        paragraphDetails = paragraphDetails.map(cloneParagraphRecord);
+      }
+      else {
+        paragraphDetails = extractParagraphsFromXml(xml, descriptor);
+        this.partCache.set(cacheKey, paragraphDetails.map(cloneParagraphRecord));
+        while (this.partCache.size > this.partCacheLimit) {
+          this.partCache.delete(this.partCache.keys().next().value);
+        }
+      }
       sections.push({
         name,
+        partHash,
         source: descriptor.source,
         role: descriptor.role,
         paragraphCount: paragraphDetails.length,
@@ -58,25 +78,31 @@ export class DocxReader {
 
     const paragraphDetails = sections.flatMap((section) => section.paragraphs);
     const contentParagraphDetails = paragraphDetails.filter((paragraph) => paragraph.role === "core");
+    const comparisonParagraphDetails = paragraphDetails.filter((paragraph) => paragraph.role === "core" || paragraph.role === "annotation");
     if (!contentParagraphDetails.length) {
       throw new Error(formatText("noComparableText"));
     }
 
     const paragraphs = contentParagraphDetails.map((paragraph) => paragraph.normalizedText);
+    const comparisonParagraphs = comparisonParagraphDetails.map((paragraph) => paragraph.normalizedText);
     const normalizedText = paragraphs.join("\n");
     return {
       paragraphs,
+      comparisonParagraphs,
+      comparisonNormalizedText: comparisonParagraphs.join("\n"),
       paragraphDetails,
       normalizedText,
       paragraphCount: paragraphs.length,
       wordCount: countWords(normalizedText),
-      sections: sections.map(({ name, source, role, paragraphCount, contentParagraphCount }) => ({
+      sections: sections.map(({ name, source, role, paragraphCount, contentParagraphCount, partHash }) => ({
         name,
         source,
         role,
         paragraphCount,
-        contentParagraphCount
-      }))
+        contentParagraphCount,
+        partHash
+      })),
+      partHashes: Object.fromEntries(sections.map((section) => [section.name, section.partHash]))
     };
   }
 }
@@ -214,7 +240,8 @@ function createParagraphRecord(text, descriptor, index, location = {}) {
       tableIndex: location.tableIndex,
       headingPath: heading ?? [],
       index
-    })
+    }),
+    semantics: location.semantics ?? createParagraphSemantics({ text, paragraphXml: "", paragraphNode: null, style: "" })
   };
 }
 
@@ -237,13 +264,20 @@ function createParagraphLocation({ descriptor, context, paragraphXml, paragraphN
     : (context.tableDepth > 0 ? context.currentTableIndex : null);
   const areaType = getAreaType(descriptor, tableIndex);
   const sourceLabel = getSourceLabel(descriptor.source, areaType);
+  const style = paragraphNode ? getParagraphStyleFromNode(paragraphNode) : (STYLE_PATTERN.exec(String(paragraphXml ?? ""))?.[1] || "");
   return {
     context,
     areaType,
     sourceLabel,
     tableIndex,
     headingLevel,
-    headingPath: context.headingPath
+    headingPath: context.headingPath,
+    semantics: createParagraphSemantics({
+      text: paragraphNode ? collectParagraphText(paragraphNode) : extractTextFromParagraphXml(paragraphXml),
+      paragraphXml,
+      paragraphNode,
+      style
+    })
   };
 }
 
@@ -283,6 +317,13 @@ function getHeadingLevelFromNode(paragraph) {
   return null;
 }
 
+function getParagraphStyleFromNode(paragraph) {
+  for (const node of paragraph.getElementsByTagNameNS?.("*", "pStyle") ?? []) {
+    return node.getAttribute("w:val") || node.getAttribute("val") || node.getAttributeNS?.("*", "val") || "";
+  }
+  return "";
+}
+
 function getHeadingLevelFromXml(xml) {
   return parseHeadingLevel(STYLE_PATTERN.exec(String(xml ?? ""))?.[1]);
 }
@@ -308,6 +349,9 @@ function getAreaType(descriptor, tableIndex) {
   if (descriptor.source === "endnotes") {
     return "endnote";
   }
+  if (descriptor.source === "comments") {
+    return "comment";
+  }
   if (tableIndex) {
     return "table";
   }
@@ -323,6 +367,9 @@ function getSourceLabel(source, areaType) {
   }
   if (source === "endnotes") {
     return formatText("sourceEndnotes");
+  }
+  if (source === "comments") {
+    return formatText("sourceComments");
   }
   if (source === "header") {
     return formatText("sourceHeader");
@@ -369,6 +416,66 @@ function decodeXml(value) {
     .replace(/&quot;/g, "\"")
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&");
+}
+
+function createParagraphSemantics({ text, paragraphXml, paragraphNode, style }) {
+  const raw = String(paragraphXml ?? "");
+  const value = String(text ?? "");
+  const hasNode = !!paragraphNode;
+  const hasTag = (name) => hasNode
+    ? (paragraphNode.getElementsByTagNameNS?.("*", name)?.length || 0) > 0
+    : new RegExp(`<(?:[\\w.-]+:)?${name}\\b`, "i").test(raw);
+  const fieldText = hasNode
+    ? [...(paragraphNode.getElementsByTagNameNS?.("*", "instrText") ?? [])].map((node) => node.textContent || "").join(" ")
+    : [...raw.matchAll(/<(?:[\w.-]+:)?instrText\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?instrText>/gi)].map((match) => decodeXml(match[1])).join(" ");
+  const numbers = value.match(/[+-]?(?:\d+(?:[.,]\d+)*|\.\d+)(?:\s*%|\s*(?:CI|OR|RR|HR|p)\b)?/gi) ?? [];
+  const citations = value.match(/\[(?:\d+[\s,;–—-]*)+\]|\([A-Z][A-Za-z'’-]+(?:\s+et\s+al\.)?,?\s+\d{4}[a-z]?\)/g) ?? [];
+  const abbreviations = value.match(/\b[A-Z][A-Z0-9-]{1,12}\b/g) ?? [];
+  const styleValue = String(style ?? "");
+  return {
+    caption: /^(?:caption|题注|圖說|图注)$/i.test(styleValue),
+    formula: hasTag("oMath") || hasTag("oMathPara"),
+    trackedInsertion: hasTag("ins") || hasTag("moveTo"),
+    trackedDeletion: hasTag("del") || hasTag("moveFrom"),
+    crossReference: /\b(?:REF|PAGEREF|NOTEREF)\b/i.test(fieldText),
+    zoteroCitation: /\b(?:ADDIN\s+ZOTERO_ITEM|CSL_CITATION|CITATION)\b/i.test(fieldText),
+    figureReference: /\b(?:fig(?:ure)?\.?|table|图|圖|表)\s*[A-Za-z0-9.-]+/i.test(value),
+    numbers: [...new Set(numbers)].slice(0, 100),
+    citations: [...new Set(citations)].slice(0, 100),
+    abbreviations: [...new Set(abbreviations)].slice(0, 100)
+  };
+}
+
+function extractTextFromParagraphXml(xml) {
+  const parts = [];
+  for (const match of String(xml ?? "").matchAll(TEXT_TOKEN_PATTERN)) {
+    if (match[1] !== undefined) parts.push(decodeXml(match[1]));
+    else if (match[2] === "tab") parts.push("\t");
+    else parts.push("\n");
+  }
+  return parts.join("");
+}
+
+function cloneParagraphRecord(value) {
+  return {
+    ...value,
+    headingPath: Array.isArray(value?.headingPath) ? [...value.headingPath] : [],
+    semantics: value?.semantics ? {
+      ...value.semantics,
+      numbers: [...(value.semantics.numbers ?? [])],
+      citations: [...(value.semantics.citations ?? [])],
+      abbreviations: [...(value.semantics.abbreviations ?? [])]
+    } : null
+  };
+}
+
+function simpleDocxTextHash(value) {
+  let hash = 2166136261;
+  for (const character of String(value ?? "")) {
+    hash ^= character.codePointAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function describeDocxSource(name) {

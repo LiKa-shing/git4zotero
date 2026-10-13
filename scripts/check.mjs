@@ -43,6 +43,11 @@ const requiredFiles = [
   "chrome/content/src/content-diff.mjs",
   "chrome/content/src/scalable-diff.mjs",
   "chrome/content/src/diff-store.mjs",
+  "chrome/content/src/review-state-store.mjs",
+  "chrome/content/src/ai-credential-store.mjs",
+  "chrome/content/src/ai-provider.mjs",
+  "chrome/content/src/ai-insight-store.mjs",
+  "chrome/content/src/ai-review-service.mjs",
   "chrome/content/src/review-window-manager.mjs",
   "chrome/content/src/cleanup.mjs",
   "chrome/content/src/archive.mjs",
@@ -57,6 +62,7 @@ const requiredFiles = [
   "chrome/content/src/vendor/zip-reader.mjs",
   "scripts/create-update-manifest.mjs",
   "scripts/create-release-notes.mjs",
+  "scripts/test-ai.mjs",
   "scripts/runtime-builder.mjs",
   "scripts/inspect-xpi.mjs"
 ];
@@ -575,6 +581,61 @@ assert(reviewWindowStyle.includes("flex-wrap: wrap"));
 assert(reviewWindowStyle.includes("input:checked + span"));
 assert(reviewWindowStyle.includes("input:focus-visible + span"));
 assert(reviewWindowScript.includes("tokenDiff"));
+assert(reviewWindowMarkup.includes('id="review-baseline-button"'));
+assert(reviewWindowMarkup.includes('id="review-target-button"'));
+assert(reviewWindowMarkup.includes('id="review-select-page"'));
+assert(reviewWindowMarkup.includes('id="review-next-unreviewed"'));
+assert(reviewWindowMarkup.includes('id="review-ai-modal"'));
+assert(reviewWindowScript.includes("selectedChangeIDs"));
+assert(reviewWindowScript.includes("saveReviewState"));
+assert(reviewWindowScript.includes("previewAI"));
+assert(reviewWindowScript.includes("generateAI"));
+assert(reviewWindowScript.includes("clearAICache"));
+assert(reviewWindowScript.includes("excludeNoise"));
+assert(reviewWindowScript.includes("copyAIReport"));
+assert(reviewWindowScript.includes("exportAIReport"));
+assert(reviewWindowScript.includes("createAILevelBadge"));
+assert(reviewWindowScript.includes("review-ai-verification"));
+assert(reviewWindowScript.includes("navigateToAIChange"));
+assert(reviewWindowStyle.includes(".review-ai-card"));
+assert(reviewWindowStyle.includes('[data-level="high"]'));
+assert(reviewWindowStyle.includes(".review-ai-disclaimer"));
+assert(reviewWindowScript.includes("this.payload.createAbortController()"));
+assert(!reviewWindowScript.includes("new AbortController()"), "review window must obtain cancellation from the privileged runtime payload");
+const aiProviderModule = await fs.readFile(path.join(root, "chrome/content/src/ai-provider.mjs"), "utf8");
+const aiCredentialModule = await fs.readFile(path.join(root, "chrome/content/src/ai-credential-store.mjs"), "utf8");
+const aiInsightModule = await fs.readFile(path.join(root, "chrome/content/src/ai-insight-store.mjs"), "utf8");
+const aiReviewModule = await fs.readFile(path.join(root, "chrome/content/src/ai-review-service.mjs"), "utf8");
+assert(aiProviderModule.includes('redirect: "error"'));
+assert(aiProviderModule.includes("resource://gre/modules/Timer.sys.mjs"));
+assert(aiProviderModule.includes("resource://gre/modules/Services.sys.mjs"));
+assert(aiProviderModule.includes("hiddenDOMWindow"));
+assert(aiProviderModule.includes("resolveAIAbortAPI"));
+assert(aiProviderModule.includes("resolveAIFetchImpl"));
+assert(aiProviderModule.includes("Zotero.HTTP.request") || aiProviderModule.includes("zotero?.HTTP?.request"));
+assert(aiProviderModule.includes("followRedirects: options.redirect !== \"error\""));
+assert(aiProviderModule.includes("errorDelayMax: 0"));
+assert(aiProviderModule.includes("logBodyLength: 0"));
+assert(aiProviderModule.includes("this.timerAPI.clearTimeout(timer)"));
+assert(!/(^|[^.\w])clearTimeout\(timer\)/m.test(aiProviderModule));
+assert(!aiProviderModule.includes("new AbortController()"), "AI provider must not assume AbortController is a module global");
+assert(aiProviderModule.includes("response_format"));
+assert(aiProviderModule.includes("AI_BATCH_CHAR_LIMIT = 32000"));
+assert(aiProviderModule.includes("AI_MAX_CHANGES = 200"));
+assert(aiCredentialModule.includes("this.platform.Zotero.Prefs.set(PREFS.secretKey, value)"));
+assert(aiCredentialModule.includes("this.platform.Zotero.Prefs.get(PREFS.secretKey)"));
+assert(!aiCredentialModule.includes("nsIOSKeyStore"));
+assert(!aiCredentialModule.includes("aiCredentialCiphertext"));
+assert(aiInsightModule.includes(".git4zotero/ai-insights/v1"));
+assert(aiReviewModule.includes("loadVersionDiffChanges"));
+assert(aiReviewModule.includes("buildAIReviewMarkdown"));
+assert(aiReviewModule.includes("resolveAIAbortAPI(this.platform)"));
+assert(aiReviewModule.includes("resolveAIFetchImpl(this.platform)"));
+assert(!aiReviewModule.includes("new AbortController()"), "AI review service must use the resolved Zotero cancellation API");
+assert(reviewWindowManagerModule.includes("createAbortController"));
+assert(reviewWindowManagerModule.includes("copyAIReview"));
+assert(reviewWindowManagerModule.includes("exportAIReview"));
+assert(archiveModule.includes("isAIInsightArchivePath"));
 
 const styleModule = await fs.readFile(path.join(root, "chrome/content/style.css"), "utf8");
 assert(styleModule.includes("item-pane-sidenav .btn[data-pane$=\"git4zotero-paper-versions\"]"));
@@ -667,9 +728,29 @@ assert(!preferencesXhtml.includes("onclick=\"Git4ZoteroPreferences.exportHistory
 assert(!preferencesXhtml.includes("onclick=\"Git4ZoteroPreferences.importHistoryArchive(event)\""));
 assert(!preferencesXhtml.includes("preference=\"extensions.git4zotero.gitPath\""));
 const preferencesScript = await fs.readFile(path.join(root, "chrome/content/preferences.mjs"), "utf8");
+const preferenceDefaultsScript = await fs.readFile(path.join(root, "prefs.js"), "utf8");
 const runtimeConstantsScript = await fs.readFile(path.join(root, "chrome/content/src/constants.mjs"), "utf8");
 const runtimeLocalizationScript = await fs.readFile(path.join(root, "chrome/content/src/localization.mjs"), "utf8");
 assert(preferencesScript.includes("window.Git4ZoteroPreferences"));
+assert(preferencesScript.includes("clearAIInsightCache"));
+assert(preferencesScript.includes("module.resolveAIFetchImpl(platform)"));
+assert(preferenceDefaultsScript.includes('pref("extensions.git4zotero.secretKey", "")'));
+assert(!preferenceDefaultsScript.includes("aiCredentialCiphertext"));
+assert(!preferencesXhtml.includes("git4zotero-ai-session-key"));
+assert(!preferencesXhtml.includes("git4zotero-ai-save-key"));
+assert(!preferencesXhtml.includes("git4zotero-ai-forget-key"));
+assert(preferencesXhtml.includes('<html:select id="git4zotero-ai-model">'));
+assert(!preferencesXhtml.includes('<html:input id="git4zotero-ai-model"'));
+assert(preferencesScript.includes('apiKey.addEventListener("input"'));
+assert(preferencesScript.includes('Zotero.Prefs.get("extensions.git4zotero.secretKey")'));
+assert(preferencesScript.includes('Zotero.Prefs.set("extensions.git4zotero.secretKey", value)'));
+assert(!preferencesScript.includes("saveAIKey"));
+assert(!preferencesScript.includes("forgetAIKey"));
+assert(preferencesScript.includes("populateAIModelOptions"));
+assert(preferencesScript.includes('model?.addEventListener("change"'));
+assert(preferencesScript.includes("invalidateAIModelOptions"));
+assert(preferencesScript.includes('getElementById("git4zotero-ai-section").hidden = true'));
+assert(!preferencesXhtml.includes("deepseek-flash"), "settings must discover model IDs instead of hard-coding an obsolete model");
 assert(preferencesScript.includes("window.addEventListener(\"load\""));
 assert(preferencesScript.includes("DOMContentLoaded"));
 assert(preferencesScript.includes("document.readyState === \"loading\""));

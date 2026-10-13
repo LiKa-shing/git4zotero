@@ -7,7 +7,7 @@
 <p align="center">为 Zotero 的 Word 论文手稿提供基于 Git 的本地版本管理。</p>
 
 <p align="center">
-  <a href="https://www.zotero.org/"><img src="https://img.shields.io/badge/Zotero-8%20%7C%209-CC2936?logo=zotero&logoColor=white" alt="Zotero"></a>
+  <a href="https://www.zotero.org/"><img src="https://img.shields.io/badge/Zotero-8%20%7C%209%20%7C%2010-CC2936?logo=zotero&logoColor=white" alt="Zotero"></a>
   <a href="https://github.com/LiKa-shing/git4zotero/releases"><img src="https://img.shields.io/github/package-json/v/LiKa-shing/git4zotero" alt="version"></a>
   <a href="https://github.com/LiKa-shing/git4zotero/releases/latest"><img src="https://img.shields.io/github/downloads/LiKa-shing/git4zotero/latest/total" alt="downloads"></a>
   <a href="https://github.com/LiKa-shing/git4zotero/releases/latest"><img src="https://img.shields.io/github/release-date/LiKa-shing/git4zotero" alt="release date"></a>
@@ -36,6 +36,8 @@
 - **条目级版本历史备份与迁移**：在具体条目的右键 `论文版本` 菜单中导出或导入该条目的版本历史；导入不会覆盖已有历史。
 - **诊断与健康检查**：设置页可复制脱敏诊断信息、运行健康检查、复制 issue 模板，便于普通用户排错和提交高质量反馈。
 - **右侧论文版本面板与完整对比窗口**：右侧栏显示紧凑摘要并按需加载修改；独立窗口支持章节导航、搜索、类型筛选、分页和词元高亮，完整结果可复制或导出 Markdown。
+- **跨版本审阅工作区**：可比较任意两个历史版本或历史版本与当前文件，为变化标记审阅状态、备注与书签，并单独识别数字、引用、题注、公式和修订痕迹等信号。
+- **可选 AI 审阅摘要**：Zotero 9/10 用户可将明确选择的变化发送给 DeepSeek 或自定义 OpenAI 兼容端点；发送前显示完整预览，AI 不参与差异计算、版本创建、恢复或文档改写。
 
 ## 适用场景
 
@@ -85,6 +87,7 @@ C:\Program Files\Git\cmd\git.exe
 - `首次使用向导`：手动查看 Git、数据目录、右键启用流程和 `.docx` / `.doc` 能力差异说明。
 - `诊断与健康检查`：复制诊断信息、运行健康检查、打开数据目录、复制 issue 模板。
 - `版本历史备份与迁移`：只配置条目级导出 ZIP 的默认保存目录；实际导入/导出请在具体条目的右键 `论文版本` 菜单中执行。
+- `AI 审阅摘要`（仅 Zotero 9/10）：获取供应商模型列表后从下拉框直接选择模型；API 密钥在输入时自动保存，清空输入框即自动删除。该功能默认关闭，不影响离线版本管理。
 
 ## 快速开始
 
@@ -111,6 +114,8 @@ C:\Program Files\Git\cmd\git.exe
 | `配置 Git 路径...` | 当 Git 不可用时快速配置路径。 |
 | `停用版本管理` | 停止当前条目的版本管理，不删除已有版本历史。 |
 | `历史详情` | 在右侧 `论文版本` 面板查看紧凑摘要并分批加载修改；选择 `打开完整对比` 后可按章节、搜索词和变化类型审阅全部记录，也可复制详情或导出 Markdown。 |
+
+在完整对比窗口中还可以选择任意两个版本、设置逐条审阅状态、添加本地备注或书签，并隐藏仅空白/标点/格式变化。AI 摘要只会处理你勾选并在发送确认中核对过的变化。
 
 插件只支持单选操作。一次选择多个 Zotero 条目时，版本操作不可用。
 
@@ -165,9 +170,15 @@ C:\Program Files\Git\cmd\git.exe
 - 本插件提供本地版本管理，不是云同步、备份盘或多人实时协作系统。
 - 本插件不替代 Word/WPS/LibreOffice 的修订模式；它保存的是附件文件在不同时间点的版本。
 - 右侧 `论文版本` 面板主要用于显示状态；启用、检查、创建、恢复等写操作请通过条目列表右键菜单完成。
-- 设置页只配置 Git、默认说明、诊断工具和条目级导出的默认目录；版本历史导入/导出请通过具体条目的右键菜单执行。
+- 设置页配置 Git、默认说明、诊断工具、条目级导出的默认目录以及可选 AI；版本历史导入/导出仍通过具体条目的右键菜单执行。
 - 不建议手动修改 Zotero 配置目录中 `git4zotero` 文件夹内的 Git 仓库、`index.json` 和 `.git4zotero` 元数据。
 - Zotero 条目移入回收站时会保留版本历史；永久删除条目或清空回收站后，插件会自动清理对应历史。
+
+### AI 与隐私
+
+- AI 功能默认关闭且仅在 Zotero 9/10 显示；Zotero 8 继续提供完整的离线版本管理。
+- 云端请求仅在用户选择变化、点击生成并确认发送预览后发生。请求不包含文件路径、Git hash、Zotero ID、附件元数据、未修改段落或整篇论文。
+- DeepSeek 请求会把所选论文文字发送到其服务端；自定义 OpenAI 兼容端点的数据处理规则由对应服务提供方决定。处理敏感或未公开论文前，请先确认所在机构与供应商的隐私要求。
 
 ## 常见问题
 

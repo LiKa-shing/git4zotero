@@ -22,6 +22,38 @@
     <html:p id="git4zotero-git-status" class="git4zotero-pref-status" role="status" data-git4zotero-i18n="gitStatusInitial">尚未测试 Git。</html:p>
   </groupbox>
 
+  <groupbox id="git4zotero-ai-section" class="git4zotero-pref-section">
+    <label><html:h2 data-git4zotero-i18n="aiSettingsTitle">AI 审阅摘要</html:h2></label>
+    <html:p class="git4zotero-pref-description" data-git4zotero-i18n="aiSettingsDescription">可选功能：仅在你确认后，把完整对比窗口中明确选中的修改发送给模型供应商。AI 不参与差异计算、Git 提交或版本恢复。</html:p>
+    <html:label class="git4zotero-pref-checkbox">
+      <html:input id="git4zotero-ai-enabled" type="checkbox" preference="extensions.git4zotero.aiEnabled" />
+      <html:span data-git4zotero-i18n="aiEnableLabel">启用 AI 审阅摘要（仅 Zotero 9/10）</html:span>
+    </html:label>
+    <html:fieldset class="git4zotero-ai-provider-options">
+      <html:legend data-git4zotero-i18n="aiProviderLabel">模型供应商</html:legend>
+      <html:label><html:input id="git4zotero-ai-provider-deepseek" name="git4zotero-ai-provider" type="radio" value="deepseek" /><html:span>DeepSeek</html:span></html:label>
+      <html:label><html:input id="git4zotero-ai-provider-compatible" name="git4zotero-ai-provider" type="radio" value="openai-compatible" /><html:span data-git4zotero-i18n="aiProviderCompatible">OpenAI 兼容端点</html:span></html:label>
+    </html:fieldset>
+    <html:label for="git4zotero-ai-base-url" data-git4zotero-i18n="aiBaseURLLabel">API 端点</html:label>
+    <html:input id="git4zotero-ai-base-url" type="url" placeholder="https://api.deepseek.com" />
+    <html:label for="git4zotero-ai-model" data-git4zotero-i18n="aiModelLabel">模型 ID</html:label>
+    <html:div class="git4zotero-pref-row">
+      <html:select id="git4zotero-ai-model">
+        <html:option value="" data-git4zotero-i18n="aiModelLoadFirst">请先获取模型列表</html:option>
+      </html:select>
+      <html:button id="git4zotero-ai-models" type="button" onclick="Git4ZoteroPreferences.loadAIModels(event)" data-git4zotero-i18n="aiLoadModels">获取模型列表</html:button>
+    </html:div>
+    <html:label for="git4zotero-ai-key" data-git4zotero-i18n="aiKeyLabel">API 密钥</html:label>
+    <html:input id="git4zotero-ai-key" type="password" autocomplete="off" data-git4zotero-i18n-placeholder="aiKeyPlaceholder" placeholder="输入后自动保存，清空即删除" />
+    <html:div class="git4zotero-pref-row git4zotero-pref-actions">
+      <html:button id="git4zotero-ai-test" type="button" onclick="Git4ZoteroPreferences.testAI(event)" data-git4zotero-i18n="aiTestConnection">测试连接</html:button>
+      <html:button id="git4zotero-ai-save-settings" type="button" onclick="Git4ZoteroPreferences.saveAISettings(event)" data-git4zotero-i18n="aiSaveSettings">保存 AI 设置</html:button>
+      <html:button id="git4zotero-ai-clear-cache" type="button" onclick="Git4ZoteroPreferences.clearAIInsightCache(event)" data-git4zotero-i18n="aiClearCache">清除全部 AI 缓存</html:button>
+    </html:div>
+    <html:p class="git4zotero-pref-help" data-git4zotero-i18n="aiPrivacyHelp">云端调用会把你选中的论文修改发送给供应商。API 密钥以明文保存在本机 Zotero preferences 中，不会写入版本仓库、日志、诊断或 XPI。</html:p>
+    <html:p id="git4zotero-ai-status" class="git4zotero-pref-status" role="status" data-git4zotero-i18n="aiStatusInitial">AI 功能尚未配置。</html:p>
+  </groupbox>
+
   <groupbox class="git4zotero-pref-section">
     <label><html:h2 data-git4zotero-i18n="versionBehaviorTitle">版本行为</html:h2></label>
     <html:label for="git4zotero-default-note" data-git4zotero-i18n="defaultNoteLabel">默认版本说明</html:label>
@@ -46,7 +78,7 @@
     <html:dl class="git4zotero-pref-facts">
       <html:div>
         <html:dt data-git4zotero-i18n="pluginVersion">插件版本</html:dt>
-        <html:dd>0.5.2</html:dd>
+        <html:dd>0.7.0</html:dd>
       </html:div>
       <html:div>
         <html:dt data-git4zotero-i18n="supportedFormats">支持格式</html:dt>
@@ -217,7 +249,7 @@
                     onclick="Git4ZoteroPreferences.openProjectLink('qa', event)"
                     data-git4zotero-i18n="aboutOpenQA">Q&amp;A</html:button>
     </html:div>
-    <html:p class="git4zotero-about-meta" data-git4zotero-i18n="aboutMeta">git4zotero 版本 0.5.2 · LiKa-shing/git4zotero · MIT · Zotero 8.0-10.0.* · .docx/.doc</html:p>
+    <html:p class="git4zotero-about-meta" data-git4zotero-i18n="aboutMeta">git4zotero 版本 0.7.0 · LiKa-shing/git4zotero · MIT · Zotero 8.0-10.0.* · .docx/.doc</html:p>
     <html:p id="git4zotero-about-status" class="git4zotero-pref-status" role="status" hidden="hidden"></html:p>
   </groupbox>
 </vbox>

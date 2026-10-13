@@ -12,6 +12,7 @@ const SOURCE_LABELS = Object.freeze({
   document: "sourceDocument",
   footnotes: "sourceFootnotes",
   endnotes: "sourceEndnotes",
+  comments: "sourceComments",
   header: "sourceHeader",
   footer: "sourceFooter"
 });
@@ -54,8 +55,8 @@ export class ContentAnalyzer {
         options.onProgress?.({ phase: "parse", completed: 0, total: 1 });
         const snapshot = await this.docxReader.readBytes(fileBytes);
         checkAnalysisCancelled(options.signal);
-        await this.yieldParagraphChunks(snapshot.paragraphCount, options);
-        const contentHash = await this.platform.hashString(snapshot.normalizedText);
+        await this.yieldParagraphChunks(snapshot.comparisonParagraphs?.length ?? snapshot.paragraphCount, options);
+        const contentHash = await this.platform.hashString(snapshot.comparisonNormalizedText ?? snapshot.normalizedText);
         const contentSummary = createContentSummary(snapshot, false);
         const changeSummary = summarizeDocxChange({
           current: snapshot,
@@ -186,7 +187,7 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
     return {
       changeType: "first-version",
       summary: formatText("firstDocxSummary"),
-      addedParagraphs: current.paragraphCount,
+      addedParagraphs: paragraphChanges.length,
       deletedParagraphs: 0,
       modifiedParagraphs: 0,
       movedParagraphs: 0,
@@ -196,8 +197,8 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
       changeGroups,
       groupedChangeCount: changeGroups.length,
       locationSummary: formatLocationSummary(changeGroups),
-      totalParagraphChanges: current.paragraphCount,
-      omittedChanges: Math.max(0, current.paragraphCount - displayChanges.length),
+      totalParagraphChanges: paragraphChanges.length,
+      omittedChanges: Math.max(0, paragraphChanges.length - displayChanges.length),
       quality: "exact",
       fileChanged,
       contentChanged: true
@@ -207,6 +208,7 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
   const previousSummary = previousVersion.contentSummary;
   const previousSnapshot = {
     paragraphs: previousVersion.contentSnapshot?.paragraphs ?? [],
+    comparisonParagraphs: previousVersion.contentSnapshot?.comparisonParagraphs ?? previousVersion.contentSnapshot?.paragraphs ?? [],
     paragraphDetails: previousVersion.contentSnapshot?.paragraphDetails ?? null,
     paragraphCount: previousSummary?.paragraphCount ?? 0,
     wordCount: previousSummary?.wordCount ?? 0
@@ -258,8 +260,8 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
   }
 
   const paragraphDiff = diffParagraphs(
-    previousSnapshot.paragraphs,
-    current.paragraphs,
+    getComparisonParagraphs(previousSnapshot),
+    getComparisonParagraphs(current),
     createParagraphDetails(previousSnapshot),
     createParagraphDetails(current),
     { signal, onProgress }
@@ -442,7 +444,7 @@ export function diffParagraphsWithDetails(
 
 function createInitialParagraphChanges(snapshot) {
   const details = createParagraphDetails(snapshot);
-  return snapshot.paragraphs
+  return getComparisonParagraphs(snapshot)
     .map((paragraph, index) => createParagraphChange({
       type: "added",
       newIndex: index,
@@ -452,8 +454,8 @@ function createInitialParagraphChanges(snapshot) {
 }
 
 function createParagraphDetails(snapshot) {
-  const paragraphs = snapshot?.paragraphs ?? [];
-  const details = snapshot?.paragraphDetails?.filter?.((paragraph) => paragraph.role === "core") ?? [];
+  const paragraphs = getComparisonParagraphs(snapshot);
+  const details = snapshot?.paragraphDetails?.filter?.((paragraph) => paragraph.role === "core" || paragraph.role === "annotation") ?? [];
   if (details.length === paragraphs.length) {
     return details;
   }
@@ -463,6 +465,10 @@ function createParagraphDetails(snapshot) {
     role: "core",
     index
   }));
+}
+
+function getComparisonParagraphs(snapshot) {
+  return snapshot?.comparisonParagraphs ?? snapshot?.paragraphs ?? [];
 }
 
 function createParagraphChange({
@@ -487,12 +493,18 @@ function createParagraphChange({
   change.headingPath = detail.headingPath ?? [];
   change.areaType = detail.areaType || (change.source === "footnotes" ? "footnote" : (change.source === "endnotes" ? "endnote" : "body"));
   change.tableIndex = detail.tableIndex ?? null;
+  change.semantics = {
+    old: oldDetail?.semantics ?? null,
+    new: newDetail?.semantics ?? null
+  };
   if (type === "deleted" || type === "modified" || type === "moved") {
     change.oldText = normalizeChangeText(oldText);
   }
   if (type === "added" || type === "modified" || type === "moved") {
     change.newText = normalizeChangeText(newText);
   }
+  change.signals = createSemanticSignals(change, oldDetail, newDetail);
+  change.noiseLevel = classifyChangeNoise(change);
   change.id = createChangeID(change);
   return change;
 }
@@ -551,6 +563,9 @@ function describeChangeGroup(change) {
   }
   if (change.areaType === "endnote") {
     return { key: "endnote", label: formatText("sourceEndnotes") };
+  }
+  if (change.areaType === "comment") {
+    return { key: "comment", label: formatText("sourceComments") };
   }
   if (heading) {
     return { key: `heading:${heading}`, label: heading };
@@ -621,6 +636,44 @@ function createCompleteDiff(changeSummary, previousVersion) {
 
 function normalizeChangeText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function createSemanticSignals(change, oldDetail, newDetail) {
+  const signals = new Set();
+  const oldSemantics = oldDetail?.semantics ?? {};
+  const newSemantics = newDetail?.semantics ?? {};
+  const changedSet = (key) => JSON.stringify(oldSemantics[key] ?? []) !== JSON.stringify(newSemantics[key] ?? []);
+  if (changedSet("numbers")) signals.add("numbers");
+  if (changedSet("citations") || oldSemantics.zoteroCitation !== newSemantics.zoteroCitation) signals.add("citations");
+  if (changedSet("abbreviations")) signals.add("abbreviations");
+  if (oldSemantics.caption || newSemantics.caption) signals.add("caption");
+  if (oldSemantics.formula || newSemantics.formula) signals.add("formula");
+  if (oldSemantics.crossReference || newSemantics.crossReference) signals.add("cross-reference");
+  if (oldSemantics.figureReference || newSemantics.figureReference) signals.add("figure-reference");
+  if (oldSemantics.trackedInsertion || newSemantics.trackedInsertion || oldSemantics.trackedDeletion || newSemantics.trackedDeletion) {
+    signals.add("tracked-revision");
+  }
+  if (JSON.stringify(oldDetail?.headingPath ?? []) !== JSON.stringify(newDetail?.headingPath ?? [])) signals.add("heading");
+  if (change.areaType === "comment") signals.add("comment");
+  return [...signals];
+}
+
+function classifyChangeNoise(change) {
+  if (change.type !== "modified") {
+    return "substantive";
+  }
+  const oldText = String(change.oldText ?? "");
+  const newText = String(change.newText ?? "");
+  if (oldText.replace(/\s+/g, "") === newText.replace(/\s+/g, "")) {
+    return "formatting";
+  }
+  const stripPunctuation = (value) => value.normalize("NFKC")
+    .replace(/[\p{P}\p{S}\s]+/gu, "")
+    .toLocaleLowerCase();
+  if (stripPunctuation(oldText) === stripPunctuation(newText)) {
+    return "punctuation";
+  }
+  return "substantive";
 }
 
 function createChangeID(change) {

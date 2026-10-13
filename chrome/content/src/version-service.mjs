@@ -46,6 +46,13 @@ export class VersionService {
       id: `check-${metadata.lastCheck.checkedAt || "current"}`,
       createdAt: metadata.lastCheck.checkedAt,
       note: UI_TEXT.lastCheck,
+      zotero: {
+        libraryID: metadata.item?.libraryID,
+        itemID: metadata.item?.itemID,
+        itemKey: metadata.item?.itemKey,
+        attachmentID: metadata.attachment?.attachmentID,
+        attachmentKey: metadata.attachment?.attachmentKey
+      },
       repoPath
     } : null;
 
@@ -208,6 +215,123 @@ export class VersionService {
     return this.diffStore.search(context.repoPath, index, options);
   }
 
+  async loadVersionDiffChanges(item, version, options = {}) {
+    const changeIDs = [...new Set((options.changeIDs ?? []).map(String).filter(Boolean))];
+    if (!changeIDs.length) {
+      return [];
+    }
+    const context = await this.resolveDiffContext(item, version);
+    const index = await this.getVersionDiffIndex(
+      { repoPath: context.repoPath, metadata: context.metadata },
+      context.version,
+      { rebuild: options.rebuild !== false }
+    );
+    if (index.legacy) {
+      const byID = new Map(index.groups.flatMap((group) => group.changes ?? []).map((change) => [change.id, change]));
+      return changeIDs.map((id) => byID.get(id)).filter(Boolean);
+    }
+    return this.diffStore.loadByIDs(context.repoPath, index, changeIDs);
+  }
+
+  async getComparisonCandidates(item) {
+    const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
+    const versions = await this.loadVersionHistory(repoPath, metadata, attachment);
+    return {
+      repoPath,
+      versions,
+      candidates: [
+        { id: "current", label: UI_TEXT.currentFile, kind: "current" },
+        ...versions.map((version) => ({
+          id: version.commitHash || version.id,
+          label: [version.note, version.shortHash, version.createdAt].filter(Boolean).join(" · "),
+          kind: "version"
+        })),
+        { id: "empty", label: UI_TEXT.compareEmptyDocument, kind: "empty" }
+      ]
+    };
+  }
+
+  async compareVersions(item, baseID, targetID) {
+    const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
+    const versions = await this.loadVersionHistory(repoPath, metadata, attachment);
+    const find = (id) => versions.find((version) => version.commitHash === id || version.id === id) ?? null;
+    const base = baseID === "empty" ? null : find(baseID);
+    let target = targetID === "current" ? null : find(targetID);
+    if ((baseID !== "empty" && !base) || (targetID !== "current" && !target)) {
+      throw new Error(UI_TEXT.compareVersionUnavailable);
+    }
+    if (baseID === targetID) {
+      throw new Error(UI_TEXT.compareSameVersion);
+    }
+
+    let changeSummary;
+    let completeDiff;
+    let targetLabel;
+    if (targetID === "current") {
+      const analysis = await this.contentAnalyzer.analyze(attachment.filePath, base, { repoPath });
+      changeSummary = analysis.changeSummary;
+      completeDiff = analysis.completeDiff;
+      targetLabel = UI_TEXT.currentFile;
+    }
+    else {
+      if (!target?.contentSnapshot) {
+        throw new Error(UI_TEXT.compareSnapshotUnavailable);
+      }
+      changeSummary = summarizeDocxChange({
+        current: target.contentSnapshot,
+        currentContentHash: target.contentHash,
+        previousVersion: base,
+        fileChanged: true
+      });
+      completeDiff = completeDiffFromSummary(changeSummary, base);
+      targetLabel = target.note || target.shortHash || target.id;
+    }
+    if (!completeDiff) {
+      completeDiff = {
+        quality: "exact",
+        baseCommitHash: base?.commitHash ?? null,
+        counts: { added: 0, deleted: 0, modified: 0, moved: 0 },
+        groups: []
+      };
+    }
+    const rawKey = `${baseID || "empty"}:${targetID || "current"}`;
+    const comparisonKey = (await this.platform.hashString(rawKey)).slice(0, 40);
+    const diffRef = await this.diffStore.writeComparisonDiff(repoPath, comparisonKey, completeDiff);
+    const baseLabel = base?.note || base?.shortHash || UI_TEXT.compareEmptyDocument;
+    return {
+      id: `comparison-${comparisonKey}`,
+      comparison: true,
+      repoPath,
+      note: `${baseLabel} → ${targetLabel}`,
+      createdAt: new Date().toISOString(),
+      fileName: attachment.fileName,
+      changeSummary: compactChangeSummary(changeSummary),
+      diffRef,
+      baseVersionID: baseID,
+      targetVersionID: targetID
+    };
+  }
+
+  async previewVersionDiffRepair(item, version) {
+    const context = await this.resolveDiffContext(item, version);
+    const inspection = context.version?.diffRef?.status === "complete"
+      ? await this.diffStore.inspect(context.repoPath, context.version.diffRef)
+      : { ok: false, issues: [{ kind: "summary-only", message: UI_TEXT.diffStorageSummaryOnly }], checkedPages: 0 };
+    const versions = context.metadata?.versions ?? [];
+    const index = versions.findIndex((candidate) => sameVersion(candidate, context.version));
+    const previous = index >= 0 ? versions[index + 1] ?? null : null;
+    return {
+      ...inspection,
+      canRebuild: !!context.version?.contentSnapshot && (!previous || !!previous.contentSnapshot),
+      wouldWrite: !inspection.ok,
+      versionID: context.version?.commitHash || context.version?.id || ""
+    };
+  }
+
+  clearDiffReadCache() {
+    return this.diffStore.clearReadCache();
+  }
+
   async buildCompleteVersionMarkdown(item, version, filters = {}) {
     const context = await this.resolveDiffContext(item, version);
     let changes = [];
@@ -224,6 +348,7 @@ export class VersionService {
       this.platform.Zotero?.debug?.(`git4zotero: complete markdown fell back to summary: ${error?.stack || error}`);
     }
     const typeSet = new Set((filters.types ?? []).filter(Boolean));
+    const excludedNoise = new Set((filters.excludeNoise ?? []).filter(Boolean));
     const query = String(filters.query ?? "").trim().toLocaleLowerCase();
     const filtered = changes.filter((change) => {
       if (filters.groupID && change.groupID !== filters.groupID) {
@@ -232,10 +357,13 @@ export class VersionService {
       if (typeSet.size && !typeSet.has(change.type)) {
         return false;
       }
+      if (excludedNoise.has(change.noiseLevel)) {
+        return false;
+      }
       if (!query) {
         return true;
       }
-      return `${change.oldText || ""}\n${change.newText || ""}\n${change.locationLabel || ""}`.toLocaleLowerCase().includes(query);
+      return `${change.id || ""}\n${change.oldText || ""}\n${change.newText || ""}\n${change.locationLabel || ""}`.toLocaleLowerCase().includes(query);
     });
     return renderMarkdownSingleVersion(context.version, filtered);
   }
@@ -1235,6 +1363,7 @@ function createLegacyDiffIndex(version) {
 function searchLegacyDiff(index, options = {}) {
   const query = String(options.query ?? "").trim().toLocaleLowerCase();
   const types = new Set((options.types ?? []).filter(Boolean));
+  const excludedNoise = new Set((options.excludeNoise ?? []).filter(Boolean));
   const start = Math.max(0, Number(options.cursor) || 0);
   const limit = Math.max(1, Math.min(100, Number(options.limit) || 100));
   const changes = index.groups
@@ -1244,7 +1373,10 @@ function searchLegacyDiff(index, options = {}) {
       if (types.size && !types.has(change.type)) {
         return false;
       }
-      return !query || `${change.oldText || ""}\n${change.newText || ""}\n${change.locationLabel || ""}`.toLocaleLowerCase().includes(query);
+      if (excludedNoise.has(change.noiseLevel)) {
+        return false;
+      }
+      return !query || `${change.id || ""}\n${change.oldText || ""}\n${change.newText || ""}\n${change.locationLabel || ""}`.toLocaleLowerCase().includes(query);
     });
   return {
     total: changes.length,
@@ -1263,7 +1395,8 @@ function toStoredSnapshot(snapshot) {
     paragraphDetails: snapshot.paragraphDetails ?? null,
     paragraphCount: snapshot.paragraphCount,
     wordCount: snapshot.wordCount,
-    sections: snapshot.sections
+    sections: snapshot.sections,
+    partHashes: snapshot.partHashes ?? null
   };
 }
 

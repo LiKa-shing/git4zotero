@@ -300,6 +300,9 @@ export class RepositoryArchiveService {
 
   async importRepositoryGroup(dataDir, repoEntries) {
     for (const entry of repoEntries) {
+      if (isAIInsightArchivePath(entry.name)) {
+        continue;
+      }
       const relativeParts = entry.name.split("/");
       const targetPath = this.platform.join(dataDir, ...relativeParts);
       await this.platform.writeBytes(targetPath, entry.bytes);
@@ -391,6 +394,9 @@ export class RepositoryArchiveService {
   }
 
   async collectFiles(path, relativePath, entries) {
+    if (isAIInsightArchivePath(relativePath)) {
+      return;
+    }
     if (!(await this.platform.isDirectory(path))) {
       entries.push({ name: assertArchiveEntryName(relativePath), bytes: await this.platform.readFileBytes(path) });
       return;
@@ -417,6 +423,12 @@ export class RepositoryArchiveService {
       return false;
     }
   }
+}
+
+function isAIInsightArchivePath(relativePath) {
+  const normalized = String(relativePath ?? "").replace(/\\/g, "/");
+  return normalized.includes("/.git4zotero/ai-insights/")
+    || normalized.endsWith("/.git4zotero/ai-insights");
 }
 
 function assertRepoRelativePath(value) {

@@ -2,3 +2,8 @@ pref("extensions.git4zotero.gitPath", "");
 pref("extensions.git4zotero.defaultVersionNote", "论文版本");
 pref("extensions.git4zotero.autoSafetyVersion", true);
 pref("extensions.git4zotero.archiveExportDirectory", "");
+pref("extensions.git4zotero.aiEnabled", false);
+pref("extensions.git4zotero.aiProvider", "deepseek");
+pref("extensions.git4zotero.aiBaseURL", "https://api.deepseek.com");
+pref("extensions.git4zotero.aiModel", "");
+pref("extensions.git4zotero.secretKey", "");

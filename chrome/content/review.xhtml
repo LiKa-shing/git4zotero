@@ -28,6 +28,20 @@
     <span id="review-quality" class="review-quality"></span>
     <span id="review-status" class="review-status" role="status"></span>
   </div>
+  <div id="review-compare-toolbar" class="review-compare-toolbar" hidden="hidden">
+    <div class="review-version-picker"><span id="review-baseline-label"></span><button id="review-baseline-button" type="button" aria-haspopup="listbox" aria-expanded="false"></button><div id="review-baseline-options" class="review-version-options" role="listbox" hidden="hidden"></div></div>
+    <div class="review-version-picker"><span id="review-target-label"></span><button id="review-target-button" type="button" aria-haspopup="listbox" aria-expanded="false"></button><div id="review-target-options" class="review-version-options" role="listbox" hidden="hidden"></div></div>
+    <button id="review-run-compare" type="button"></button>
+  </div>
+  <div class="review-selection-toolbar">
+    <button id="review-select-page" type="button"></button>
+    <button id="review-clear-selection" type="button"></button>
+    <button id="review-next-unreviewed" type="button"></button>
+    <label class="review-minor-filter"><input id="review-hide-minor" type="checkbox" /><span id="review-hide-minor-label"></span></label>
+    <span id="review-selected-count" class="review-status"></span>
+    <button id="review-ai-generate" type="button" hidden="hidden"></button>
+    <button id="review-ai-clear-cache" type="button" hidden="hidden"></button>
+  </div>
   <main class="review-layout">
     <nav class="review-navigation" aria-labelledby="review-sections-title">
       <h2 id="review-sections-title"></h2>
@@ -35,6 +49,7 @@
       <div id="review-groups"></div>
     </nav>
     <section class="review-content" aria-live="polite">
+      <section id="review-ai-result" class="review-ai-result" hidden="hidden"></section>
       <div id="review-list"></div>
       <div class="review-pagination">
         <button id="review-previous" type="button"></button>
@@ -44,5 +59,18 @@
       </div>
     </section>
   </main>
+  <section id="review-ai-modal" class="review-modal" role="dialog" aria-modal="true" aria-labelledby="review-ai-modal-title" hidden="hidden">
+    <div class="review-modal-backdrop"></div>
+    <div class="review-modal-panel">
+      <h2 id="review-ai-modal-title"></h2>
+      <p id="review-ai-warning"></p>
+      <p id="review-ai-meta" class="review-meta"></p>
+      <textarea id="review-ai-preview" readonly="readonly"></textarea>
+      <div class="review-actions">
+        <button id="review-ai-confirm" type="button"></button>
+        <button id="review-ai-cancel" type="button"></button>
+      </div>
+    </div>
+  </section>
 </body>
 </html>

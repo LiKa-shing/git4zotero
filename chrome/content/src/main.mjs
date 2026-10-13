@@ -22,6 +22,10 @@ import { ZoteroPlatform } from "./platform.mjs";
 import { PaperVersionPane } from "./ui.mjs";
 import { VersionService } from "./version-service.mjs";
 import { ReviewWindowManager } from "./review-window-manager.mjs";
+import { AICredentialStore } from "./ai-credential-store.mjs";
+import { AIInsightStore } from "./ai-insight-store.mjs";
+import { AIReviewService } from "./ai-review-service.mjs";
+import { ReviewStateStore } from "./review-state-store.mjs";
 
 export const Git4Zotero = {
   context: null,
@@ -34,6 +38,7 @@ export const Git4Zotero = {
   cleanup: null,
   service: null,
   reviewWindowManager: null,
+  aiReviewService: null,
   notifierObserverID: null,
   notifierObserver: null,
 
@@ -66,7 +71,18 @@ export const Git4Zotero = {
       pluginVersion: context.version
     });
     this.service = service;
-    this.reviewWindowManager = new ReviewWindowManager({ platform: this.platform, service });
+    this.aiReviewService = new AIReviewService({
+      platform: this.platform,
+      versionService: service,
+      credentialStore: new AICredentialStore(this.platform),
+      insightStore: new AIInsightStore(this.platform)
+    });
+    this.reviewWindowManager = new ReviewWindowManager({
+      platform: this.platform,
+      service,
+      aiReviewService: this.aiReviewService,
+      reviewStateStore: new ReviewStateStore(this.platform)
+    });
     this.cleanup = new RepositoryCleanupService({
       platform: this.platform,
       metadataStore,
@@ -107,6 +123,7 @@ export const Git4Zotero = {
     this.unregisterItemDeletionObserver();
     this.menu?.unregister();
     this.reviewWindowManager?.shutdown();
+    this.aiReviewService?.shutdown();
     this.service?.shutdown();
 
     for (const win of zotero?.getMainWindows?.() ?? []) {
@@ -119,6 +136,7 @@ export const Git4Zotero = {
     this.cleanup = null;
     this.service = null;
     this.reviewWindowManager = null;
+    this.aiReviewService = null;
     this.platform = null;
     this.context = null;
   },

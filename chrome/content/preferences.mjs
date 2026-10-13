@@ -71,8 +71,34 @@ var Git4ZoteroPreferenceL10n = (() => {
     openDataDirectory: "打开数据目录",
     copyIssueTemplate: "复制 issue 模板",
     openGitGuide: "打开 Git 安装指南",
+    aiSettingsTitle: "AI 审阅摘要",
+    aiSettingsDescription: "可选功能：仅在你确认后，把完整对比窗口中明确选中的修改发送给模型供应商。AI 不参与差异计算、Git 提交或版本恢复。",
+    aiEnableLabel: "启用 AI 审阅摘要（仅 Zotero 9/10）",
+    aiProviderLabel: "模型供应商",
+    aiProviderCompatible: "OpenAI 兼容端点",
+    aiBaseURLLabel: "API 端点",
+    aiModelLabel: "模型 ID",
+    aiModelLoadFirst: "请先获取模型列表",
+    aiLoadModels: "获取模型列表",
+    aiKeyLabel: "API 密钥",
+    aiKeyPlaceholder: "输入后自动保存，清空即删除",
+    aiTestConnection: "测试连接",
+    aiSaveSettings: "保存 AI 设置",
+    aiClearCache: "清除全部 AI 缓存",
+    aiCacheCleared: "已清除 {count} 个 AI 洞察缓存文件。",
+    aiPrivacyHelp: "云端调用会把你选中的论文修改发送给供应商。API 密钥以明文保存在本机 Zotero preferences 中，不会写入版本仓库、日志、诊断或 XPI。",
+    aiStatusInitial: "AI 功能尚未配置。",
+    aiUnsupported: "AI 功能仅支持 Zotero 9/10；本地版本管理仍可继续使用。",
+    aiSettingsSaved: "AI 设置已保存。",
+    aiKeyAutoSaved: "API 密钥已自动保存到本机 Zotero preferences。",
+    aiKeyAutoCleared: "API 密钥已从本机 Zotero preferences 清除。",
+    aiModelsLoaded: "已获取 {count} 个模型，当前选择：{model}",
+    aiModelsEmpty: "连接成功，但供应商未返回模型列表。",
+    aiModelsNeedRefresh: "供应商或端点已变化，请重新获取模型列表。",
+    aiModelSelected: "已选择模型：{model}",
+    aiOperationFailed: "AI 操作失败：{message}",
     aboutTitle: "关于",
-    aboutMeta: "git4zotero 版本 0.5.2 · LiKa-shing/git4zotero · MIT · Zotero 8.0-10.0.* · .docx/.doc",
+    aboutMeta: "git4zotero 版本 0.7.0 · LiKa-shing/git4zotero · MIT · Zotero 8.0-10.0.* · .docx/.doc",
     aboutOpenHomepage: "Homepage",
     aboutOpenGitHub: "GitHub",
     aboutOpenFeedback: "Bug Report, Feature Request",
@@ -254,8 +280,34 @@ var Git4ZoteroPreferenceL10n = (() => {
       openDataDirectory: "開啟資料目錄",
       copyIssueTemplate: "複製 issue 範本",
       openGitGuide: "開啟 Git 安裝指南",
+      aiSettingsTitle: "AI 審閱摘要",
+      aiSettingsDescription: "選用功能：僅在你確認後，把完整對比視窗中明確選中的修改傳送給模型供應商。AI 不參與差異計算、Git 提交或版本還原。",
+      aiEnableLabel: "啟用 AI 審閱摘要（僅 Zotero 9/10）",
+      aiProviderLabel: "模型供應商",
+      aiProviderCompatible: "OpenAI 相容端點",
+      aiBaseURLLabel: "API 端點",
+      aiModelLabel: "模型 ID",
+      aiModelLoadFirst: "請先取得模型清單",
+      aiLoadModels: "取得模型清單",
+      aiKeyLabel: "API 金鑰",
+      aiKeyPlaceholder: "輸入後自動儲存，清空即刪除",
+      aiTestConnection: "測試連線",
+      aiSaveSettings: "儲存 AI 設定",
+      aiClearCache: "清除全部 AI 快取",
+      aiCacheCleared: "已清除 {count} 個 AI 洞察快取檔案。",
+      aiPrivacyHelp: "雲端呼叫會把你選中的論文修改傳送給供應商。API 金鑰以明文儲存在本機 Zotero preferences 中，不會寫入版本庫、日誌、診斷或 XPI。",
+      aiStatusInitial: "AI 功能尚未設定。",
+      aiUnsupported: "AI 功能僅支援 Zotero 9/10；本機版本管理仍可繼續使用。",
+      aiSettingsSaved: "AI 設定已儲存。",
+      aiKeyAutoSaved: "API 金鑰已自動儲存到本機 Zotero preferences。",
+      aiKeyAutoCleared: "API 金鑰已從本機 Zotero preferences 清除。",
+      aiModelsLoaded: "已取得 {count} 個模型，目前選擇：{model}",
+      aiModelsEmpty: "連線成功，但供應商未傳回模型清單。",
+      aiModelsNeedRefresh: "供應商或端點已變更，請重新取得模型清單。",
+      aiModelSelected: "已選擇模型：{model}",
+      aiOperationFailed: "AI 操作失敗：{message}",
       aboutTitle: "關於",
-      aboutMeta: "git4zotero 版本 0.5.2 · LiKa-shing/git4zotero · MIT · Zotero 8.0-10.0.* · .docx/.doc",
+      aboutMeta: "git4zotero 版本 0.7.0 · LiKa-shing/git4zotero · MIT · Zotero 8.0-10.0.* · .docx/.doc",
       aboutOpenHomepage: "Homepage",
       aboutOpenGitHub: "GitHub",
       aboutOpenFeedback: "Bug Report, Feature Request",
@@ -435,8 +487,34 @@ var Git4ZoteroPreferenceL10n = (() => {
       openDataDirectory: "Open Data Directory",
       copyIssueTemplate: "Copy Issue Template",
       openGitGuide: "Open Git Install Guide",
+      aiSettingsTitle: "AI Review Summary",
+      aiSettingsDescription: "Optional: only after confirmation, send explicitly selected changes from the full comparison window to the configured model provider. AI never participates in deterministic diffing, Git commits, or restoration.",
+      aiEnableLabel: "Enable AI review summaries (Zotero 9/10 only)",
+      aiProviderLabel: "Model provider",
+      aiProviderCompatible: "OpenAI-compatible endpoint",
+      aiBaseURLLabel: "API endpoint",
+      aiModelLabel: "Model ID",
+      aiModelLoadFirst: "Load the model list first",
+      aiLoadModels: "Load Models",
+      aiKeyLabel: "API key",
+      aiKeyPlaceholder: "Saved automatically while typing; clear to delete",
+      aiTestConnection: "Test Connection",
+      aiSaveSettings: "Save AI Settings",
+      aiClearCache: "Clear All AI Cache",
+      aiCacheCleared: "Cleared {count} AI insight cache files.",
+      aiPrivacyHelp: "Cloud requests send your selected manuscript changes to the provider. The API key is stored in plaintext in local Zotero preferences and is never written to version repositories, logs, diagnostics, or the XPI.",
+      aiStatusInitial: "AI is not configured.",
+      aiUnsupported: "AI features require Zotero 9/10. Local version management remains available.",
+      aiSettingsSaved: "AI settings saved.",
+      aiKeyAutoSaved: "The API key was automatically saved in local Zotero preferences.",
+      aiKeyAutoCleared: "The API key was cleared from local Zotero preferences.",
+      aiModelsLoaded: "Loaded {count} models. Selected: {model}",
+      aiModelsEmpty: "Connection succeeded, but the provider returned no models.",
+      aiModelsNeedRefresh: "The provider or endpoint changed. Load the model list again.",
+      aiModelSelected: "Selected model: {model}",
+      aiOperationFailed: "AI operation failed: {message}",
       aboutTitle: "About",
-      aboutMeta: "git4zotero version 0.5.2 · LiKa-shing/git4zotero · MIT · Zotero 8.0-10.0.* · .docx/.doc",
+      aboutMeta: "git4zotero version 0.7.0 · LiKa-shing/git4zotero · MIT · Zotero 8.0-10.0.* · .docx/.doc",
       aboutOpenHomepage: "Homepage",
       aboutOpenGitHub: "GitHub",
       aboutOpenFeedback: "Bug Report, Feature Request",
@@ -658,6 +736,7 @@ var Git4ZoteroPreferences = {
   platform: null,
   cleanupService: null,
   diagnosticService: null,
+  aiCredentialStore: null,
   lastOrphanScan: null,
   confirmedArchiveExportDirectory: null,
   guideStepIndex: 0,
@@ -686,6 +765,7 @@ var Git4ZoteroPreferences = {
     this.refreshDataDirectory();
     this.setStatus(this.getStatusText() || this.text("gitStatusInitial"), "");
     this.refreshLastErrorStatus();
+    this.initializeAISettings();
 
     gitInput?.addEventListener("input", () => {
       this.refreshResolvedGit();
@@ -706,6 +786,202 @@ var Git4ZoteroPreferences = {
     this.bindFirstUseGuideControls();
 
     this.defer(() => this.refreshResolvedGit());
+  },
+
+  initializeAISettings() {
+    if (!document.getElementById("git4zotero-ai-section")) {
+      return;
+    }
+    const enabled = document.getElementById("git4zotero-ai-enabled");
+    if (enabled) enabled.checked = Zotero.Prefs.get("extensions.git4zotero.aiEnabled", true) === true;
+    const provider = String(Zotero.Prefs.get("extensions.git4zotero.aiProvider", true) || "deepseek");
+    const providerInput = document.getElementById(provider === "deepseek" ? "git4zotero-ai-provider-deepseek" : "git4zotero-ai-provider-compatible");
+    if (providerInput) providerInput.checked = true;
+    const baseURL = document.getElementById("git4zotero-ai-base-url");
+    const model = document.getElementById("git4zotero-ai-model");
+    const apiKey = document.getElementById("git4zotero-ai-key");
+    if (baseURL) baseURL.value = Zotero.Prefs.get("extensions.git4zotero.aiBaseURL", true) || "https://api.deepseek.com";
+    const savedModel = String(Zotero.Prefs.get("extensions.git4zotero.aiModel", true) || "").trim();
+    this.populateAIModelOptions(savedModel ? [savedModel] : [], savedModel);
+    model?.addEventListener("change", (changeEvent) => this.autoSaveAIModel(changeEvent));
+    baseURL?.addEventListener("change", () => this.invalidateAIModelOptions());
+    if (apiKey) {
+      apiKey.value = Zotero.Prefs.get("extensions.git4zotero.secretKey") || "";
+      apiKey.addEventListener("input", (inputEvent) => this.autoSaveAIKey(inputEvent));
+    }
+    for (const input of document.querySelectorAll?.('input[name="git4zotero-ai-provider"]') ?? []) {
+      input.addEventListener("change", () => {
+        this.refreshAIProviderState();
+        this.invalidateAIModelOptions();
+      });
+    }
+    this.refreshAIProviderState();
+    const supported = Number.parseInt(String(Zotero.version || "0").split(".")[0], 10) >= 9;
+    if (!supported) {
+      document.getElementById("git4zotero-ai-section").hidden = true;
+    }
+  },
+
+  refreshAIProviderState() {
+    const deepSeek = document.getElementById("git4zotero-ai-provider-deepseek")?.checked !== false;
+    const baseURL = document.getElementById("git4zotero-ai-base-url");
+    if (deepSeek && baseURL) {
+      baseURL.value = "https://api.deepseek.com";
+      baseURL.disabled = true;
+    }
+    else if (baseURL) {
+      baseURL.disabled = false;
+    }
+  },
+
+  getAISettingsInput() {
+    const provider = document.getElementById("git4zotero-ai-provider-deepseek")?.checked ? "deepseek" : "openai-compatible";
+    return {
+      provider,
+      baseURL: provider === "deepseek" ? "https://api.deepseek.com" : String(document.getElementById("git4zotero-ai-base-url")?.value || "").trim(),
+      model: String(document.getElementById("git4zotero-ai-model")?.value || "").trim(),
+      enabled: document.getElementById("git4zotero-ai-enabled")?.checked === true
+    };
+  },
+
+  saveAISettings(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    try {
+      const settings = this.getAISettingsInput();
+      const providerModule = ChromeUtils.importESModule("chrome://git4zotero/content/src/ai-provider.mjs");
+      providerModule.validateAIEndpoint(settings.baseURL);
+      Zotero.Prefs.set("extensions.git4zotero.aiEnabled", settings.enabled);
+      Zotero.Prefs.set("extensions.git4zotero.aiProvider", settings.provider);
+      Zotero.Prefs.set("extensions.git4zotero.aiBaseURL", settings.baseURL);
+      Zotero.Prefs.set("extensions.git4zotero.aiModel", settings.model);
+      this.setAIStatus(this.text("aiSettingsSaved"), "success");
+      return settings;
+    }
+    catch (error) {
+      this.setAIStatus(this.text("aiOperationFailed", { message: error?.message || String(error) }), "error");
+      return null;
+    }
+  },
+
+  autoSaveAIKey(event = null) {
+    const input = event?.currentTarget ?? document.getElementById("git4zotero-ai-key");
+    try {
+      const value = String(input?.value ?? "").trim();
+      Zotero.Prefs.set("extensions.git4zotero.secretKey", value);
+      this.setAIStatus(this.text(value ? "aiKeyAutoSaved" : "aiKeyAutoCleared"), "success");
+      return true;
+    }
+    catch (error) {
+      this.setAIStatus(this.text("aiOperationFailed", { message: error?.message || String(error) }), "error");
+      return false;
+    }
+  },
+
+  autoSaveAIModel(event = null) {
+    const select = event?.currentTarget ?? document.getElementById("git4zotero-ai-model");
+    const model = String(select?.value ?? "").trim();
+    if (!model) {
+      return false;
+    }
+    Zotero.Prefs.set("extensions.git4zotero.aiModel", model);
+    this.setAIStatus(this.text("aiModelSelected", { model }), "success");
+    return true;
+  },
+
+  populateAIModelOptions(models = [], selectedModel = "") {
+    const select = document.getElementById("git4zotero-ai-model");
+    if (!select) {
+      return "";
+    }
+    const normalized = [...new Set((Array.isArray(models) ? models : [])
+      .map((model) => String(model ?? "").trim())
+      .filter(Boolean))];
+    const selected = normalized.includes(selectedModel)
+      ? selectedModel
+      : (normalized.find((model) => /flash/i.test(model)) || normalized[0] || "");
+    const placeholder = document.createElementNS("http://www.w3.org/1999/xhtml", "option");
+    placeholder.value = "";
+    placeholder.textContent = this.text("aiModelLoadFirst");
+    placeholder.disabled = normalized.length > 0;
+    const options = normalized.map((model) => {
+      const option = document.createElementNS("http://www.w3.org/1999/xhtml", "option");
+      option.value = model;
+      option.textContent = model;
+      return option;
+    });
+    select.replaceChildren(placeholder, ...options);
+    select.value = selected;
+    return selected;
+  },
+
+  invalidateAIModelOptions() {
+    this.populateAIModelOptions([], "");
+    this.setAIStatus(this.text("aiModelsNeedRefresh"), "");
+  },
+
+  async loadAIModels(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    try {
+      const settings = this.saveAISettings();
+      if (!settings) return;
+      const provider = await this.createAIProvider(settings);
+      const models = await provider.listModels();
+      const selected = this.populateAIModelOptions(models, settings.model);
+      if (selected) {
+        Zotero.Prefs.set("extensions.git4zotero.aiModel", selected);
+      }
+      this.setAIStatus(
+        this.text(models.length ? "aiModelsLoaded" : "aiModelsEmpty", { count: models.length, model: selected }),
+        "success"
+      );
+    }
+    catch (error) {
+      this.setAIStatus(this.text("aiOperationFailed", { message: error?.message || String(error) }), "error");
+    }
+  },
+
+  async testAI(event = null) {
+    return this.loadAIModels(event);
+  },
+
+  async clearAIInsightCache(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    try {
+      const cleanupModule = ChromeUtils.importESModule("chrome://git4zotero/content/src/cleanup.mjs");
+      const insightModule = ChromeUtils.importESModule("chrome://git4zotero/content/src/ai-insight-store.mjs");
+      const platform = this.getPlatform();
+      const index = await new cleanupModule.RepositoryIndexStore(platform).read();
+      const store = new insightModule.AIInsightStore(platform);
+      let count = 0;
+      for (const repository of index.repositories ?? []) {
+        const repoPath = platform.join(platform.getPluginDataDirectory(), ...repository.repoRelativePath.split("/"));
+        count += await store.clear(repoPath);
+      }
+      this.setAIStatus(this.text("aiCacheCleared", { count }), "success");
+      return count;
+    }
+    catch (error) {
+      this.setAIStatus(this.text("aiOperationFailed", { message: error?.message || String(error) }), "error");
+      return 0;
+    }
+  },
+
+  async createAIProvider(settings) {
+    const module = ChromeUtils.importESModule("chrome://git4zotero/content/src/ai-provider.mjs");
+    const apiKey = await this.getAICredentialStore().get(this.getAICredentialID(settings));
+    const platform = this.getPlatform();
+    const options = {
+      apiKey,
+      model: settings.model,
+      fetchImpl: module.resolveAIFetchImpl(platform),
+      abortAPI: module.resolveAIAbortAPI(platform)
+    };
+    return settings.provider === "deepseek"
+      ? new module.DeepSeekProvider(options)
+      : new module.OpenAICompatibleProvider({ ...options, baseURL: settings.baseURL });
   },
 
   async testGit(event = null) {
@@ -1512,6 +1788,20 @@ var Git4ZoteroPreferences = {
     return this.platform;
   },
 
+  getAICredentialStore() {
+    if (this.aiCredentialStore) {
+      return this.aiCredentialStore;
+    }
+    const module = ChromeUtils.importESModule("chrome://git4zotero/content/src/ai-credential-store.mjs");
+    this.aiCredentialStore = new module.AICredentialStore(this.getPlatform());
+    return this.aiCredentialStore;
+  },
+
+  getAICredentialID(settings) {
+    const module = ChromeUtils.importESModule("chrome://git4zotero/content/src/ai-credential-store.mjs");
+    return module.createAICredentialID(settings.provider, settings.baseURL);
+  },
+
   getCleanupService() {
     if (this.cleanupService) {
       return this.cleanupService;
@@ -1748,6 +2038,15 @@ var Git4ZoteroPreferences = {
     else {
       status.setAttribute?.("hidden", "hidden");
     }
+  },
+
+  setAIStatus(message, tone) {
+    const status = document.getElementById("git4zotero-ai-status");
+    if (!status) {
+      return;
+    }
+    status.textContent = message;
+    status.dataset.tone = tone || "";
   },
 
   setHealthStatus(message, tone) {

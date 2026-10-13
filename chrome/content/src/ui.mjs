@@ -1117,7 +1117,11 @@ export class PaperVersionPane {
       if (!this.reviewWindowManager) {
         throw new Error(UI_TEXT.reviewWindowUnavailable);
       }
-      await this.reviewWindowManager.open(version);
+      const itemID = version?.zotero?.itemID;
+      const item = itemID
+        ? (await this.platform.Zotero?.Items?.getAsync?.(itemID) || this.platform.Zotero?.Items?.get?.(itemID) || null)
+        : null;
+      await this.reviewWindowManager.open(version, item);
       this.setVersionDetailStatus(panel, "", "");
     }
     catch (error) {

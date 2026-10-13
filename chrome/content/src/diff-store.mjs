@@ -25,6 +25,14 @@ export class DiffStore {
     });
   }
 
+  async writeComparisonDiff(repoPath, comparisonKey, diff) {
+    const safeKey = normalizeSegment(comparisonKey, "comparison key");
+    return this.writeDiff(repoPath, `${DIFF_ROOT}/comparisons/${safeKey}/index.json`, diff, {
+      scope: "comparison",
+      baseCommitHash: diff?.baseCommitHash ?? null
+    });
+  }
+
   async writeDiff(repoPath, relativeIndexPath, diff, options = {}) {
     const normalizedPath = validateDiffPath(relativeIndexPath);
     return this.withWriteLock(`${repoPath}:${normalizedPath}`, async () => {
@@ -168,10 +176,67 @@ export class DiffStore {
     return { index, changes };
   }
 
+  async loadByIDs(repoPath, diffRefOrIndex, changeIDs = []) {
+    const wanted = new Set((changeIDs ?? []).map(String).filter(Boolean));
+    if (!wanted.size) {
+      return [];
+    }
+    const index = diffRefOrIndex?.groups ? diffRefOrIndex : await this.readIndex(repoPath, diffRefOrIndex);
+    const found = new Map();
+    for (const group of index.groups) {
+      for (const page of group.pages) {
+        const loaded = await this.loadPage(repoPath, index, { groupID: group.id, page: page.page });
+        for (const change of loaded.changes) {
+          if (wanted.has(change.id) && !found.has(change.id)) {
+            found.set(change.id, change);
+          }
+        }
+        if (found.size === wanted.size) {
+          return changeIDs.map((id) => found.get(String(id))).filter(Boolean);
+        }
+      }
+    }
+    return changeIDs.map((id) => found.get(String(id))).filter(Boolean);
+  }
+
+  async inspect(repoPath, diffRefOrIndex) {
+    const issues = [];
+    let index;
+    try {
+      index = diffRefOrIndex?.groups ? diffRefOrIndex : await this.readIndex(repoPath, diffRefOrIndex);
+    }
+    catch (error) {
+      return { ok: false, issues: [{ kind: "index", message: error?.message || String(error) }], checkedPages: 0 };
+    }
+    let checkedPages = 0;
+    for (const group of index.groups) {
+      for (const page of group.pages) {
+        checkedPages += 1;
+        try {
+          const loaded = await this.loadPage(repoPath, index, { groupID: group.id, page: page.page });
+          if (loaded.changes.length !== page.count) {
+            issues.push({ kind: "page-count", path: page.path, expected: page.count, actual: loaded.changes.length });
+          }
+        }
+        catch (error) {
+          issues.push({ kind: "page", path: page.path, message: error?.message || String(error) });
+        }
+      }
+    }
+    return { ok: issues.length === 0, issues, checkedPages };
+  }
+
+  clearReadCache() {
+    const count = this.readCache.size;
+    this.readCache.clear();
+    return count;
+  }
+
   async search(repoPath, diffRefOrIndex, options = {}) {
     const index = diffRefOrIndex?.groups ? diffRefOrIndex : await this.readIndex(repoPath, diffRefOrIndex);
     const query = String(options.query ?? "").trim().toLocaleLowerCase();
     const types = new Set((options.types ?? []).filter(Boolean));
+    const excludedNoise = new Set((options.excludeNoise ?? []).filter(Boolean));
     const groupID = options.groupID || "";
     const limit = Math.max(1, Math.min(DIFF_PAGE_SIZE, Number(options.limit) || DIFF_PAGE_SIZE));
     const start = Math.max(0, Number(options.cursor) || 0);
@@ -184,7 +249,10 @@ export class DiffStore {
           if (types.size && !types.has(change.type)) {
             continue;
           }
-          const haystack = `${change.oldText || ""}\n${change.newText || ""}\n${change.locationLabel || ""}`.toLocaleLowerCase();
+          if (excludedNoise.has(change.noiseLevel)) {
+            continue;
+          }
+          const haystack = `${change.id || ""}\n${change.oldText || ""}\n${change.newText || ""}\n${change.locationLabel || ""}`.toLocaleLowerCase();
           if (!query || haystack.includes(query)) {
             matches.push(change);
           }
@@ -222,7 +290,13 @@ export class DiffStore {
 
   async writeJSON(repoPath, relativePath, value) {
     const path = this.resolve(repoPath, validateDiffPath(relativePath));
-    await this.platform.writeText(path, `${JSON.stringify(value, null, 2)}\n`);
+    const content = `${JSON.stringify(value, null, 2)}\n`;
+    if (typeof this.platform.atomicWriteText === "function") {
+      await this.platform.atomicWriteText(path, content);
+    }
+    else {
+      await this.platform.writeText(path, content);
+    }
     this.cacheRead(path, value);
   }
 

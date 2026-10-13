@@ -7,7 +7,7 @@
 <p align="center">Local Git-based version management for Zotero Word manuscript attachments.</p>
 
 <p align="center">
-  <a href="https://www.zotero.org/"><img src="https://img.shields.io/badge/Zotero-8%20%7C%209-CC2936?logo=zotero&logoColor=white" alt="Zotero"></a>
+  <a href="https://www.zotero.org/"><img src="https://img.shields.io/badge/Zotero-8%20%7C%209%20%7C%2010-CC2936?logo=zotero&logoColor=white" alt="Zotero"></a>
   <a href="https://github.com/LiKa-shing/git4zotero/releases"><img src="https://img.shields.io/github/package-json/v/LiKa-shing/git4zotero" alt="version"></a>
   <a href="https://github.com/LiKa-shing/git4zotero/releases/latest"><img src="https://img.shields.io/github/downloads/LiKa-shing/git4zotero/latest/total" alt="downloads"></a>
   <a href="https://github.com/LiKa-shing/git4zotero/releases/latest"><img src="https://img.shields.io/github/release-date/LiKa-shing/git4zotero" alt="release date"></a>
@@ -36,6 +36,8 @@
 - **Item-level history backup and migration**: export or import version history from the selected item's `Paper Versions` context menu. Import never overwrites existing history.
 - **Diagnostics and health check**: copy redacted diagnostics, run a health check, and copy an issue template from the settings pane.
 - **Paper Versions pane and full comparison window**: the item pane shows compact summaries with incremental loading; the separate review window adds section navigation, search, type filters, pagination, token highlighting, and complete Markdown copy/export.
+- **Cross-version review workspace**: compare any two saved versions or a saved version with the current file, attach review states, notes, and bookmarks, and surface signals such as numbers, citations, captions, formulas, and tracked revisions.
+- **Optional AI review summaries**: Zotero 9/10 users can send explicitly selected changes to DeepSeek or a custom OpenAI-compatible endpoint after reviewing an exact send preview. AI never participates in diffing, version creation, restoration, or document rewriting.
 
 ## Use Cases
 
@@ -85,6 +87,7 @@ In the `Git` / `Paper Version Management` settings pane, you can configure:
 - `First-use guide`: manually review Git detection, data directory, context-menu workflow, and `.docx` / `.doc` capability differences.
 - `Diagnostics and health check`: copy diagnostics, run health checks, open the data directory, and copy an issue template.
 - `Version history backup and migration`: configure only the default folder for item-level backup ZIP exports. Run import/export from the selected item's `Paper Versions` context menu.
+- `AI review summary` (Zotero 9/10 only): load the provider's model list and select a model directly from the dropdown. The API key is saved automatically while typing and deleted automatically when the field is cleared. It is disabled by default and does not affect offline version management.
 
 ## Quick Start
 
@@ -111,6 +114,8 @@ The `Paper Versions` menu and right-side pane contain:
 | `Configure Git Path...` | Quickly configure Git when it is unavailable. |
 | `Disable Version Management` | Stop version management for the current item without deleting existing history. |
 | `Details` | View a compact summary and incrementally load changes in the right-side pane. Use `Open Full Comparison` for section navigation, search, type filters, pagination, complete copy, and Markdown export. |
+
+The full comparison window can also compare arbitrary versions, record per-change review states, notes, and bookmarks, and suppress whitespace/punctuation/format-only changes. AI summaries process only changes that you select and confirm in the send preview.
 
 The plugin supports single selection only. Version actions are unavailable when multiple Zotero items are selected.
 
@@ -165,9 +170,15 @@ Health checks only diagnose and suggest actions. They do not automatically repai
 - This plugin provides local version management. It is not cloud sync, a backup drive, or a real-time collaboration system.
 - This plugin does not replace Track Changes in Word, WPS, or LibreOffice. It stores attachment file versions at different points in time.
 - The right-side `Paper Versions` pane is mainly for status display. Use the item-list context menu for write operations such as enable, check, create, and restore.
-- The settings pane configures Git, default notes, diagnostics, and the default item-level export folder. Run version-history import/export from the selected item's context menu.
+- The settings pane configures Git, default notes, diagnostics, the default item-level export folder, and optional AI. Run version-history import/export from the selected item's context menu.
 - Do not manually modify the Git repositories, `index.json`, or `.git4zotero` metadata under the Zotero profile `git4zotero` folder.
 - When a Zotero item is moved to Trash, version history is kept. After the item is permanently deleted or Trash is emptied, the plugin cleans up the corresponding history.
+
+### AI and privacy
+
+- AI is disabled by default and appears only in Zotero 9/10. Zotero 8 retains the complete offline version-management workflow.
+- A cloud request occurs only after you select changes, choose Generate, and confirm the exact send preview. Requests exclude file paths, Git hashes, Zotero IDs, attachment metadata, unchanged paragraphs, and the full manuscript.
+- DeepSeek requests send the selected manuscript text to its service. A custom OpenAI-compatible endpoint follows that provider's data-handling policy. Confirm institutional and provider privacy requirements before sending sensitive or unpublished work.
 
 ## FAQ
 

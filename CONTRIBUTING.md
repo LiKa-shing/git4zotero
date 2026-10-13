@@ -41,6 +41,7 @@ npm run verify
 | --- | --- |
 | `bootstrap.js` | Zotero bootstrap 入口，注册 chrome content 并加载打包生成的 classic runtime。 |
 | `chrome/content/src/*.mjs` | 插件主体源码，包括附件识别、Git 后端、正文 diff、元数据和 UI。 |
+| `chrome/content/src/ai-*.mjs` | 可选 AI 供应商、密钥、派生缓存和审阅服务；不得参与 Git 或确定性差异流程。 |
 | `chrome/content/preferences.*` | Zotero 设置页，用于配置 Git 路径、默认版本说明和恢复前安全版本。 |
 | `locale/*/git4zotero.ftl` | Zotero UI 本地化文案。 |
 | `scripts/runtime-builder.mjs` | 将运行时 ESM 模块按固定顺序转换为 classic runtime。 |
@@ -59,6 +60,8 @@ npm run verify
 - 右侧 item pane 只负责展示状态、最近检查和历史摘要；启用、检查、创建、恢复和停用等写操作继续由右键菜单触发。
 - 修改 `.docx` 解析、diff、Git 后端、恢复流程或元数据结构时，应补充或更新 `scripts/test.mjs` 中的测试。
 - 保持生成包结构稳定：`manifest.json`、`bootstrap.js`、`prefs.js`、`chrome/` 和 `locale/` 必须位于 XPI 根目录。
+- AI 测试必须使用模拟 HTTP 与模拟密钥库，不得调用真实供应商或把真实 API 密钥写入源码、测试、日志和 fixture。
+- AI 请求必须由用户明确选择变化并确认；不得发送路径、Git hash、Zotero 标识、未修改全文或附件元数据。AI 洞察缓存不得进入 Git 仓库或条目历史 ZIP。
 
 ## 验证矩阵
 

@@ -1675,14 +1675,17 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
       item: { libraryID: 1, itemID: 10, itemKey: "ITEM" },
       attachment: { attachmentID: 20, attachmentKey: "ATTACH", fileName: "paper.docx" },
       versions: [older, newer]
-    }))]
+    }))],
+    ["C:/Profile/git4zotero/library-1/item-ITEM/.git4zotero/ai-insights/v1/private.json", encoder.encode("AI CACHE MUST NOT EXPORT")]
   ]);
   const sourceDirectories = new Set([
     "C:/Profile/git4zotero",
     "C:/Profile/git4zotero/library-1",
     "C:/Profile/git4zotero/library-1/item-ITEM",
     "C:/Profile/git4zotero/library-1/item-ITEM/.git",
-    "C:/Profile/git4zotero/library-1/item-ITEM/.git4zotero"
+    "C:/Profile/git4zotero/library-1/item-ITEM/.git4zotero",
+    "C:/Profile/git4zotero/library-1/item-ITEM/.git4zotero/ai-insights",
+    "C:/Profile/git4zotero/library-1/item-ITEM/.git4zotero/ai-insights/v1"
   ]);
   const sourcePlatform = {
     getPluginDataDirectory: () => "C:/Profile/git4zotero",
@@ -1755,6 +1758,7 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
   assert(itemExportNames.includes("export-manifest.json"));
   assert(!itemExportNames.includes("index.json"));
   assert(itemExportNames.includes("library-1/item-ITEM/.git/config"));
+  assert(!itemExportNames.some((name) => name.includes("/.git4zotero/ai-insights/")));
   assert(itemExportNames.every((name) => name === "export-manifest.json" || name.startsWith("library-1/item-ITEM/")));
   const itemExportManifest = JSON.parse(new TextDecoder().decode(itemExportEntries.find((entry) => entry.name === "export-manifest.json").bytes));
   assert.equal(itemExportManifest.schemaVersion, 2);
@@ -4590,6 +4594,47 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(successPrefs.elements["git4zotero-git-path"].value, "C:\\Program Files\\Git\\cmd\\git.exe");
   assert.equal(successPrefs.elements["git4zotero-test-git"].disabled, false);
 
+  const autoKeyPrefs = await runPreferencesScript({ secretKey: "saved-test-key" });
+  const apiKeyInput = autoKeyPrefs.elements["git4zotero-ai-key"];
+  assert.equal(apiKeyInput.value, "saved-test-key");
+  assert.equal(typeof apiKeyInput.listeners.input, "function");
+  apiKeyInput.value = " replacement-test-key ";
+  apiKeyInput.listeners.input({ currentTarget: apiKeyInput });
+  assert.equal(autoKeyPrefs.prefs.get(PREFS.secretKey), "replacement-test-key");
+  assert(autoKeyPrefs.elements["git4zotero-ai-status"].textContent.includes("自动保存"));
+  apiKeyInput.value = "";
+  apiKeyInput.listeners.input({ currentTarget: apiKeyInput });
+  assert.equal(autoKeyPrefs.prefs.get(PREFS.secretKey), "");
+  assert(autoKeyPrefs.elements["git4zotero-ai-status"].textContent.includes("清除"));
+
+  const modelPrefs = await runPreferencesScript({ aiModel: "deepseek-chat" });
+  const modelWindow = modelPrefs.context.window.Git4ZoteroPreferences;
+  const modelSelect = modelPrefs.elements["git4zotero-ai-model"];
+  assert.equal(modelSelect.value, "deepseek-chat");
+  assert.deepEqual(Array.from(modelSelect.childNodes, (option) => option.value), ["", "deepseek-chat"]);
+  modelWindow.saveAISettings = () => ({
+    provider: "deepseek",
+    baseURL: "https://api.deepseek.com",
+    model: "deepseek-chat",
+    enabled: true
+  });
+  modelWindow.createAIProvider = async () => ({
+    listModels: async () => ["deepseek-reasoner", "deepseek-chat", "deepseek-chat"]
+  });
+  await modelWindow.loadAIModels();
+  assert.deepEqual(Array.from(modelSelect.childNodes, (option) => option.value), ["", "deepseek-reasoner", "deepseek-chat"]);
+  assert.equal(modelSelect.value, "deepseek-chat");
+  assert.equal(modelPrefs.prefs.get(PREFS.aiModel), "deepseek-chat");
+  modelSelect.value = "deepseek-reasoner";
+  modelSelect.listeners.change({ currentTarget: modelSelect });
+  assert.equal(modelPrefs.prefs.get(PREFS.aiModel), "deepseek-reasoner");
+  assert(modelPrefs.elements["git4zotero-ai-status"].textContent.includes("deepseek-reasoner"));
+  assert.equal(modelWindow.populateAIModelOptions(["model-standard", "model-flash"], ""), "model-flash");
+  modelWindow.invalidateAIModelOptions();
+  assert.deepEqual(Array.from(modelSelect.childNodes, (option) => option.value), [""]);
+  assert.equal(modelSelect.value, "");
+  assert(modelPrefs.elements["git4zotero-ai-status"].textContent.includes("重新获取"));
+
   const candidatePrefs = await runPreferencesScript();
   const candidateWindow = candidatePrefs.context.window.Git4ZoteroPreferences;
   let candidateSelectionShown = false;
@@ -5103,17 +5148,39 @@ const storedDeflateDocx = makeDocx({
 const fixedDeflateDocx = makeDocx({
   "word/document.xml": wordDocument(["fixed huffman block"])
 }, { deflateOptions: { strategy: zlibConstants.Z_FIXED } });
+const semanticOldDocx = makeDocx({
+  "word/document.xml": wordDocumentRaw(`
+    <w:p><w:pPr><w:pStyle w:val="Caption"/></w:pPr><w:fldSimple><w:r><w:instrText> REF Figure_1 </w:instrText></w:r></w:fldSimple><m:oMath><m:r><w:t>Figure 1: RCC n=10 [1]</w:t></m:r></m:oMath></w:p>
+  `)
+});
+const semanticNewDocx = makeDocx({
+  "word/document.xml": wordDocumentRaw(`
+    <w:p><w:pPr><w:pStyle w:val="Caption"/></w:pPr><w:fldSimple><w:r><w:instrText> REF Figure_2 </w:instrText></w:r></w:fldSimple><m:oMath><m:r><w:ins><w:t>Figure 2: RCC n=12 [2]</w:t></w:ins></m:r></m:oMath></w:p>
+  `)
+});
+const commentOldDocx = makeDocx({
+  "word/document.xml": wordDocument(["Stable body"]),
+  "word/comments.xml": wordDocument(["Old reviewer comment"])
+});
+const commentNewDocx = makeDocx({
+  "word/document.xml": wordDocument(["Stable body"]),
+  "word/comments.xml": wordDocument(["Updated reviewer comment"])
+});
 
 const reader = new DocxReader();
 const snapshot = await reader.readBytes(firstDocx);
 assert.deepEqual(snapshot.paragraphs, ["引言第一段", "方法第二段", "脚注内容"]);
 assert.equal(snapshot.paragraphCount, 3);
 assert(snapshot.wordCount > 0);
+const styleOnlySnapshot = await reader.readBytes(styleOnlyDocx);
+assert.equal(styleOnlySnapshot.partHashes["word/document.xml"], snapshot.partHashes["word/document.xml"]);
+assert.equal(styleOnlySnapshot.partHashes["word/footnotes.xml"], snapshot.partHashes["word/footnotes.xml"]);
 const revisedSnapshot = await reader.readBytes(revisedDocx);
 assert.deepEqual(revisedSnapshot.paragraphs, ["保留文本插入文本 制表 换行", "脚注内容", "尾注内容"]);
 assert(!revisedSnapshot.normalizedText.includes("删除文本"));
 assert(!revisedSnapshot.normalizedText.includes("移走文本"));
 assert(!revisedSnapshot.normalizedText.includes("批注"));
+assert(revisedSnapshot.paragraphDetails.some((paragraph) => paragraph.source === "comments" && paragraph.role === "annotation"));
 assert(revisedSnapshot.paragraphDetails.some((paragraph) => paragraph.source === "header"));
 const structuredSnapshot = await reader.readBytes(structuredNewDocx);
 assert(structuredSnapshot.paragraphDetails.some((paragraph) => paragraph.headingPath?.includes("引言")));
@@ -5135,6 +5202,10 @@ const platform = new TestPlatform({
   "style-only.docx": styleOnlyDocx,
   "structured-old.docx": structuredOldDocx,
   "structured-new.docx": structuredNewDocx,
+  "semantic-old.docx": semanticOldDocx,
+  "semantic-new.docx": semanticNewDocx,
+  "comment-old.docx": commentOldDocx,
+  "comment-new.docx": commentNewDocx,
   "legacy.doc": new Uint8Array([1, 2, 3])
 });
 const analyzer = new ContentAnalyzer({ platform, docxReader: new DocxReader(platform) });
@@ -5171,6 +5242,33 @@ assert(structuredAnalysis.changeSummary.changeGroups.some((group) => group.label
 assert(structuredAnalysis.changeSummary.changeGroups.some((group) => group.label === "脚注" && group.modifiedParagraphs === 1));
 assert(structuredAnalysis.changeSummary.changeGroups.some((group) => group.label === "尾注" && group.modifiedParagraphs === 1));
 assert(structuredAnalysis.changeSummary.locationSummary.includes("表格 1"));
+
+const semanticPrevious = await analyzer.analyze("semantic-old.docx", null);
+const semanticAnalysis = await analyzer.analyze("semantic-new.docx", {
+  fileHash: semanticPrevious.fileHash,
+  contentHash: semanticPrevious.contentHash,
+  contentSummary: semanticPrevious.contentSummary,
+  contentSnapshot: semanticPrevious.contentSnapshot
+});
+const semanticChange = semanticAnalysis.changeSummary.paragraphChanges.find((change) => change.type === "modified");
+assert(semanticChange.signals.includes("numbers"));
+assert(semanticChange.signals.includes("citations"));
+assert(semanticChange.signals.includes("caption"));
+assert(semanticChange.signals.includes("formula"));
+assert(semanticChange.signals.includes("cross-reference"));
+assert(semanticChange.signals.includes("figure-reference"));
+assert(semanticChange.signals.includes("tracked-revision"));
+
+const commentPrevious = await analyzer.analyze("comment-old.docx", null);
+const commentAnalysis = await analyzer.analyze("comment-new.docx", {
+  fileHash: commentPrevious.fileHash,
+  contentHash: commentPrevious.contentHash,
+  contentSummary: commentPrevious.contentSummary,
+  contentSnapshot: commentPrevious.contentSnapshot
+});
+const commentChange = commentAnalysis.changeSummary.paragraphChanges.find((change) => change.areaType === "comment");
+assert.equal(commentChange.type, "modified");
+assert(commentChange.signals.includes("comment"));
 
 const deletedAnalysis = await analyzer.analyze("deleted.docx", previousVersion);
 assert.equal(deletedAnalysis.changeSummary.deletedParagraphs, 1);
@@ -5243,7 +5341,8 @@ const storedChanges = Array.from({ length: 205 }, (_, index) => ({
   newIndex: index,
   oldText: `old ${index}`,
   newText: `new ${index}`,
-  locationLabel: `Paragraph ${index + 1}`
+  locationLabel: `Paragraph ${index + 1}`,
+  noiseLevel: index === 0 ? "formatting" : "substantive"
 }));
 const storedRef = await diffStore.writeVersionDiff("repo", "abcdef123456", {
   quality: "approximate",
@@ -5258,11 +5357,18 @@ assert.equal(storedIndex.groups[0].pages.length, 3);
 assert(storedIndex.groups[0].pages.every((page) => page.count <= 100));
 assert.equal((await diffStore.loadPage("repo", storedIndex, { groupID: "body", page: 3 })).changes.length, 5);
 assert.equal((await diffStore.search("repo", storedIndex, { query: "new 204", types: ["added"] })).total, 1);
+assert.equal((await diffStore.search("repo", storedIndex, { excludeNoise: ["formatting"] })).total, 204);
+assert.deepEqual((await diffStore.loadByIDs("repo", storedIndex, ["change-0", "change-204"])).map((change) => change.id), ["change-0", "change-204"]);
+assert.equal((await diffStore.inspect("repo", storedRef)).ok, true);
+assert(diffStore.clearReadCache() > 0);
 assert.throws(() => validateDiffPath("../outside.json"), /Invalid git4zotero diff path/);
 assert.throws(() => validateDiffPath("C:/outside.json"), /Invalid git4zotero diff path/);
 const damagedPagePath = diffStore.resolve("repo", storedIndex.groups[0].pages[0].path);
 diffMemoryPlatform.files.set(damagedPagePath, "{");
 diffStore.readCache.delete(damagedPagePath);
+const damagedInspection = await diffStore.inspect("repo", storedRef);
+assert.equal(damagedInspection.ok, false);
+assert.equal(damagedInspection.issues[0].path, storedIndex.groups[0].pages[0].path);
 await assert.rejects(
   diffStore.loadPage("repo", storedIndex, { groupID: "body", page: 1 }),
   /Could not read git4zotero diff file/
@@ -5444,6 +5550,8 @@ assert.equal(fakeReviewWindow.focused, 1);
 reviewManager.shutdown();
 assert.equal(fakeReviewWindow.closed, true);
 assert(docAnalysis.changeSummary.summary.includes(".doc 仅支持文件级跟踪"));
+
+await import("./test-ai.mjs");
 
 console.log("逻辑测试通过：附件识别、右键菜单、lastCheck、Git 工作树、只读面板、设置页 Git 测试和正文差异均已验证。");
 
@@ -5870,6 +5978,8 @@ async function runPreferencesScript({
   autoGitPath = "",
   missingInitially = false,
   prefValue = "",
+  secretKey = "",
+  aiModel = "",
   subprocessResult = null,
   subprocessError = null
 } = {}) {
@@ -5877,7 +5987,9 @@ async function runPreferencesScript({
   const timeouts = [];
   const prefs = new Map([
     [PREFS.gitPath, prefValue],
-    [PREFS.archiveExportDirectory, archiveExportDirectory]
+    [PREFS.archiveExportDirectory, archiveExportDirectory],
+    [PREFS.secretKey, secretKey],
+    [PREFS.aiModel, aiModel]
   ]);
   const subprocessCalls = [];
   const files = new Map();

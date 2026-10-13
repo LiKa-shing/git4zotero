@@ -26,11 +26,36 @@
   margin: 12px 0 6px;
 }
 
-.git4zotero-pref-section input[type="text"] {
+.git4zotero-pref-section input[type="text"],
+.git4zotero-pref-section input[type="url"],
+.git4zotero-pref-section input[type="password"],
+.git4zotero-pref-section select {
   box-sizing: border-box;
   font: inherit;
   min-height: 30px;
   width: 100%;
+}
+
+.git4zotero-ai-provider-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 12px 0;
+  padding: 0;
+  border: 0;
+}
+
+.git4zotero-ai-provider-options legend {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.git4zotero-ai-provider-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 400;
 }
 
 .git4zotero-pref-row {
