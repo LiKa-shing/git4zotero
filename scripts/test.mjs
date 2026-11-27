@@ -1571,6 +1571,7 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
       directories.add(target.replace(/\/[^/]+$/, ""));
       files.set(target, content);
     },
+    atomicWriteText: async (target, content) => platform.writeText(target, content),
     listDirectory: async (target) => {
       if (target === "C:/Profile/git4zotero") {
         return ["C:/Profile/git4zotero/library-1"];
@@ -1651,6 +1652,7 @@ assert.deepEqual(createEmptyRepositoryIndex().repositories, []);
   assert.equal(mismatch.skipped[0].reason.includes("元数据"), true);
 
   files.delete("C:/Profile/git4zotero/index.json");
+  files.delete("C:/Profile/git4zotero/index.json.bak");
   await metadataStore.write(repoPath, {
     ...createEmptyMetadata(),
     enabled: true,
@@ -2568,6 +2570,18 @@ assert(gitAvailablePaneText.includes("检查并创建首个版本"));
 assert(gitAvailablePaneText.includes("修改前：旧方法段"));
 assert(gitAvailablePaneText.includes("修改后：新方法段"));
 assert(gitAvailablePaneText.includes("新增：新增结论段"));
+
+const readOnlyAttachmentPaneText = await renderPaneText({
+  attachment: managedAttachment,
+  enabled: true,
+  git: { available: true, detail: "in-memory Git" },
+  historyReadOnly: true,
+  ownershipWarning: "legacy attachment ownership must be preserved",
+  versions: [older]
+});
+assert(readOnlyAttachmentPaneText.includes(UI_TEXT.attachmentHistoryReadOnly));
+assert(readOnlyAttachmentPaneText.includes("legacy attachment ownership must be preserved"));
+assert(readOnlyAttachmentPaneText.includes(older.note));
 
 const docPaneText = await renderPaneText({
   attachment: { ...managedAttachment, fileName: "legacy.doc", extension: ".doc" },
@@ -3558,7 +3572,11 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       getWorkingTreeStatus: async () => ({ clean: true, entries: [], summary: "工作树无未提交修改。" })
     },
     metadataStore: {
-      read: async () => ({ ...createEmptyMetadata(), enabled: true, versions: [] }),
+      read: async () => ({
+        ...createEmptyMetadata(), enabled: true, versions: [],
+        item: { libraryID: managedAttachment.libraryID, itemID: managedAttachment.itemID, itemKey: managedAttachment.itemKey },
+        attachment: { attachmentID: managedAttachment.attachmentID, attachmentKey: managedAttachment.attachmentKey, fileName: managedAttachment.fileName }
+      }),
       write: async (_repoPath, metadataToWrite) => writes.push(metadataToWrite)
     },
     pluginVersion: "0.2.2",
@@ -3634,6 +3652,12 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       exists: async (target) => files.has(target),
       stat: async (target) => ({ size: files.get(target).byteLength }),
       hashFile: async (target) => hashBytes(files.get(target)),
+      hashBytes,
+      readFileBytes: async (target) => files.get(target).slice(),
+      writeNewFile: async (target, bytes) => {
+        assert(!files.has(target), "restore must use a new output path");
+        files.set(target, bytes.slice());
+      },
       writeText: async (target, content) => {
         files.set(target, new TextEncoder().encode(content));
       },
@@ -3693,11 +3717,15 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(result.restoredVersion.id, older.id);
   assert.equal(result.safetyVersion.kind, "safety");
   assert.deepEqual(checkoutCalls[0], ["repo", older.commitHash, older.trackedRelativePath]);
-  assert.equal(new TextDecoder().decode(files.get("paper.docx")), "restored manuscript");
+  assert.equal(new TextDecoder().decode(files.get("paper.docx")), "current manuscript");
+  assert.equal(result.mode, "copy");
+  assert.equal(new TextDecoder().decode(files.get(result.restoredCopyPath)), "restored manuscript");
   assert(result.backupPath.includes("repo/.git4zotero/restore-backups"));
-  assert.deepEqual(copyCalls.at(-1)[1], "paper.docx");
+  assert(copyCalls.every(([, target]) => target !== "paper.docx"));
   assert.equal(writes.at(-1).lastRestored.commitHash, older.commitHash);
   assert.equal(writes.at(-1).lastRestored.backupPath, result.backupPath);
+  assert.equal(writes.at(-1).lastRestored.mode, "copy");
+  assert.equal(writes.at(-1).lastRestored.restoredCopyPath, result.restoredCopyPath);
   assert.equal(writes.at(-1).lastCheck.workingTree.clean, true);
 }
 
@@ -3716,6 +3744,9 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
       exists: async (target) => files.has(target),
       stat: async (target) => ({ size: files.get(target).byteLength }),
       hashFile: async (target) => hashBytes(files.get(target)),
+      hashBytes,
+      readFileBytes: async (target) => files.get(target).slice(),
+      writeNewFile: async () => { throw new Error("target locked"); },
       writeText: async (target, content) => {
         files.set(target, new TextEncoder().encode(content));
       },
@@ -3723,10 +3754,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
         files.delete(target);
       },
       copyFile: async (source, target) => {
-        if (target === "paper.docx" && source.includes("-restore-")) {
-          files.delete(target);
-          throw new Error("target locked");
-        }
+        assert.notEqual(target, "paper.docx");
         files.set(target, files.get(source));
       },
       join: (...parts) => parts.join("/"),
@@ -3755,7 +3783,7 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
 
   await assert.rejects(
     () => restoreService.restoreVersion({}, older),
-    /恢复失败，当前文件已保留备份/
+    /target locked/
   );
   assert.equal(new TextDecoder().decode(files.get("paper.docx")), "current manuscript");
   assert.equal(writes.length, 0);
@@ -3813,6 +3841,8 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
         return {
           attachment: managedAttachment,
           restoredVersion: version,
+          mode: "copy",
+          restoredCopyPath: "exports/restored-history.docx",
           safetyVersion: { shortHash: "safe1234" }
         };
       },
@@ -3888,6 +3918,9 @@ assert(findByClass(timelineHarness.body, "git4zotero-timeline-note").getAttribut
   assert.equal(restoreCall[2], "oldest");
   assert.equal(restoreCall[3], oldest.commitHash);
   assert.equal(restoreCall[4], oldest.trackedRelativePath);
+  const restoreAlert = harness.alerts.find(([, message]) => message.includes("exports/restored-history.docx"));
+  assert(restoreAlert, "the success message must identify the independent restored copy");
+  assert(restoreAlert[1].includes(UI_TEXT.restoreCopySuccess));
   const exportCall = calls.find((call) => call[0] === "export");
   assert.equal(exportCall[2], "history");
   assert.equal(exportCall[3], "text");
@@ -5407,6 +5440,12 @@ assert.equal(schemaFourMigration.versions[0].diffRef.path, "");
   ];
   const createReviewDocument = () => {
     const fakeDocument = new FakeDocument();
+    const createElement = fakeDocument.createElement.bind(fakeDocument);
+    fakeDocument.createElement = (...args) => {
+      const element = createElement(...args);
+      element.dataset = {};
+      return element;
+    };
     fakeDocument.querySelectorAll = () => [];
     for (const [id, tagName] of reviewElementIDs) {
       const element = fakeDocument.createElement(tagName);
@@ -5517,6 +5556,23 @@ assert.equal(schemaFourMigration.versions[0].diffRef.path, "");
   assert.deepEqual([...searchArguments[0].types], []);
   assert.deepEqual([...searchArguments[1].types], ["modified"]);
   assert.deepEqual(renderedPages, ["latest"]);
+
+  reviewContext.document = createReviewDocument();
+  const readOnlyReview = new ReviewWindow({
+    labels: { ...reviewLabels, historyReadOnly: "Read-only attachment history" },
+    version: { note: "Existing historical note" },
+    historyReadOnly: true,
+    loadIndex: async () => ({ quality: "exact", totalChanges: 0, groups: [] })
+  });
+  readOnlyReview.loadPage = async () => {};
+  await readOnlyReview.init();
+  assert(reviewContext.document.getElementById("review-version-meta").textContent.includes("Read-only attachment history"));
+  readOnlyReview.reviewStates.existing = { status: "confirmed", note: "Saved review note", bookmarked: true };
+  const readOnlyReviewTools = readOnlyReview.renderReviewTools({ id: "existing" });
+  assert.equal(readOnlyReviewTools.children[0].disabled, true);
+  assert.equal(readOnlyReviewTools.children[1].disabled, true);
+  assert.equal(readOnlyReviewTools.children[2].readOnly, true);
+  assert.equal(readOnlyReviewTools.children[2].value, "Saved review note");
 }
 
 let openedReviewWindows = 0;
@@ -5552,6 +5608,12 @@ assert.equal(fakeReviewWindow.closed, true);
 assert(docAnalysis.changeSummary.summary.includes(".doc 仅支持文件级跟踪"));
 
 await import("./test-ai.mjs");
+await import("./test-repository-concurrency.mjs");
+await import("./test-repository-maintenance.mjs");
+await import("./test-hash-safety.mjs");
+await import("./test-restore-safety.mjs");
+await import("./test-metadata-safety.mjs");
+await import("./test-attachment-isolation.mjs");
 
 console.log("逻辑测试通过：附件识别、右键菜单、lastCheck、Git 工作树、只读面板、设置页 Git 测试和正文差异均已验证。");
 
@@ -5838,13 +5900,17 @@ function makeMenuHarness({ serviceOverrides = {}, archiveServiceOverrides = {}, 
       currentFileHash: "current-hash",
       targetFileHash: older.fileHash,
       backupPath: "repo/.git4zotero/restore-backups/current-paper.docx",
+      restoredCopyPath: "repo/.git4zotero/restored-copies/history-paper.docx",
       checks: [{ id: "git", label: "Git", status: "ok", detail: "git version 2.44.0" }],
       ok: true,
       errorCount: 0,
       warningCount: 0,
       summary: UI_TEXT.restorePreflightOk
     }),
-    restoreVersion: async () => ({ attachment: managedAttachment, restoredVersion: older, backupPath: "backup.docx" }),
+    restoreVersion: async () => ({
+      attachment: managedAttachment, restoredVersion: older, backupPath: "backup.docx",
+      mode: "copy", restoredCopyPath: "restored-history.docx"
+    }),
     exportVersionSummary: async () => ({ path: "exports/history.md" }),
     getPanelState: async () => ({
       enabled: true,
@@ -6092,7 +6158,26 @@ async function runPreferencesScript({
       makeDirectory: async (target) => directories.add(target),
       readUTF8: async (target) => files.get(target) ?? "",
       remove: async (target) => files.delete(target),
-      writeUTF8: async (target, content) => {
+      stat: async (target) => {
+        if (directories.has(target)) return { type: "directory", size: 0 };
+        if (!files.has(target)) {
+          const error = new Error("memory file missing");
+          error.name = "NotFoundError";
+          throw error;
+        }
+        return { type: "regular", size: files.get(target).length };
+      },
+      move: async (source, target) => {
+        assert(files.has(source));
+        files.set(target, files.get(source));
+        files.delete(source);
+      },
+      writeUTF8: async (target, content, options = {}) => {
+        if (options.mode === "create" && files.has(target)) {
+          const error = new Error("destination exists");
+          error.name = "NoModificationAllowedError";
+          throw error;
+        }
         const parent = target.replace(/\\[^\\]+$/, "");
         directories.add(parent);
         files.set(target, content);

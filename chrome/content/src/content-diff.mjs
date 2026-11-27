@@ -3,6 +3,7 @@ import { DocxReader } from "./docx-reader.mjs";
 import { UI_TEXT } from "./constants.mjs";
 import { formatText } from "./localization.mjs";
 import { alignParagraphs, createTokenDiff } from "./scalable-diff.mjs";
+import { isSHA256Hex, isLegacySizeHash } from "./sha256.mjs";
 
 const MAX_DISPLAY_CHANGES = 3;
 const MAX_CHANGE_TEXT_LENGTH = 240;
@@ -41,10 +42,13 @@ export class ContentAnalyzer {
     const extension = getExtension(filePath);
     const fileBytes = await this.platform.readFileBytes(filePath);
     const fileHash = await this.platform.hashBytes(fileBytes);
+    if (!isSHA256Hex(fileHash)) {
+      throw new Error("File analysis requires a SHA-256 digest.");
+    }
     const previousFileHash = previousVersion?.fileHash ?? null;
-    const fileChanged = previousFileHash ? previousFileHash !== fileHash : true;
+    const fileChanged = !isSHA256Hex(previousFileHash) || previousFileHash.toLowerCase() !== fileHash.toLowerCase();
     const previousIdentity = previousVersion?.id || previousVersion?.commitHash || previousVersion?.contentHash || "first";
-    const cacheKey = `${options.repoPath || filePath}:${fileHash}:${previousIdentity}`;
+    const cacheKey = `${options.repoPath || filePath}:${JSON.stringify([fileHash, previousIdentity, previousFileHash, previousVersion?.contentHash])}`;
     const cached = this.getCached(cacheKey);
     if (cached) {
       return { ...cached, fileBytes };
@@ -57,6 +61,9 @@ export class ContentAnalyzer {
         checkAnalysisCancelled(options.signal);
         await this.yieldParagraphChunks(snapshot.comparisonParagraphs?.length ?? snapshot.paragraphCount, options);
         const contentHash = await this.platform.hashString(snapshot.comparisonNormalizedText ?? snapshot.normalizedText);
+        if (!isSHA256Hex(contentHash)) {
+          throw new Error("Content analysis requires a SHA-256 digest.");
+        }
         const contentSummary = createContentSummary(snapshot, false);
         const changeSummary = summarizeDocxChange({
           current: snapshot,
@@ -213,9 +220,16 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
     paragraphCount: previousSummary?.paragraphCount ?? 0,
     wordCount: previousSummary?.wordCount ?? 0
   };
-  const contentChanged = previousVersion.contentHash !== currentContentHash;
+  // Historical size-* values are retained as evidence, but are not digests.
+  // Two such values must never take the equal-content shortcut.
+  const contentChanged = !isSHA256Hex(previousVersion.contentHash)
+    || !isSHA256Hex(currentContentHash)
+    || previousVersion.contentHash.toLowerCase() !== currentContentHash.toLowerCase();
+  const legacyHashWarning = isLegacySizeHash(previousVersion.fileHash)
+    || isLegacySizeHash(previousVersion.contentHash)
+    || isLegacySizeHash(currentContentHash);
 
-  if (!fileChanged) {
+  if (!fileChanged && !legacyHashWarning) {
     return {
       changeType: "no-change",
       summary: formatText("noChanges"),
@@ -240,7 +254,10 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
   if (!contentChanged) {
     return {
       changeType: "file-only",
-      summary: formatText("fileOnlyFormattingSummary"),
+      summary: [
+        ...(legacyHashWarning ? [UI_TEXT.legacyHashComparisonWarning] : []),
+        formatText("fileOnlyFormattingSummary")
+      ].join(" "),
       addedParagraphs: 0,
       deletedParagraphs: 0,
       modifiedParagraphs: 0,
@@ -274,7 +291,7 @@ export function summarizeDocxChange({ current, currentContentHash, previousVersi
   return {
     changeType: "content",
     summary: [
-      formatText("docxContentChanged"),
+      legacyHashWarning ? UI_TEXT.legacyHashComparisonWarning : formatText("docxContentChanged"),
       formatText("addedParagraphs", { count: paragraphDiff.addedParagraphs }),
       formatText("deletedParagraphs", { count: paragraphDiff.deletedParagraphs }),
       formatText("modifiedParagraphs", { count: paragraphDiff.modifiedParagraphs }),
@@ -304,6 +321,16 @@ export function summarizeFileLevelChange({ extension, previousVersion, fileChang
       summary: docxReadFailed
         ? formatText("firstDocxUnreadableSummary")
         : formatText("firstFileLevelSummary", { extension: extension || formatText("thisFormat") }),
+      fileChanged: true,
+      contentChanged: null,
+      readError: readError || null
+    };
+  }
+
+  if (isLegacySizeHash(previousVersion.fileHash)) {
+    return {
+      changeType: "file-level",
+      summary: UI_TEXT.legacyHashComparisonWarning,
       fileChanged: true,
       contentChanged: null,
       readError: readError || null

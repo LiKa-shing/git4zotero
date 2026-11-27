@@ -457,11 +457,17 @@ export class PaperVersionMenu {
     if (items.length !== 1) {
       return false;
     }
+    if (typeof this.service.attachmentFinder?.findManageableAttachments === "function") {
+      return (await this.service.attachmentFinder.findManageableAttachments(items[0])).length > 0;
+    }
     return !!(await this.findManageableAttachment(items[0]));
   }
 
   async findManageableAttachment(item) {
     try {
+      if (typeof this.service.getRepositoryContext === "function") {
+        return (await this.service.getRepositoryContext(item))?.attachment ?? null;
+      }
       if (typeof this.service.attachmentFinder?.findManageableAttachment === "function") {
         return await this.service.attachmentFinder.findManageableAttachment(item);
       }
@@ -510,6 +516,18 @@ export class PaperVersionMenu {
       };
     }
     const hasRepository = await this.repositoryExists(state.repoPath);
+
+    if (state.historyReadOnly) {
+      return {
+        status: UI_TEXT.attachmentHistoryReadOnly,
+        detail: state.ownershipWarning,
+        actions: this.buildActionStates({
+          enabled: state.enabled, hasRepository, historyReadOnly: true,
+          gitAvailable: !!state.git?.available, hasHistory: state.versions.length > 0,
+          reason: state.ownershipWarning
+        })
+      };
+    }
 
     if (!state.enabled) {
       return {
@@ -568,6 +586,7 @@ export class PaperVersionMenu {
     gitUnavailable = false,
     hasRepository = false,
     hasHistory = false,
+    historyReadOnly = false,
     reason = ""
   } = {}) {
     return this.actionDefinitions().map((definition) => {
@@ -578,6 +597,10 @@ export class PaperVersionMenu {
       if (!selectable || !attachment) {
         disabled = true;
         disabledReason = reason;
+      }
+      else if (historyReadOnly && ["enable", "disable", "check", "create", "restore"].includes(definition.action)) {
+        disabled = true;
+        disabledReason = reason || UI_TEXT.attachmentHistoryReadOnly;
       }
       else if (definition.action === "enable") {
         disabled = enabled;
@@ -740,9 +763,12 @@ export class PaperVersionMenu {
     const fileBackupStatus = result?.backupPath
       ? `\n${UI_TEXT.restoreSafetyBackup}${UI_TEXT.colon}${result.backupPath}`
       : "";
+    const restoreStatus = result?.mode === "copy"
+      ? `${UI_TEXT.restoreCopySuccess}\n${UI_TEXT.restoreCopyPath}${UI_TEXT.colon}${result.restoredCopyPath}`
+      : UI_TEXT.restoreSuccess;
     this.platform.alert(
       UI_TEXT.restoreConfirmTitle,
-      `${UI_TEXT.restoreSuccess}\n${UI_TEXT.restoreTargetVersion}${UI_TEXT.colon}${targetVersion.shortHash}\n${UI_TEXT.restoreFile}${UI_TEXT.colon}${result?.attachment?.fileName ?? targetVersion.fileName}\n${safetyStatus}${fileBackupStatus}`
+      `${restoreStatus}\n${UI_TEXT.restoreTargetVersion}${UI_TEXT.colon}${targetVersion.shortHash}\n${UI_TEXT.restoreFile}${UI_TEXT.colon}${result?.attachment?.fileName ?? targetVersion.fileName}\n${safetyStatus}${fileBackupStatus}`
     );
     this.refresh();
   }
@@ -853,6 +879,15 @@ export class PaperVersionMenu {
   }
 
   async getArchiveTarget(item) {
+    if (typeof this.service.getRepositoryContext === "function") {
+      const context = await this.service.getRepositoryContext(item);
+      if (!context) throw new Error(UI_TEXT.noDocument);
+      return {
+        attachment: context.attachment,
+        repoRelativePath: buildRepoRelativePath(context.attachment.libraryID, context.attachment.itemKey),
+        repoPath: context.repoPath
+      };
+    }
     const attachment = await this.findManageableAttachment(item);
     if (!attachment) {
       throw new Error(UI_TEXT.noDocument);
@@ -1174,6 +1209,7 @@ export class PaperVersionMenu {
       `${UI_TEXT.gitHashLabel}${UI_TEXT.colon}${version.commitHash || UI_TEXT.unknown}`,
       `${UI_TEXT.currentFile}${UI_TEXT.colon}${preflight.attachment?.fileName || UI_TEXT.unknown}`,
       `${UI_TEXT.restoreTargetHash}${UI_TEXT.colon}${preflight.targetFileHash || UI_TEXT.restoreTargetHashUnknown}`,
+      ...(preflight.restoredCopyPath ? [`${UI_TEXT.restoreCopyPath}${UI_TEXT.colon}${preflight.restoredCopyPath}`] : []),
       `${UI_TEXT.backupPathLabel}${UI_TEXT.colon}${preflight.backupPath || UI_TEXT.unknown}`,
       ""
     ];

@@ -70,7 +70,7 @@
                   preference="extensions.git4zotero.autoSafetyVersion" />
       <html:span data-git4zotero-i18n="autoSafetyLabel">恢复旧版本前自动创建安全版本</html:span>
     </html:label>
-    <html:p class="git4zotero-pref-help" data-git4zotero-i18n="autoSafetyHelp">建议保持开启，恢复前会先保存当前文件，降低误覆盖风险。</html:p>
+    <html:p class="git4zotero-pref-help" data-git4zotero-i18n="autoSafetyHelp">生成历史副本前，将读取到的当前附件内容另存为安全版本。历史副本操作会保留原附件。</html:p>
   </groupbox>
 
   <groupbox class="git4zotero-pref-section">
@@ -78,7 +78,7 @@
     <html:dl class="git4zotero-pref-facts">
       <html:div>
         <html:dt data-git4zotero-i18n="pluginVersion">插件版本</html:dt>
-        <html:dd>0.7.0</html:dd>
+        <html:dd>0.7.1</html:dd>
       </html:div>
       <html:div>
         <html:dt data-git4zotero-i18n="supportedFormats">支持格式</html:dt>
@@ -249,7 +249,7 @@
                     onclick="Git4ZoteroPreferences.openProjectLink('qa', event)"
                     data-git4zotero-i18n="aboutOpenQA">Q&amp;A</html:button>
     </html:div>
-    <html:p class="git4zotero-about-meta" data-git4zotero-i18n="aboutMeta">git4zotero 版本 0.7.0 · LiKa-shing/git4zotero · MIT · Zotero 8.0-10.0.* · .docx/.doc</html:p>
+    <html:p class="git4zotero-about-meta" data-git4zotero-i18n="aboutMeta">git4zotero 版本 0.7.1 · LiKa-shing/git4zotero · MIT · Zotero 8.0-10.0.* · .docx/.doc</html:p>
     <html:p id="git4zotero-about-status" class="git4zotero-pref-status" role="status" hidden="hidden"></html:p>
   </groupbox>
 </vbox>

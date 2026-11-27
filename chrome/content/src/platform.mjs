@@ -1,6 +1,7 @@
 import { PLUGIN_ID, PREFS, UI_TEXT } from "./constants.mjs";
 import { buildRepoRelativePath, getExtension } from "./attachments.mjs";
 import { formatText } from "./localization.mjs";
+import { sha256Hex } from "./sha256.mjs";
 
 const GIT_COMMAND = "git";
 const WINDOWS_GIT_CANDIDATES = [
@@ -976,26 +977,59 @@ export class ZoteroPlatform {
   }
 
   async atomicWriteText(path, content) {
-    await this.makeDirectory(this.dirname(path));
-    const temporaryPath = `${path}.tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const io = this.requireIOUtils();
+    if (typeof io.writeUTF8 !== "function" || typeof io.readUTF8 !== "function"
+      || typeof io.move !== "function" || typeof io.stat !== "function") {
+      throw new Error(UI_TEXT.atomicWriteUnavailable);
+    }
+    await this.makeDirectory(this.dirname(path));
     try {
-      await io.writeUTF8(temporaryPath, content);
-      if (typeof io.move === "function") {
-        await io.move(temporaryPath, path, { noOverwrite: false });
-      }
-      else {
-        if (await this.exists(path)) {
-          await io.remove(path);
-        }
-        await io.copy(temporaryPath, path);
-        await io.remove(temporaryPath);
+      const target = await io.stat(path);
+      if (target?.type === "directory" || target?.isDir === true || target?.isDirectory === true) {
+        throw new Error(formatText("atomicWriteTargetNotFile", { path }));
       }
     }
     catch (error) {
+      if (error?.name !== "NotFoundError") {
+        throw error;
+      }
+    }
+
+    let temporaryPath = "";
+    // Same-directory rename uses the native replacement primitive also used by
+    // IOUtils.writeUTF8({ tmpPath }). Exclusively creating our temporary file
+    // additionally preserves any pre-existing file whose name happens to match.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const candidate = `${path}.tmp-${Date.now()}-${attempt}-${Math.random().toString(16).slice(2)}`;
       try {
-        if (await this.exists(temporaryPath)) {
-          await io.remove(temporaryPath);
+        await io.writeUTF8(candidate, content, { mode: "create", flush: true });
+        temporaryPath = candidate;
+        break;
+      }
+      catch (error) {
+        if (error?.name !== "NoModificationAllowedError") {
+          // A failed write may leave a partial temporary file. Do not remove a
+          // path unless this call has successfully created it and owns it.
+          throw error;
+        }
+      }
+    }
+    if (!temporaryPath) {
+      throw new Error(UI_TEXT.atomicWriteTempCollision);
+    }
+
+    try {
+      if (await io.readUTF8(temporaryPath) !== content) {
+        throw new Error(formatText("atomicWriteVerificationFailed", { path }));
+      }
+      // Never delete the destination or fall back to copying over it: a failed
+      // replacement must leave the previous complete file available.
+      await io.move(temporaryPath, path, { noOverwrite: false });
+    }
+    catch (error) {
+      try {
+        if (typeof io.remove === "function") {
+          await io.remove(temporaryPath, { ignoreAbsent: true });
         }
       }
       catch {
@@ -1008,6 +1042,20 @@ export class ZoteroPlatform {
   async writeBytes(path, bytes) {
     await this.makeDirectory(this.dirname(path));
     await this.requireIOUtils().write(path, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+  }
+
+  async writeNewFile(path, bytes) {
+    // Use native exclusive creation, not exists()+copy/move. This API is only
+    // for new files; it must never replace the live manuscript or a prior copy.
+    await this.makeDirectory(this.dirname(path));
+    const io = this.requireIOUtils();
+    if (typeof io.write !== "function") {
+      throw new Error(UI_TEXT.restoreCopyUnavailable);
+    }
+    await io.write(path, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), {
+      mode: "create",
+      flush: true
+    });
   }
 
   async readFileBytes(path) {
@@ -1108,13 +1156,7 @@ export class ZoteroPlatform {
   }
 
   async hashBytes(bytes) {
-    if (globalThis.crypto?.subtle) {
-      const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-      return [...new Uint8Array(digest)]
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
-    }
-    return `size-${bytes.byteLength}`;
+    return sha256Hex(bytes);
   }
 
   requireIOUtils() {

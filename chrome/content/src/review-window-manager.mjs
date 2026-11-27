@@ -48,15 +48,21 @@ export class ReviewWindowManager {
   }
 
   createPayload(version, key, item = null) {
-    const context = { repoPath: version.repoPath };
+    const historyReadOnly = version.historyReadOnly === true;
+    const context = { repoPath: version.repoPath, historyReadOnly };
     let activeVersion = version;
+    const assertWritable = () => {
+      if (historyReadOnly) throw new Error(UI_TEXT.attachmentHistoryReadOnly);
+    };
     const scopeKey = () => String(activeVersion?.commitHash || activeVersion?.id || activeVersion?.diffRef?.path || key);
     return {
       key,
       version,
-      aiAvailable: !!this.aiReviewService?.isAvailable?.() && this.platform.getPref(PREFS.aiEnabled, false) === true,
+      historyReadOnly,
+      aiAvailable: !historyReadOnly && !!this.aiReviewService?.isAvailable?.() && this.platform.getPref(PREFS.aiEnabled, false) === true,
       labels: {
         title: UI_TEXT.reviewWindowTitle,
+        historyReadOnly: UI_TEXT.attachmentHistoryReadOnly,
         sections: UI_TEXT.reviewSections,
         search: UI_TEXT.reviewSearch,
         filterLabel: UI_TEXT.reviewFilterLabel,
@@ -130,9 +136,13 @@ export class ReviewWindowManager {
       search: (options) => this.service.searchVersionDiff(context, activeVersion, options),
       tokenDiff: (oldText, newText) => diffParagraphTokens(oldText, newText),
       loadReviewStates: (changeIDs) => this.reviewStateStore.load(version.repoPath, scopeKey(), changeIDs),
-      saveReviewState: (changeID, patch) => this.reviewStateStore.update(version.repoPath, scopeKey(), changeID, patch),
-      loadComparisonCandidates: async () => item ? this.service.getComparisonCandidates(item) : { candidates: [] },
+      saveReviewState: (changeID, patch) => {
+        assertWritable();
+        return this.reviewStateStore.update(version.repoPath, scopeKey(), changeID, patch);
+      },
+      loadComparisonCandidates: async () => item && !historyReadOnly ? this.service.getComparisonCandidates(item) : { candidates: [] },
       compareVersions: async (baseID, targetID) => {
+        assertWritable();
         if (!item) {
           throw new Error(UI_TEXT.compareVersionUnavailable);
         }
@@ -142,16 +152,15 @@ export class ReviewWindowManager {
           index: await this.service.getVersionDiffIndex(context, activeVersion, { rebuild: false })
         };
       },
-      previewAI: (changeIDs) => this.aiReviewService.preview(context, activeVersion, {
-        changeIDs,
-        language: UI_TEXT.locale
-      }),
+      previewAI: (changeIDs) => {
+        assertWritable();
+        return this.aiReviewService.preview(context, activeVersion, { changeIDs, language: UI_TEXT.locale });
+      },
       createAbortController: () => this.aiReviewService.createAbortController(),
-      generateAI: (changeIDs, signal) => this.aiReviewService.generateSummary(context, activeVersion, {
-        changeIDs,
-        language: UI_TEXT.locale,
-        signal
-      }),
+      generateAI: (changeIDs, signal) => {
+        assertWritable();
+        return this.aiReviewService.generateSummary(context, activeVersion, { changeIDs, language: UI_TEXT.locale, signal });
+      },
       copyAIReview: (record) => {
         const content = this.aiReviewService.formatMarkdown(record, UI_TEXT);
         this.platform.copyTextToClipboard(content);
@@ -169,7 +178,10 @@ export class ReviewWindowManager {
         return path ? { path, content } : null;
       },
       copyText: (content) => this.platform.copyTextToClipboard(String(content || "")),
-      clearAI: () => this.aiReviewService.clearCache(context, activeVersion),
+      clearAI: () => {
+        assertWritable();
+        return this.aiReviewService.clearCache(context, activeVersion);
+      },
       copyMarkdown: async (filters) => {
         const content = await this.service.buildCompleteVersionMarkdown(context, activeVersion, filters);
         this.platform.copyTextToClipboard(content);

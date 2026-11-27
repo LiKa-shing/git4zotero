@@ -6,7 +6,37 @@
 
 ### 中文
 
+- 修复同一条目下多份 Word 附件混用历史的问题：每个条目明确绑定一份附件，父条目优先使用已绑定文件，其他附件不能通过创建版本或重新启用接入该历史。首次启用遇到多份文件时需选择具体附件。
+- 删除附件前重新核对完整历史归属及附件是否仍存在，避免删除一份附件时连带清除其他历史。旧单附件历史继续使用原仓库；混合或归属不明的旧历史保留查看和导出，导入迁移也保留保护状态，不自动拆分、重新绑定或删除。
+- 加强版本记录和仓库索引的保存保护：写入经校验的临时文件后安全替换，并保留上一份有效记录。保存失败不再通过先删除原文件进行降级。
+- 记录损坏或仅剩备份时停止操作并显示备份状态与路径，不再将损坏索引视为空历史，也不会自动回退到可能过时的记录；索引重建保留读取失败仓库的原有条目。
+- 将历史恢复改为“恢复为副本”：生成经过 SHA-256 校验的独立历史文件，并显示完整路径。恢复全程不覆盖、删除、改名或回滚当前论文附件，避免 Word/WPS 在备份后继续保存的内容丢失。
+- 备份、暂存文件和历史副本使用排他创建，已有文件不会被覆盖；预检只检查副本目录，支持当前附件目录只读的情况。副本生成后若记录保存失败，错误提示仍提供副本路径。
+
 ### English
+
+- Fixed history mixing between Word attachments on the same item. Each item now binds to one attachment, parent-item actions prefer that file, and another attachment cannot join the history through version creation or re-enabling. Initial setup with multiple files requires selecting a specific attachment.
+- Cleanup rechecks ownership across the full history and verifies that the owning attachment no longer exists. Existing single-attachment history keeps its repository; mixed or unidentifiable legacy history remains available for viewing and export, retains protection through migration, and is not automatically split, rebound, or deleted.
+- Protected version records and the repository index with verified temporary writes, safe replacement, and a backup of the previous valid record. Failed saves no longer fall back to deleting the original file first.
+- Unreadable records or backup-only states now stop the operation and report the backup status and path. A damaged index is no longer treated as empty history, older records are not restored silently, and index rebuilding preserves entries for repositories it cannot read.
+- History restoration now uses “Restore as Copy”: it creates a separate historical file, verifies its SHA-256 digest, and displays its full path. Restoration never overwrites, deletes, renames, or rolls back the current manuscript attachment, preserving Word/WPS saves made after the backup.
+- Backups, staging files, and restored copies use exclusive creation to preserve existing files. Preflight checks the copy directory and supports read-only attachment directories. If recording fails after a copy is generated, the error still provides its path.
+
+## 0.7.1
+
+### 中文
+
+- 同一论文的创建版本、检查修改、恢复及历史维护操作现在按顺序执行，避免同时操作造成保存文件与版本说明不一致或历史记录丢失；恢复前的安全版本与恢复过程保持连续执行。
+- 历史导入、导出和清理会等待同一论文正在进行的操作完成，不同论文仍可独立处理。
+- 修复部分运行环境中等长论文修改被漏检的问题。文件、正文和解析缓存现在始终使用 SHA-256 校验，即使环境未提供 Web Crypto，也能识别字节数不变的修改。
+- 恢复时可识别等长的文件损坏，并在已保存可靠校验值时核对目标历史文件；校验失败会阻止替换或执行一次回滚。旧的大小校验值保留为未验证的历史信息，不再用于确认内容相同。
+
+### English
+
+- Version creation, change checks, restoration, and history maintenance for the same manuscript now run in sequence, preventing concurrent actions from mixing saved files and version details or losing history records. Safety versions remain part of the uninterrupted restore operation.
+- History import, export, and cleanup wait for active operations on the same manuscript, while different manuscripts can still be processed independently.
+- Fixed missed manuscript changes that preserve file length in some runtime environments. Files, document content, and parsing caches now consistently use SHA-256, including when Web Crypto is unavailable.
+- Restore now detects same-length file corruption and checks the historical source against a reliable saved digest when available. Validation failures block replacement or trigger a single rollback. Legacy size-only checksums remain unverified historical data and are no longer used to confirm identical content.
 
 ## 0.7.0
 
@@ -66,10 +96,14 @@
 ### 中文
 
 - 新增 Zotero 10 正式版支持，将插件兼容范围扩展为 Zotero `8.0` 到 `10.0.*`。
+- 按 Zotero 10 开发者兼容指南审查运行时 API；右键菜单继续使用官方 `items` 多选上下文，不依赖已移除的集合单选和 CookieSandbox，也不使用兼容性有变的旧搜索、直接数据库或本地 HTTP 接口。
+- 更新构建、XPI 检查、项目文档和 About 元信息，并增加 Zotero 10 菜单上下文及移除 API 的自动化防回归验证。
 
 ### English
 
 - Added support for the Zotero 10 stable release and extended the compatibility range from Zotero `8.0` through `10.0.*`.
+- Audited runtime APIs against the Zotero 10 developer compatibility guide. The context menu continues to use the official multi-item `items` context, avoids removed singular collection and CookieSandbox APIs, and does not depend on compatibility-sensitive legacy search, direct database, or local HTTP interfaces.
+- Updated build validation, XPI inspection, project documentation, and About metadata, with automated regression coverage for Zotero 10 menu contexts and removed APIs.
 
 ## 0.5.1
 

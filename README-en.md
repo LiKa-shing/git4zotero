@@ -7,6 +7,7 @@
 <p align="center">Local Git-based version management for Zotero Word manuscript attachments.</p>
 
 <p align="center">
+  <a href="https://zotero-chinese.com/plugins/"><img src="https://zotero-chinese.com/badges/listed.svg" alt="Zotero 中文社区 · 已收录"></a>
   <a href="https://www.zotero.org/"><img src="https://img.shields.io/badge/Zotero-8%20%7C%209%20%7C%2010-CC2936?logo=zotero&logoColor=white" alt="Zotero"></a>
   <a href="https://github.com/LiKa-shing/git4zotero/releases"><img src="https://img.shields.io/github/package-json/v/LiKa-shing/git4zotero" alt="version"></a>
   <a href="https://github.com/LiKa-shing/git4zotero/releases/latest"><img src="https://img.shields.io/github/downloads/LiKa-shing/git4zotero/latest/total" alt="downloads"></a>
@@ -29,10 +30,10 @@
 ## Features
 
 - **Local Git version history**: each Zotero item with version management enabled gets its own local Git repository. No cloud service is required.
-- **Zotero-centered workflow**: use the `Paper Versions` context menu in the item list to enable tracking, check changes, create versions, restore versions, and disable tracking.
+- **Zotero-centered workflow**: use the `Paper Versions` context menu in the item list to enable tracking, check changes, create versions, restore as a copy, and disable tracking.
 - **Content-level `.docx` diff for large papers**: reads body text, tables, footnotes, and endnotes; reports added, removed, modified, and moved paragraphs without allocating a document-wide comparison matrix for large rewrites.
 - **File-level `.doc` tracking**: supports version creation and restore for binary Word files.
-- **Explainable restore safety check**: before restoring an old version, the plugin shows the target version, Git hash, current file hash, target file hash, backup path, write status, and Git working tree status.
+- **Safe restoration as a copy**: save a historical version as a separate file while preserving the current attachment and edits saved by Word/WPS during the operation. Preflight shows version hashes, copy and backup paths, output directory write status, and Git working tree status.
 - **Item-level history backup and migration**: export or import version history from the selected item's `Paper Versions` context menu. Import never overwrites existing history.
 - **Diagnostics and health check**: copy redacted diagnostics, run a health check, and copy an issue template from the settings pane.
 - **Paper Versions pane and full comparison window**: the item pane shows compact summaries with incremental loading; the separate review window adds section navigation, search, type filters, pagination, token highlighting, and complete Markdown copy/export.
@@ -83,7 +84,7 @@ In the `Git` / `Paper Version Management` settings pane, you can configure:
 - `Git executable path`: leave it blank to let the plugin try `git` from system PATH.
 - `Test Git`: test whether the current Git path is available and save a working path.
 - `Default version note`: used when you create a version without entering a note.
-- `Create a safety version before restoring an old version`: recommended to keep enabled.
+- `Create a safety version before restoring an old version`: save the current attachment content read at that time as a safety version before creating the historical copy. Later editor saves remain in the original attachment.
 - `First-use guide`: manually review Git detection, data directory, context-menu workflow, and `.docx` / `.doc` capability differences.
 - `Diagnostics and health check`: copy diagnostics, run health checks, open the data directory, and copy an issue template.
 - `Version history backup and migration`: configure only the default folder for item-level backup ZIP exports. Run import/export from the selected item's `Paper Versions` context menu.
@@ -99,7 +100,7 @@ In the `Git` / `Paper Version Management` settings pane, you can configure:
 6. Edit the manuscript in Word, WPS, or LibreOffice, then save the file in the word processor.
 7. Return to Zotero, right-click the same item or attachment, and choose `Check Changes`.
 8. When you want to save the current changes, choose `Create Version...`.
-9. To roll back, choose `Restore Version...`, select the target version, review the restore safety check, and then continue.
+9. To review or use an earlier draft, choose `Restore as Copy...`, select the target version, and confirm the safety check. Open the file at the copy path shown in the success message. The current attachment is not replaced.
 
 The `Paper Versions` menu and right-side pane contain:
 
@@ -108,7 +109,7 @@ The `Paper Versions` menu and right-side pane contain:
 | `Enable Version Management` | Enable version tracking for the current item. |
 | `Check Changes` | Compare the current manuscript file with the latest saved version. |
 | `Create Version...` | Save the current manuscript file as a new version. The confirmation shows file name, tracking mode, change summary, file hash, and working tree status. |
-| `Restore Version...` | Select a historical version and restore it to the current attachment. The restore check shows target version, current/target hashes, backup path, and safety results. |
+| `Restore as Copy...` | Save a historical version as a separate copy while preserving the current attachment. Preflight shows the target version, current/target hashes, copy and backup paths, and safety results. |
 | `Export This Item Version History...` | Export git4zotero's local version history for the current item as a ZIP. Original Zotero attachment files are not included. |
 | `Import Version History to This Item...` | Import one source history from a backup ZIP into the current item. If the current item already has history, import is skipped without overwriting. |
 | `Configure Git Path...` | Quickly configure Git when it is unavailable. |
@@ -119,6 +120,10 @@ The full comparison window can also compare arbitrary versions, record per-chang
 
 The plugin supports single selection only. Version actions are unavailable when multiple Zotero items are selected.
 
+Each item's version repository is bound to one Word attachment. If an item contains several `.docx` / `.doc` attachments, actions on the parent item use the bound attachment. Before the first binding, select the intended manuscript attachment before enabling version management. Other attachments cannot join that history, and disabling and re-enabling tracking does not change its binding. Use a separate item to track another manuscript independently.
+
+Existing histories with a single attachment continue to use their original repository. Legacy histories containing several attachments, or whose ownership cannot be established, remain available for viewing and export. They are not automatically split, rebound, or extended with new versions. If a protection message appears, export the history and preserve the original data for investigation.
+
 ## Format Support
 
 | Format | Support level | Description |
@@ -126,19 +131,25 @@ The plugin supports single selection only. Version actions are unavailable when 
 | `.docx` | Content-level diff | Analyzes body text, footnotes, and endnotes, and reports paragraph-level changes and word-count changes. |
 | `.doc` | File-level tracking | Detects file changes and supports version creation and restore, but does not show paragraph-level differences. |
 
-Use `.docx` when you need more accurate change summaries. Before restoring an old version, save the current file and close the word processor when possible, so external programs do not overwrite the restored file.
+Use `.docx` when you need more accurate change summaries. Word, WPS, and LibreOffice can continue saving the current attachment while the plugin creates a separate historical copy.
 
 ## Data Safety and Restore
 
-When restoring a version, the plugin runs a preflight check before it backs up and replaces the current file:
+`Restore as Copy...` runs a safety preflight before saving snapshots of the current content and creating a separate historical copy:
 
-- Checks whether the current manuscript file exists and is readable, and whether its parent directory is writable.
-- Shows the current file hash, target version file hash, full Git hash, and the backup path that will be used before restore.
+- Checks whether the current manuscript file exists and is readable, and whether the copy output directory is writable. The original attachment and its parent directory may be read-only.
+- Shows the current file hash, target version file hash, full Git hash, copy path, and pre-restore backup path.
 - Reads Git repository and working tree status. Blocking problems cancel restore.
-- If only warnings are detected, the plugin tells you to save and close Word, WPS, or LibreOffice first to avoid file locking or autosave overwrites.
-- During restore, the plugin reuses the backup path generated in preflight and checks the current file hash again before writing, so changes made after confirmation are not silently overwritten.
+- Creates a new file under `.git4zotero/restored-copies` in the current version repository without overwriting existing copies, then checks that it matches the historical content. The success message shows the full path.
+- Never writes to, deletes, or renames the original attachment, including on failure. No backup is written back to it, so new content saved by Word/WPS during the operation remains in the original attachment.
 
-Automatically created safety versions and pre-restore backups are stored in the local plugin data directory. Do not manually delete or rewrite Git files, `index.json`, or `.git4zotero/versions.json` inside that directory.
+Automatically created safety versions and pre-restore backups are stored in the local plugin data directory. Each reflects the content read for that snapshot and does not represent later editor saves. Do not manually delete or rewrite Git files, `index.json`, or `.git4zotero/versions.json` inside that directory.
+
+Open the historical copy at the path shown in the success message and review it first. To continue writing from that draft, handle any unsaved edits in your editor, then use Save As or replace the original attachment yourself. The plugin does not automatically make the copy the current attachment.
+
+Before saving version records or the repository index, the plugin validates both the new data and the existing record. It writes to an exclusively created temporary file in the same directory, flushes and reads it back, then replaces the primary file. `versions.json.bak` and `index.json.bak` retain the previous valid record; a backup is also created on the first save. If safe writing is unavailable, the operation stops without deleting the primary file to attempt a copy.
+
+If a primary record is damaged, or is missing while its backup remains, the plugin stops the affected operation and reports the file paths. It does not automatically restore an older record or treat a damaged index as empty. A valid backup does not prove that it matches the latest Git commit, and there is currently no automatic recovery action. Preserve the files and copy diagnostics when reporting the problem; do not delete or replace the records yourself.
 
 ## Import and Export
 
@@ -150,6 +161,7 @@ Starting with `0.4.0`, version-history import/export works on one Zotero item at
 - The archive contains only git4zotero's local version history and `export-manifest.json`. It does not contain original Zotero attachment files.
 - When importing a backup from another device or another item, you can choose one source history from the backup and map it to the current item.
 - If the current item already has version history, import is skipped and reported without overwriting existing records.
+- Importing mixed or unidentified legacy history preserves its original version ownership and protection status. Re-exporting and importing it again cannot turn it into an apparently complete single-attachment history. Protection markers are also retained when some older ownership information is missing.
 
 Older all-history backups named like `git4zotero-backup-<timestamp>.zip` can still be selected from the current item's import action. If the backup contains multiple histories, choose the one you want to map to the current item.
 
@@ -172,7 +184,7 @@ Health checks only diagnose and suggest actions. They do not automatically repai
 - The right-side `Paper Versions` pane is mainly for status display. Use the item-list context menu for write operations such as enable, check, create, and restore.
 - The settings pane configures Git, default notes, diagnostics, the default item-level export folder, and optional AI. Run version-history import/export from the selected item's context menu.
 - Do not manually modify the Git repositories, `index.json`, or `.git4zotero` metadata under the Zotero profile `git4zotero` folder.
-- When a Zotero item is moved to Trash, version history is kept. After the item is permanently deleted or Trash is emptied, the plugin cleans up the corresponding history.
+- Moving a Zotero item to Trash preserves its history. Cleanup after permanent deletion rechecks repository ownership, so deleting one attachment does not remove history belonging to another. Mixed, unidentified, or otherwise unverified histories are retained.
 
 ### AI and privacy
 
@@ -200,9 +212,9 @@ Health checks only diagnose and suggest actions. They do not automatically repai
 
 Add a `.docx` or `.doc` attachment to the current Zotero item. Web snapshots, PDFs, images, and other attachment formats are not managed as manuscripts.
 
-### After restore, the content seems to change back again
+### Why is the current attachment unchanged after restore?
 
-Before restoring, save and close the same file in Word, WPS, or LibreOffice. Some word processors may write to the file again on exit or autosave, which can overwrite the version just restored by the plugin. If the restore preflight says the current file is not writable, the hash changed after confirmation, or there is a file-state error, close the editor and run `Restore Version...` again.
+`Restore as Copy...` preserves the current attachment and writes the historical content under `.git4zotero/restored-copies` in the current repository. Open the copy using the full path in the success message. The original attachment still contains the current draft, and subsequent editor saves still apply to it. To continue writing from the historical draft, handle any unsaved edits first, then use Save As or replace the original attachment yourself. If preflight reports that the copy directory is not writable, check access permissions for the plugin data directory.
 
 ### Where are History Details?
 
@@ -226,7 +238,7 @@ You can paste a folder path in settings, then press Enter or leave the input to 
 
 ### History remains after deleting a Zotero item
 
-If the item was only moved to Zotero Trash, the plugin keeps version history so it can continue working after you restore the item. The corresponding repository is cleaned only after the item is permanently deleted or Trash is emptied. History left by items deleted before this cleanup feature existed can be checked and cleaned from the `Git` settings pane.
+If the item was only moved to Zotero Trash, the plugin keeps version history so it can continue working after you restore the item. After permanent deletion or emptying Trash, cleanup also checks history ownership and related item state. Mixed or unidentified history, and history whose owners cannot be checked, is not automatically deleted. Older orphaned histories can be inspected from the `Git` settings pane; manual cleanup follows the same ownership protection.
 
 ## Development and Contribution
 
@@ -259,4 +271,4 @@ Thanks to the following projects, communities, and contributors for the foundati
 - [Git](https://git-scm.com/)
 - [Zotero Chinese Community](https://zotero-chinese.com)
 - [Zeng Jin](https://medgs.xjtu.edu.cn/info/1408/12084.htm) (advisor)
-- Meng L. and Liu G.
+- Meng L. , Liu G. and Zhang J.

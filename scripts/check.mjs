@@ -58,11 +58,21 @@ const requiredFiles = [
   "chrome/content/src/git-backend.mjs",
   "chrome/content/src/menu.mjs",
   "chrome/content/src/version-service.mjs",
+  "chrome/content/src/repository-lock.mjs",
+  "chrome/content/src/protected-json.mjs",
+  "chrome/content/src/attachment-binding.mjs",
+  "chrome/content/src/sha256.mjs",
   "chrome/content/src/ui.mjs",
   "chrome/content/src/vendor/zip-reader.mjs",
   "scripts/create-update-manifest.mjs",
   "scripts/create-release-notes.mjs",
   "scripts/test-ai.mjs",
+  "scripts/test-repository-concurrency.mjs",
+  "scripts/test-repository-maintenance.mjs",
+  "scripts/test-hash-safety.mjs",
+  "scripts/test-restore-safety.mjs",
+  "scripts/test-metadata-safety.mjs",
+  "scripts/test-attachment-isolation.mjs",
   "scripts/runtime-builder.mjs",
   "scripts/inspect-xpi.mjs"
 ];
@@ -72,7 +82,7 @@ const requiredChineseText = [
   "创建版本",
   "检查修改",
   "版本历史",
-  "恢复此版本",
+  "恢复为副本",
   "Git 不可用",
   "未找到可管理的论文文件",
   ".docx 正文级识别",
@@ -501,7 +511,8 @@ assert(cleanupModule.includes("handleItemEvent"));
 assert(cleanupModule.includes("event === \"trash\""));
 assert(cleanupModule.includes("event !== \"delete\""));
 assert(cleanupModule.includes("isSafeRepoRelativePath"));
-assert(cleanupModule.includes("metadataMatchesDeletedIDs"));
+assert(cleanupModule.includes("inspectCleanupEligibility"));
+assert(cleanupModule.includes("lookupAttachmentState"));
 assert(cleanupModule.includes("scanOrphanRepositories"));
 assert(cleanupModule.includes("cleanupOrphanRepositories"));
 

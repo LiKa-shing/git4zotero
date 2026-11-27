@@ -563,6 +563,9 @@ export class PaperVersionPane {
     }
 
     panel.append(this.fileSummary(doc, state.attachment));
+    if (state.historyReadOnly) {
+      panel.append(this.status(doc, UI_TEXT.attachmentHistoryReadOnly, "warning", state.ownershipWarning));
+    }
     panel.append(this.statusCards(doc, state));
 
     if (!state.enabled) {

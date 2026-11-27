@@ -1,5 +1,6 @@
 import { ZipReader } from "./vendor/zip-reader.mjs";
 import { formatText } from "./localization.mjs";
+import { isSHA256Hex, sha256Hex } from "./sha256.mjs";
 
 const DOCX_SOURCES = [
   { pattern: /^word\/document\.xml$/, source: "document", role: "core", order: 0 },
@@ -48,9 +49,12 @@ export class DocxReader {
       if (!xml) {
         continue;
       }
-      const partHash = this.platform?.hashString
+      let partHash = this.platform?.hashString
         ? await this.platform.hashString(xml)
-        : simpleDocxTextHash(xml);
+        : null;
+      if (!isSHA256Hex(partHash)) {
+        partHash = await sha256Hex(new TextEncoder().encode(xml));
+      }
       const cacheKey = `${name}:${partHash}`;
       let paragraphDetails = this.partCache.get(cacheKey);
       if (paragraphDetails) {
@@ -467,15 +471,6 @@ function cloneParagraphRecord(value) {
       abbreviations: [...(value.semantics.abbreviations ?? [])]
     } : null
   };
-}
-
-function simpleDocxTextHash(value) {
-  let hash = 2166136261;
-  for (const character of String(value ?? "")) {
-    hash ^= character.codePointAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function describeDocxSource(name) {

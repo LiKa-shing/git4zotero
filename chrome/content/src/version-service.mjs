@@ -1,8 +1,11 @@
 import { PREFS, UI_TEXT } from "./constants.mjs";
 import { buildTrackedFileName, sanitizeForPath } from "./attachments.mjs";
+import { inspectAttachmentOwnership, attachmentMatchesOwnership, attachmentOwnershipBlocked, ownershipReason } from "./attachment-binding.mjs";
 import { ContentAnalyzer, summarizeDocxChange } from "./content-diff.mjs";
 import { DiffStore } from "./diff-store.mjs";
 import { formatText } from "./localization.mjs";
+import { withRepositoryLock } from "./repository-lock.mjs";
+import { isSHA256Hex } from "./sha256.mjs";
 import {
   createVersionRecord,
   METADATA_SCHEMA_VERSION,
@@ -32,20 +35,20 @@ export class VersionService {
   }
 
   async getPanelState(item) {
-    const attachment = await this.attachmentFinder.findManageableAttachment(item);
-
-    if (!attachment) {
+    const context = await this.getRepositoryContext(item);
+    if (!context) {
       return { git: null, attachment: null, enabled: false, versions: [], lastCheck: null, workingTree: null };
     }
 
-    const repoPath = this.platform.getRepoPath(attachment.libraryID, attachment.itemKey);
-    const metadata = await this.metadataStore.read(repoPath);
-    const enabled = this.isEnabled(metadata);
+    const { attachment, repoPath, metadata, ownership, ownershipWarning, historyReadOnly } = context;
+    const bindingState = { ownership, ownershipWarning, historyReadOnly };
+    const enabled = this.isEnabled(metadata) || (historyReadOnly && metadata.versions?.length > 0);
     const panelLastCheck = metadata.lastCheck ? {
       ...metadata.lastCheck,
       id: `check-${metadata.lastCheck.checkedAt || "current"}`,
       createdAt: metadata.lastCheck.checkedAt,
       note: UI_TEXT.lastCheck,
+      historyReadOnly,
       zotero: {
         libraryID: metadata.item?.libraryID,
         itemID: metadata.item?.itemID,
@@ -58,6 +61,7 @@ export class VersionService {
 
     if (!enabled) {
       return {
+        ...bindingState,
         git: null,
         attachment,
         repoPath,
@@ -71,8 +75,9 @@ export class VersionService {
     const git = await this.gitBackend.checkAvailability();
     if (!git.available) {
       const offlineVersions = this.mergeHistoryWithMetadata([], metadata, attachment)
-        .map((version) => ({ ...version, repoPath }));
+        .map((version) => ({ ...version, repoPath, historyReadOnly }));
       return {
+        ...bindingState,
         git,
         attachment,
         repoPath,
@@ -102,6 +107,7 @@ export class VersionService {
       workingTree
     });
     return {
+      ...bindingState,
       git,
       attachment,
       repoPath,
@@ -120,6 +126,8 @@ export class VersionService {
   }
 
   async getRestoreCandidates(item) {
+    const context = await this.requireEnabledAttachment(item);
+    this.assertAttachmentOwnership(context.attachment, context.metadata);
     return this.getVersionHistory(item);
   }
 
@@ -176,6 +184,7 @@ export class VersionService {
 
   async getVersionDiffIndex(item, version, options = {}) {
     const context = await this.resolveDiffContext(item, version);
+    if (context.historyReadOnly) options = { ...options, rebuild: false };
     let target = context.version;
     if (target?.diffRef?.status === "complete") {
       try {
@@ -198,7 +207,7 @@ export class VersionService {
 
   async loadVersionDiffPage(item, version, options = {}) {
     const context = await this.resolveDiffContext(item, version);
-    const index = await this.getVersionDiffIndex({ repoPath: context.repoPath, metadata: context.metadata }, context.version, { rebuild: options.rebuild !== false });
+    const index = await this.getVersionDiffIndex(context, context.version, { rebuild: options.rebuild !== false });
     if (index.legacy) {
       const group = index.groups.find((candidate) => candidate.id === options.groupID) || index.groups[0] || null;
       return { group, page: 1, pageCount: group ? 1 : 0, totalChanges: group?.totalChanges ?? 0, changes: group?.changes ?? [] };
@@ -208,7 +217,7 @@ export class VersionService {
 
   async searchVersionDiff(item, version, options = {}) {
     const context = await this.resolveDiffContext(item, version);
-    const index = await this.getVersionDiffIndex({ repoPath: context.repoPath, metadata: context.metadata }, context.version, { rebuild: options.rebuild !== false });
+    const index = await this.getVersionDiffIndex(context, context.version, { rebuild: options.rebuild !== false });
     if (index.legacy) {
       return searchLegacyDiff(index, options);
     }
@@ -222,7 +231,7 @@ export class VersionService {
     }
     const context = await this.resolveDiffContext(item, version);
     const index = await this.getVersionDiffIndex(
-      { repoPath: context.repoPath, metadata: context.metadata },
+      context,
       context.version,
       { rebuild: options.rebuild !== false }
     );
@@ -252,7 +261,11 @@ export class VersionService {
   }
 
   async compareVersions(item, baseID, targetID) {
-    const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
+    return this.withItemRepositoryLock(item, (context) => this.compareVersionsLocked(context, baseID, targetID));
+  }
+
+  async compareVersionsLocked(context, baseID, targetID) {
+    const { attachment, repoPath, metadata } = await this.requireEnabledRepository(context);
     const versions = await this.loadVersionHistory(repoPath, metadata, attachment);
     const find = (id) => versions.find((version) => version.commitHash === id || version.id === id) ?? null;
     const base = baseID === "empty" ? null : find(baseID);
@@ -322,8 +335,8 @@ export class VersionService {
     const previous = index >= 0 ? versions[index + 1] ?? null : null;
     return {
       ...inspection,
-      canRebuild: !!context.version?.contentSnapshot && (!previous || !!previous.contentSnapshot),
-      wouldWrite: !inspection.ok,
+      canRebuild: !context.historyReadOnly && !!context.version?.contentSnapshot && (!previous || !!previous.contentSnapshot),
+      wouldWrite: !context.historyReadOnly && !inspection.ok,
       versionID: context.version?.commitHash || context.version?.id || ""
     };
   }
@@ -336,7 +349,7 @@ export class VersionService {
     const context = await this.resolveDiffContext(item, version);
     let changes = [];
     try {
-      const index = await this.getVersionDiffIndex({ repoPath: context.repoPath, metadata: context.metadata }, context.version, { rebuild: filters.rebuild !== false });
+      const index = await this.getVersionDiffIndex(context, context.version, { rebuild: filters.rebuild !== false });
       if (index.legacy) {
         changes = index.groups.flatMap((group) => group.changes ?? []);
       }
@@ -379,19 +392,32 @@ export class VersionService {
     if (item?.repoPath) {
       const metadata = item.metadata ?? await this.metadataStore.read(item.repoPath);
       const target = findMetadataVersion(metadata, version) || version;
-      return { repoPath: item.repoPath, metadata, version: { ...target, repoPath: item.repoPath } };
+      const ownership = inspectAttachmentOwnership(metadata);
+      return { repoPath: item.repoPath, metadata, historyReadOnly: item.historyReadOnly === true || version?.historyReadOnly === true || ["mixed", "unknown"].includes(ownership.status), version: { ...target, repoPath: item.repoPath } };
     }
-    const { repoPath, metadata } = await this.requireEnabledAttachment(item);
+    const { repoPath, metadata, attachment } = await this.requireEnabledAttachment(item);
     const target = findMetadataVersion(metadata, version) || version;
-    return { repoPath, metadata, version: { ...target, repoPath } };
+    return { repoPath, metadata, historyReadOnly: attachmentOwnershipBlocked(inspectAttachmentOwnership(metadata), attachment), version: { ...target, repoPath } };
   }
 
   async rebuildVersionDiff(repoPath, metadata, version) {
+    return withRepositoryLock(repoPath, async () => {
+      // Callers may have resolved their diff context before a queued commit.
+      // Never write the caller's stale metadata back over newer history.
+      const currentMetadata = await this.metadataStore.read(repoPath);
+      return this.rebuildVersionDiffLocked(repoPath, currentMetadata, version);
+    }, this.platform.Zotero);
+  }
+
+  async rebuildVersionDiffLocked(repoPath, metadata, version) {
+    if (["mixed", "unknown"].includes(inspectAttachmentOwnership(metadata).status)) {
+      return { version, index: createLegacyDiffIndex(version) };
+    }
     const versions = metadata.versions ?? [];
     const index = versions.findIndex((candidate) => sameVersion(candidate, version));
     const target = index >= 0 ? versions[index] : version;
     const previous = index >= 0 ? versions[index + 1] ?? null : null;
-    if (!target?.contentSnapshot) {
+    if (index < 0 || !target?.contentSnapshot) {
       return { version: target, index: createLegacyDiffIndex(target) };
     }
     const changeSummary = summarizeDocxChange({
@@ -416,12 +442,17 @@ export class VersionService {
 
   async loadVersionHistory(repoPath, metadata, attachment) {
     const history = await this.gitBackend.listHistory(repoPath);
+    const historyReadOnly = attachmentOwnershipBlocked(inspectAttachmentOwnership(metadata), attachment);
     return this.mergeHistoryWithMetadata(history, metadata, attachment)
-      .map((version) => ({ ...version, repoPath }));
+      .map((version) => ({ ...version, repoPath, historyReadOnly }));
   }
 
   async checkCurrentChange(item) {
-    const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
+    return this.withItemRepositoryLock(item, (context) => this.checkCurrentChangeLocked(context));
+  }
+
+  async checkCurrentChangeLocked(context) {
+    const { attachment, repoPath, metadata } = await this.requireEnabledRepository(context);
     const git = await this.requireGitAvailable();
     const previousVersion = this.getLatestVersion(metadata);
     const analysis = await this.contentAnalyzer.analyze(attachment.filePath, previousVersion, { repoPath });
@@ -460,6 +491,7 @@ export class VersionService {
 
   async buildCreateVersionPreview(item) {
     const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
+    this.assertAttachmentOwnership(attachment, metadata);
     const git = await this.requireGitAvailable();
     const previousVersion = this.getLatestVersion(metadata);
     const analysis = await this.contentAnalyzer.analyze(attachment.filePath, previousVersion, { repoPath });
@@ -482,7 +514,13 @@ export class VersionService {
   }
 
   async createVersion(item, note, options = {}) {
-    const { attachment, repoPath, metadata } = await this.requireEnabledAttachment(item);
+    return this.withItemRepositoryLock(item, (context) => this.createVersionLocked(context, note, options));
+  }
+
+  // Only call from an operation already holding this repository's lock. Restore
+  // uses this helper so its safety commit and checkout form a single operation.
+  async createVersionLocked(context, note, options = {}) {
+    const { attachment, repoPath, metadata } = await this.requireEnabledRepository(context);
     const previousVersion = this.getLatestVersion(metadata);
     const analysis = await this.contentAnalyzer.analyze(attachment.filePath, previousVersion, { repoPath });
 
@@ -563,7 +601,11 @@ export class VersionService {
   }
 
   async buildRestorePreflight(item, versionRecord, options = {}) {
-    const { attachment, repoPath } = await this.requireEnabledAttachment(item);
+    return this.withItemRepositoryLock(item, (context) => this.buildRestorePreflightLocked(context, versionRecord, options));
+  }
+
+  async buildRestorePreflightLocked(context, versionRecord, options = {}) {
+    const { attachment, repoPath } = await this.requireEnabledRepository(context);
     const trackedRelativePath = this.normalizeTrackedRelativePath(versionRecord.trackedRelativePath);
     if (!trackedRelativePath) {
       throw new Error(UI_TEXT.missingRestorePath);
@@ -592,16 +634,23 @@ export class VersionService {
       }
     }
 
-    const probePath = `${attachment.filePath}.git4zotero-write-test-${Date.now()}.tmp`;
+    const probePath = this.joinPath(this.dirname(paths.restoredCopyPath), `.write-test-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`);
+    let probeCreated = false;
     try {
-      await this.platform.writeText(probePath, "git4zotero restore preflight");
-      add("writable", UI_TEXT.restorePreflightWritable, "ok", this.dirname(attachment.filePath));
+      if (typeof this.platform.writeNewFile !== "function") {
+        throw new Error(UI_TEXT.restoreCopyUnavailable);
+      }
+      await this.platform.writeNewFile(probePath, new Uint8Array([1]));
+      probeCreated = true;
+      add("writable", UI_TEXT.restorePreflightWritable, "ok", this.dirname(paths.restoredCopyPath));
     }
     catch (error) {
       add("writable", UI_TEXT.restorePreflightWritable, "error", `${UI_TEXT.restorePreflightUnwritable} ${error.message || String(error)}`);
     }
     finally {
-      await this.removeFileQuietly(probePath);
+      if (probeCreated) {
+        await this.removeFileQuietly(probePath);
+      }
     }
 
     const git = await this.gitBackend.checkAvailability();
@@ -619,7 +668,7 @@ export class VersionService {
       add("working-tree", UI_TEXT.workingTree, "error", `${UI_TEXT.gitStatusFailed} ${error.message || String(error)}`);
     }
 
-    if (!targetVersion.fileHash) {
+    if (!isSHA256Hex(targetVersion.fileHash)) {
       add("target-hash", UI_TEXT.restoreTargetHash, "warning", UI_TEXT.restoreTargetHashUnknown);
     }
     else {
@@ -634,9 +683,10 @@ export class VersionService {
       repoPath,
       targetVersion,
       currentFileHash,
-      targetFileHash: targetVersion.fileHash || "",
+      targetFileHash: isSHA256Hex(targetVersion.fileHash) ? targetVersion.fileHash : "",
       backupPath: paths.backupPath,
       stagedPath: paths.stagedPath,
+      restoredCopyPath: paths.restoredCopyPath,
       stamp: paths.stamp,
       checks,
       ok: errorCount === 0,
@@ -649,8 +699,18 @@ export class VersionService {
   }
 
   async restoreVersion(item, versionRecord, options = {}) {
-    const preflight = options.preflight ?? await this.buildRestorePreflight(item, versionRecord);
+    return this.withItemRepositoryLock(item, (context) => this.restoreVersionLocked(context, versionRecord, options));
+  }
+
+  async restoreVersionLocked(context, versionRecord, options = {}) {
+    await this.requireEnabledRepository(context);
+    const preflight = options.preflight ?? await this.buildRestorePreflightLocked(context, versionRecord);
     const { attachment, repoPath, targetVersion } = preflight;
+    if (repoPath !== context.repoPath
+      || attachment.filePath !== context.attachment.filePath
+      || attachment.attachmentKey !== context.attachment.attachmentKey) {
+      throw new Error(UI_TEXT.restorePreflightChanged);
+    }
     this.assertRestorePreflightAllowed(preflight);
     await this.validateRestorePreflight(preflight);
     await this.requireGitAvailable();
@@ -658,8 +718,8 @@ export class VersionService {
     let safetyVersion = null;
 
     if (safetyEnabled) {
-      safetyVersion = await this.createVersion(
-        item,
+      safetyVersion = await this.createVersionLocked(
+        context,
         `${UI_TEXT.safetyNotePrefix}${UI_TEXT.colon}${targetVersion.shortHash}`,
         { kind: "safety" }
       );
@@ -677,7 +737,7 @@ export class VersionService {
     }
 
     const sourcePath = this.pathFromRelative(repoPath, targetVersion.trackedRelativePath);
-    const restoreResult = await this.restoreFileWithRollback({
+    const restoreResult = await this.restoreHistoricalCopy({
       attachment,
       repoPath,
       sourcePath,
@@ -685,31 +745,47 @@ export class VersionService {
       preflight
     });
 
-    const metadata = await this.metadataStore.read(repoPath);
-    const workingTree = await this.gitBackend.getWorkingTreeStatus(repoPath);
-    await this.metadataStore.write(repoPath, {
-      ...metadata,
-      enabled: true,
-      lastCheck: metadata.lastCheck
-        ? { ...metadata.lastCheck, workingTree }
-        : metadata.lastCheck,
-      lastRestored: {
-        commitHash: targetVersion.commitHash,
-        restoredAt: new Date().toISOString(),
-        attachmentPath: attachment.filePath,
-        restoredFileHash: restoreResult.restoredFileHash,
-        backupPath: restoreResult.backupPath
-      }
-    });
+    let workingTree;
+    try {
+      const metadata = await this.metadataStore.read(repoPath);
+      workingTree = await this.gitBackend.getWorkingTreeStatus(repoPath);
+      await this.metadataStore.write(repoPath, {
+        ...metadata,
+        enabled: true,
+        lastCheck: metadata.lastCheck
+          ? { ...metadata.lastCheck, workingTree }
+          : metadata.lastCheck,
+        lastRestored: {
+          mode: "copy",
+          commitHash: targetVersion.commitHash,
+          restoredAt: new Date().toISOString(),
+          attachmentPath: attachment.filePath,
+          restoredCopyPath: restoreResult.restoredCopyPath,
+          restoredFileHash: restoreResult.restoredFileHash,
+          backupPath: restoreResult.backupPath
+        }
+      });
+    }
+    catch (error) {
+      const failure = new Error(formatText("restoreCopyRecordFailed", {
+        path: restoreResult.restoredCopyPath,
+        reason: error.message || String(error)
+      }));
+      failure.restoredCopyPath = restoreResult.restoredCopyPath;
+      failure.mode = "copy";
+      throw failure;
+    }
     await this.recordRepositoryIndex(attachment, true);
     this.contentAnalyzer.invalidate?.(repoPath);
 
     return {
+      mode: "copy",
       attachment,
       restoredVersion: targetVersion,
       safetyVersion,
       workingTree,
       backupPath: restoreResult.backupPath,
+      restoredCopyPath: restoreResult.restoredCopyPath,
       restoredFileHash: restoreResult.restoredFileHash
     };
   }
@@ -727,9 +803,12 @@ export class VersionService {
   }
 
   async setVersionManagementEnabled(item, enabled) {
-    const attachment = await this.requireAttachment(item);
-    const repoPath = this.platform.getRepoPath(attachment.libraryID, attachment.itemKey);
+    return this.withItemRepositoryLock(item, (context) => this.setVersionManagementEnabledLocked(context, enabled));
+  }
+
+  async setVersionManagementEnabledLocked({ attachment, repoPath }, enabled) {
     const metadata = await this.metadataStore.read(repoPath);
+    this.assertAttachmentOwnership(attachment, metadata);
     await this.metadataStore.write(repoPath, {
       ...metadata,
       enabled,
@@ -738,6 +817,19 @@ export class VersionService {
     });
     await this.recordRepositoryIndex(attachment, enabled);
     return { attachment, repoPath, enabled };
+  }
+
+  async withItemRepositoryLock(item, operation) {
+    const context = await this.getRepositoryContext(item);
+    if (!context) throw new Error(UI_TEXT.noDocument);
+    const { attachment, repoPath } = context;
+    return withRepositoryLock(repoPath, async () => {
+      // Recheck after waiting: another attachment may have enabled this item
+      // while this operation was queued.
+      const metadata = await this.metadataStore.read(repoPath);
+      this.assertAttachmentOwnership(attachment, metadata);
+      return operation({ attachment, repoPath });
+    }, this.platform.Zotero);
   }
 
   async enableVersionManagement(item) {
@@ -749,21 +841,57 @@ export class VersionService {
   }
 
   async requireAttachment(item) {
-    const attachment = await this.attachmentFinder.findManageableAttachment(item);
-    if (!attachment) {
+    const context = await this.getRepositoryContext(item);
+    if (!context) {
       throw new Error(UI_TEXT.noDocument);
     }
-    return attachment;
+    return context.attachment;
   }
 
   async requireEnabledAttachment(item) {
-    const attachment = await this.requireAttachment(item);
-    const repoPath = this.platform.getRepoPath(attachment.libraryID, attachment.itemKey);
+    const context = await this.getRepositoryContext(item);
+    if (!context) throw new Error(UI_TEXT.noDocument);
+    return this.requireEnabledRepository(context, { allowReadOnly: true });
+  }
+
+  async requireEnabledRepository({ attachment, repoPath }, { allowReadOnly = false } = {}) {
     const metadata = await this.metadataStore.read(repoPath);
-    if (!this.isEnabled(metadata)) {
+    const historyReadOnly = attachmentOwnershipBlocked(inspectAttachmentOwnership(metadata), attachment);
+    if (!allowReadOnly) this.assertAttachmentOwnership(attachment, metadata);
+    if (!this.isEnabled(metadata) && !(allowReadOnly && historyReadOnly && metadata.versions?.length)) {
       throw new Error(UI_TEXT.itemNotEnabledError);
     }
-    return { attachment, repoPath, metadata };
+    return { attachment, repoPath, metadata, historyReadOnly };
+  }
+
+  async getRepositoryContext(item) {
+    const candidates = typeof this.attachmentFinder.findManageableAttachments === "function"
+      ? await this.attachmentFinder.findManageableAttachments(item)
+      : [await this.attachmentFinder.findManageableAttachment(item)].filter(Boolean);
+    if (!candidates.length) return null;
+    const first = candidates[0];
+    const repoPath = this.platform.getRepoPath(first.libraryID, first.itemKey);
+    const metadata = await this.metadataStore.read(repoPath);
+    const ownership = inspectAttachmentOwnership(metadata);
+    let attachment = first;
+    if (candidates.length > 1) {
+      const bound = candidates.find((candidate) => attachmentMatchesOwnership(candidate, ownership));
+      if (bound) attachment = bound;
+      else if (ownership.status === "unbound") throw new Error(UI_TEXT.multipleWordAttachments);
+      // For protected legacy history, retain a read-only route from its parent
+      // item even if the former attachment is missing. No writer uses this route.
+    }
+    const ownershipWarning = ownershipReason(ownership, attachment);
+    return { attachment, repoPath, metadata, ownership, ownershipWarning, historyReadOnly: attachmentOwnershipBlocked(ownership, attachment) };
+  }
+
+  assertAttachmentOwnership(attachment, metadata) {
+    const ownership = inspectAttachmentOwnership(metadata);
+    if (attachmentOwnershipBlocked(ownership, attachment)) {
+      const error = new Error(ownershipReason(ownership, attachment) || "Attachment history is protected as read-only.");
+      error.code = "ATTACHMENT_BINDING_MISMATCH";
+      throw error;
+    }
   }
 
   isEnabled(metadata) {
@@ -857,73 +985,114 @@ export class VersionService {
       throw new Error(UI_TEXT.restorePreflightMissing);
     }
     const currentHash = await this.platform.hashFile(preflight.attachment.filePath);
-    if (preflight.currentFileHash && currentHash !== preflight.currentFileHash) {
+    if (!isSHA256Hex(preflight.currentFileHash)
+      || !isSHA256Hex(currentHash)
+      || currentHash.toLowerCase() !== preflight.currentFileHash.toLowerCase()) {
       throw new Error(UI_TEXT.restorePreflightChanged);
     }
   }
 
   createRestorePaths({ attachment, repoPath, targetVersion, stamp = null }) {
-    const finalStamp = stamp || `${Date.now()}-${sanitizeForPath(targetVersion.shortHash || "version")}`;
+    const finalStamp = stamp ? sanitizeForPath(stamp) : `${Date.now()}-${Math.random().toString(16).slice(2)}-${sanitizeForPath(targetVersion.shortHash || "version")}`;
     const safeFileName = sanitizeForPath(attachment.fileName);
     const restoreDir = this.joinPath(repoPath, ".git4zotero", "restore-backups");
     return {
       stamp: finalStamp,
       backupPath: this.joinPath(restoreDir, `${finalStamp}-current-${safeFileName}`),
-      stagedPath: this.joinPath(restoreDir, `${finalStamp}-restore-${safeFileName}`)
+      stagedPath: this.joinPath(restoreDir, `${finalStamp}-restore-${safeFileName}`),
+      restoredCopyPath: this.joinPath(repoPath, ".git4zotero", "restored-copies", `${finalStamp}-${safeFileName}`)
     };
   }
 
-  async restoreFileWithRollback({ attachment, repoPath, sourcePath, targetVersion, preflight = null }) {
+  async restoreHistoricalCopy({ attachment, repoPath, sourcePath, targetVersion, preflight = null }) {
+    if (typeof this.platform.writeNewFile !== "function") {
+      throw new Error(UI_TEXT.restoreCopyUnavailable);
+    }
     if (!(await this.safeExists(sourcePath))) {
       throw new Error(formatText("restoreSourceMissing", { path: sourcePath }));
     }
 
-    const sourceHash = await this.platform.hashFile(sourcePath);
-    const paths = preflight?.backupPath && preflight?.stagedPath
-      ? { backupPath: preflight.backupPath, stagedPath: preflight.stagedPath }
-      : this.createRestorePaths({ attachment, repoPath, targetVersion });
-    const { backupPath, stagedPath } = paths;
-
-    await this.platform.copyFile(attachment.filePath, backupPath);
-    await this.platform.copyFile(sourcePath, stagedPath);
-
+    const sourceBytes = await this.platform.readFileBytes(sourcePath);
+    const sourceHash = await this.platform.hashBytes(sourceBytes);
+    if (!isSHA256Hex(sourceHash)) {
+      throw new Error(UI_TEXT.restoreStagingHashMismatch);
+    }
+    if (isSHA256Hex(targetVersion.fileHash)
+      && sourceHash.toLowerCase() !== targetVersion.fileHash.toLowerCase()) {
+      throw new Error(UI_TEXT.restoreTargetHashMismatch);
+    }
+    const paths = this.createRestorePaths({ attachment, repoPath, targetVersion, stamp: preflight?.stamp });
+    for (const key of ["backupPath", "stagedPath", "restoredCopyPath"]) {
+      if ((preflight?.[key] && preflight[key] !== paths[key])
+        || paths[key].replace(/\\/g, "/").toLowerCase() === attachment.filePath.replace(/\\/g, "/").toLowerCase()) {
+        throw new Error(UI_TEXT.restorePreflightChanged);
+      }
+    }
+    const { backupPath, stagedPath, restoredCopyPath: copyPath } = paths;
+    let backupCreated = false;
+    let stagedCreated = false;
+    let restoredCopyPath = "";
     try {
+      // This is a snapshot, not an exclusive lock on the editor. Saving after
+      // this read is safe because no later step writes to attachment.filePath.
+      const backupBytes = await this.platform.readFileBytes(attachment.filePath);
+      await this.platform.writeNewFile(backupPath, backupBytes);
+      backupCreated = true;
+      await this.platform.writeNewFile(stagedPath, sourceBytes);
+      stagedCreated = true;
       const stagedHash = await this.platform.hashFile(stagedPath);
       if (stagedHash !== sourceHash) {
         throw new Error(UI_TEXT.restoreStagingHashMismatch);
       }
-      await this.platform.copyFile(stagedPath, attachment.filePath);
-      const restoredHash = await this.platform.hashFile(attachment.filePath);
+
+      // A rehash or noOverwrite rename cannot make an in-place restore safe
+      // against Word/WPS saves. Create a separate file instead, using captured
+      // historical bytes, never the attachment path and never a rollback write.
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const candidate = attempt === 0 ? copyPath : this.joinPath(
+          this.dirname(copyPath),
+          `${Date.now()}-${attempt}-${Math.random().toString(16).slice(2)}-${sanitizeForPath(attachment.fileName)}`
+        );
+        try {
+          await this.platform.writeNewFile(candidate, sourceBytes);
+          restoredCopyPath = candidate;
+          break;
+        }
+        catch (error) {
+          if (error?.name !== "NoModificationAllowedError") {
+            restoredCopyPath = candidate;
+            throw error;
+          }
+        }
+      }
+      if (!restoredCopyPath) {
+        throw new Error(UI_TEXT.restoreCopyPathCollision);
+      }
+      const restoredHash = await this.platform.hashFile(restoredCopyPath);
       if (restoredHash !== sourceHash) {
-        await this.rollbackRestoredFile(backupPath, attachment.filePath);
-        throw new Error(UI_TEXT.restoreHashMismatch);
+        throw new Error(UI_TEXT.restoreCopyHashMismatch);
       }
       return {
+        mode: "copy",
         backupPath,
+        restoredCopyPath,
         restoredFileHash: restoredHash
       };
     }
     catch (error) {
-      await this.rollbackRestoredFile(backupPath, attachment.filePath);
-      throw new Error(formatText("restoreFailedWithBackupPath", {
-        message: UI_TEXT.restoreFailedWithBackup,
-        path: backupPath,
-        reason: error.message || String(error)
-      }));
+      const reason = error.message || String(error);
+      const failure = new Error(restoredCopyPath
+        ? formatText("restoreCopyFailedWithPath", { path: restoredCopyPath, reason })
+        : `${UI_TEXT.restoreCopyFailed}\n${reason}${backupCreated ? `\n${UI_TEXT.backupPathLabel}${UI_TEXT.colon}${backupPath}` : ""}`);
+      failure.restoredCopyPath = restoredCopyPath;
+      failure.backupPath = backupCreated ? backupPath : "";
+      failure.mode = "copy";
+      throw failure;
     }
     finally {
-      await this.removeFileQuietly(stagedPath);
-    }
-  }
-
-  async rollbackRestoredFile(backupPath, targetPath) {
-    try {
-      if (await this.safeExists(backupPath)) {
-        await this.platform.copyFile(backupPath, targetPath);
+      if (stagedCreated) {
+        await this.removeFileQuietly(stagedPath);
       }
-    }
-    catch (error) {
-      this.platform.Zotero?.debug?.(`git4zotero: restore rollback failed: ${error?.stack || error}`);
     }
   }
 

@@ -78,6 +78,7 @@ class Git4ZoteroReviewWindow {
     const aiClearButton = document.getElementById("review-ai-clear-cache");
     if (aiClearButton) aiClearButton.hidden = !this.payload.aiAvailable;
     this.text("review-version-meta", [
+      this.payload.historyReadOnly ? this.labels.historyReadOnly : "",
       this.payload.version.note,
       this.payload.version.createdAt,
       this.payload.version.commitHash
@@ -400,6 +401,9 @@ class Git4ZoteroReviewWindow {
         this.setStatus(error?.message || String(error));
       }
     });
+    status.disabled = this.payload.historyReadOnly === true;
+    bookmark.disabled = this.payload.historyReadOnly === true;
+    note.readOnly = this.payload.historyReadOnly === true;
     tools.append(status, bookmark, note);
     return tools;
   }

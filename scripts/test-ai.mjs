@@ -539,12 +539,18 @@ await firstRepeated;
 repeatedService.shutdown();
 
 const comparisonPlatform = new StorePlatform();
+comparisonPlatform.getRepoPath = () => "repo-compare";
 const comparisonStore = new DiffStore(comparisonPlatform);
+const comparisonAttachment = {
+  libraryID: 1, itemID: 10, itemKey: "PAPER", attachmentID: 20, attachmentKey: "WORD",
+  filePath: "C:/private/paper.docx", fileName: "paper.docx"
+};
 const oldVersion = {
   id: "old",
   commitHash: "oldhash",
   shortHash: "oldhash",
   note: "Old",
+  zotero: { libraryID: 1, attachmentID: 20, attachmentKey: "WORD" },
   contentHash: "old-content",
   contentSnapshot: { paragraphs: ["Old paragraph"], paragraphDetails: [{ normalizedText: "Old paragraph", role: "core", source: "document", groupID: "body", groupLabel: "Body" }] }
 };
@@ -553,15 +559,18 @@ const newVersion = {
   commitHash: "newhash",
   shortHash: "newhash",
   note: "New",
+  zotero: { libraryID: 1, attachmentID: 20, attachmentKey: "WORD" },
   contentHash: "new-content",
   contentSnapshot: { paragraphs: ["New paragraph"], paragraphDetails: [{ normalizedText: "New paragraph", role: "core", source: "document", groupID: "body", groupLabel: "Body" }] }
 };
 let currentComparedAgainst = null;
 const comparisonService = new VersionService({
   platform: comparisonPlatform,
-  attachmentFinder: {},
+  attachmentFinder: {
+    findManageableAttachment: async () => comparisonAttachment
+  },
   gitBackend: {},
-  metadataStore: {},
+  metadataStore: { read: async () => ({ enabled: true, versions: [newVersion, oldVersion] }) },
   pluginVersion: "0.7.0",
   diffStore: comparisonStore,
   contentAnalyzer: {
@@ -573,11 +582,6 @@ const comparisonService = new VersionService({
       };
     }
   }
-});
-comparisonService.requireEnabledAttachment = async () => ({
-  attachment: { filePath: "C:/private/paper.docx", fileName: "paper.docx" },
-  repoPath: "repo-compare",
-  metadata: { enabled: true, versions: [newVersion, oldVersion] }
 });
 comparisonService.loadVersionHistory = async () => [newVersion, oldVersion];
 const candidates = await comparisonService.getComparisonCandidates({});

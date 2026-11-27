@@ -1,4 +1,5 @@
 import { UI_TEXT } from "./constants.mjs";
+import { ProtectedJSONFile, validateProtectedJSONShape } from "./protected-json.mjs";
 
 export const METADATA_SCHEMA_VERSION = 5;
 
@@ -130,6 +131,10 @@ function normalizeDiffRef(value) {
 export class MetadataStore {
   constructor(platform) {
     this.platform = platform;
+    this.storage = new ProtectedJSONFile(platform, {
+      validate: (value) => validateProtectedJSONShape(value, "versions", METADATA_SCHEMA_VERSION),
+      createEmpty: createEmptyMetadata
+    });
   }
 
   getMetadataDirectory(repoPath) {
@@ -141,22 +146,12 @@ export class MetadataStore {
   }
 
   async read(repoPath) {
-    const metadataPath = this.getMetadataPath(repoPath);
-    if (!(await this.platform.exists(metadataPath))) {
-      return createEmptyMetadata();
-    }
-
-    const raw = await this.platform.readText(metadataPath);
-    const parsed = JSON.parse(raw);
-    return migrateMetadata(parsed);
+    return migrateMetadata(await this.storage.read(this.getMetadataPath(repoPath)));
   }
 
   async write(repoPath, metadata) {
-    await this.platform.makeDirectory(this.getMetadataDirectory(repoPath));
+    validateProtectedJSONShape(metadata, "versions", METADATA_SCHEMA_VERSION);
     const normalized = migrateMetadata(metadata);
-    await this.platform.writeText(
-      this.getMetadataPath(repoPath),
-      `${JSON.stringify(normalized, null, 2)}\n`
-    );
+    await this.storage.write(this.getMetadataPath(repoPath), normalized);
   }
 }

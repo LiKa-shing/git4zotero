@@ -3,6 +3,8 @@ import { getExtension, sanitizeForPath } from "./attachments.mjs";
 import { isSafeRepoRelativePath } from "./cleanup.mjs";
 import { formatText } from "./localization.mjs";
 import { METADATA_SCHEMA_VERSION, migrateMetadata } from "./metadata.mjs";
+import { withRepositoryLock } from "./repository-lock.mjs";
+import { inspectAttachmentOwnership } from "./attachment-binding.mjs";
 
 const ARCHIVE_SCHEMA_VERSION = 2;
 const TEXT_ENCODER = new TextEncoder();
@@ -21,12 +23,18 @@ export class RepositoryArchiveService {
   async exportItemRepositoryArchive(options = {}) {
     const repoRelativePath = assertRepoRelativePath(options.repoRelativePath);
     const repoPath = options.repoPath;
-    if (!repoPath || !(await this.safeExists(repoPath))) {
+    if (!repoPath) {
       throw new Error(UI_TEXT.archiveItemNoHistory);
     }
 
-    const entries = [];
-    await this.collectFiles(repoPath, repoRelativePath, entries);
+    const entries = await withRepositoryLock(repoPath, async () => {
+      if (!(await this.safeExists(repoPath))) {
+        throw new Error(UI_TEXT.archiveItemNoHistory);
+      }
+      const snapshot = [];
+      await this.collectFiles(repoPath, repoRelativePath, snapshot);
+      return snapshot;
+    }, this.platform.Zotero);
     if (!entries.length) {
       throw new Error(UI_TEXT.archiveItemNoHistory);
     }
@@ -175,32 +183,34 @@ export class RepositoryArchiveService {
     const skipped = [];
     const imported = [];
     const failed = [];
-    if (await this.safeExists(targetRepoPath)) {
-      skipped.push({
-        repoRelativePath: targetRepoRelativePath,
-        sourceRepoRelativePath,
-        reason: UI_TEXT.archiveImportSkippedExisting
-      });
-    }
-    else {
-      const rewrittenEntries = rewriteRepositoryEntriesForTarget(sourceEntries, {
-        sourceRepoRelativePath,
-        targetRepoRelativePath,
-        attachment,
-        metadata: sourceMetadata
-      });
-      try {
-        await this.importRepositoryGroup(dataDir, rewrittenEntries);
-        imported.push(targetRepoRelativePath);
-      }
-      catch (error) {
-        failed.push({
+    await withRepositoryLock(targetRepoPath, async () => {
+      if (await this.safeExists(targetRepoPath)) {
+        skipped.push({
           repoRelativePath: targetRepoRelativePath,
           sourceRepoRelativePath,
-          reason: error.message || String(error)
+          reason: UI_TEXT.archiveImportSkippedExisting
         });
       }
-    }
+      else {
+        const rewrittenEntries = rewriteRepositoryEntriesForTarget(sourceEntries, {
+          sourceRepoRelativePath,
+          targetRepoRelativePath,
+          attachment,
+          metadata: sourceMetadata
+        });
+        try {
+          await this.importRepositoryGroup(dataDir, rewrittenEntries);
+          imported.push(targetRepoRelativePath);
+        }
+        catch (error) {
+          failed.push({
+            repoRelativePath: targetRepoRelativePath,
+            sourceRepoRelativePath,
+            reason: error.message || String(error)
+          });
+        }
+      }
+    }, this.platform.Zotero);
 
     await this.cleanupService?.ensureIndex?.();
     return {
@@ -233,17 +243,19 @@ export class RepositoryArchiveService {
 
     for (const [repoRelativePath, repoEntries] of repoGroups) {
       const repoPath = this.platform.join(dataDir, ...repoRelativePath.split("/"));
-      if (await this.safeExists(repoPath)) {
-        skipped.push({ repoRelativePath, reason: UI_TEXT.archiveImportSkippedExisting });
-        continue;
-      }
-      try {
-        await this.importRepositoryGroup(dataDir, repoEntries);
-        imported.push(repoRelativePath);
-      }
-      catch (error) {
-        failed.push({ repoRelativePath, reason: error.message || String(error) });
-      }
+      await withRepositoryLock(repoPath, async () => {
+        if (await this.safeExists(repoPath)) {
+          skipped.push({ repoRelativePath, reason: UI_TEXT.archiveImportSkippedExisting });
+          return;
+        }
+        try {
+          await this.importRepositoryGroup(dataDir, repoEntries);
+          imported.push(repoRelativePath);
+        }
+        catch (error) {
+          failed.push({ repoRelativePath, reason: error.message || String(error) });
+        }
+      }, this.platform.Zotero);
     }
 
     await this.cleanupService?.ensureIndex?.();
@@ -316,9 +328,11 @@ export class RepositoryArchiveService {
     }
 
     const indexPath = this.platform.join(dataDir, "index.json");
-    if (await this.safeExists(indexPath)) {
-      entries.push({ name: "index.json", bytes: await this.platform.readFileBytes(indexPath) });
-    }
+    await withRepositoryLock(indexPath, async () => {
+      if (await this.safeExists(indexPath)) {
+        entries.push({ name: "index.json", bytes: await this.platform.readFileBytes(indexPath) });
+      }
+    }, this.platform.Zotero);
 
     for (const libraryPath of await this.safeList(dataDir)) {
       const libraryName = pathName(libraryPath);
@@ -331,7 +345,11 @@ export class RepositoryArchiveService {
         if (!isSafeRepoRelativePath(repoRelativePath)) {
           continue;
         }
-        await this.collectFiles(itemPath, repoRelativePath, entries);
+        await withRepositoryLock(itemPath, async () => {
+          if (await this.safeExists(itemPath)) {
+            await this.collectFiles(itemPath, repoRelativePath, entries);
+          }
+        }, this.platform.Zotero);
       }
     }
     return entries.sort((a, b) => a.name.localeCompare(b.name));
@@ -443,11 +461,14 @@ function createArchiveRepositoryManifest(repoRelativePath, attachment = null, me
   const normalizedMetadata = metadata ? migrateMetadata(metadata) : null;
   const versions = normalizedMetadata?.versions ?? [];
   const latestVersion = versions[0] ?? null;
+  // The selected attachment may only be viewing another attachment's legacy
+  // history. Describe the repository owner, never relabel it as the selection.
+  const sourceAttachment = normalizedMetadata ? null : attachment;
   return {
     repoRelativePath,
-    item: createItemMetadata(attachment, normalizedMetadata),
-    attachment: createAttachmentMetadata(attachment, normalizedMetadata),
-    compatibleFormat: createCompatibleFormat(attachment, normalizedMetadata),
+    item: createItemMetadata(sourceAttachment, normalizedMetadata),
+    attachment: createAttachmentMetadata(sourceAttachment, normalizedMetadata),
+    compatibleFormat: createCompatibleFormat(sourceAttachment, normalizedMetadata),
     metadataSchemaVersion: normalizedMetadata?.schemaVersion ?? METADATA_SCHEMA_VERSION,
     versionCount: versions.length,
     latestVersionAt: latestVersion?.createdAt ?? null,
@@ -509,25 +530,39 @@ function rewriteRepositoryEntriesForTarget(repoEntries, {
     const suffix = entry.name.slice(sourceRepoRelativePath.length);
     const name = assertArchiveEntryName(`${targetRepoRelativePath}${suffix}`);
     const bytes = entry.name === metadataName
-      ? encodeText(`${JSON.stringify(rewriteRepositoryMetadata(metadata, attachment), null, 2)}\n`)
+      ? encodeText(`${JSON.stringify(rewriteRepositoryMetadata(metadata, attachment, sourceRepoRelativePath), null, 2)}\n`)
       : entry.bytes;
     return { ...entry, name, bytes };
   });
 }
 
-function rewriteRepositoryMetadata(metadata, attachment) {
+function rewriteRepositoryMetadata(metadata, attachment, sourceRepoRelativePath) {
+  // Inspect the source before rebinding. A mixed legacy repository must never
+  // become an apparently single-owner history just because it was imported.
+  const ownership = inspectAttachmentOwnership(metadata);
   const source = migrateMetadata(metadata);
   const item = createItemMetadata(attachment);
   const attachmentMetadata = createAttachmentMetadata(attachment);
+  const preserveVersionOwners = ownership.status === "mixed" || ownership.status === "unknown";
+  let legacyAttachmentOwnership = source.legacyAttachmentOwnership;
+  if (preserveVersionOwners || (ownership.status === "single" && !ownership.complete)) {
+    legacyAttachmentOwnership = {
+      ...legacyAttachmentOwnership,
+      status: ownership.status,
+      complete: false,
+      sourceRepoRelativePath: legacyAttachmentOwnership?.sourceRepoRelativePath || sourceRepoRelativePath
+    };
+  }
   return {
     ...source,
+    ...(legacyAttachmentOwnership ? { legacyAttachmentOwnership } : {}),
     schemaVersion: METADATA_SCHEMA_VERSION,
     enabled: true,
     item,
     attachment: attachmentMetadata,
     versions: (source.versions ?? []).map((version) => ({
       ...version,
-      zotero: {
+      zotero: preserveVersionOwners ? version.zotero : {
         ...(version.zotero ?? {}),
         libraryID: item.libraryID,
         itemID: item.itemID,

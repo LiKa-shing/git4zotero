@@ -1,4 +1,5 @@
-import { SUPPORTED_EXTENSIONS } from "./constants.mjs";
+import { SUPPORTED_EXTENSIONS, UI_TEXT } from "./constants.mjs";
+import { attachmentMatchesOwnership } from "./attachment-binding.mjs";
 
 export function getFileName(filePath) {
   return String(filePath ?? "").split(/[\\/]/).filter(Boolean).pop() ?? "";
@@ -42,11 +43,24 @@ export class AttachmentFinder {
     this.Zotero = Zotero;
   }
 
-  async findManageableAttachment(item) {
+  async findManageableAttachment(item, { preferredAttachment = null } = {}) {
+    const attachments = await this.findManageableAttachments(item);
+    if (attachments.length <= 1) return attachments[0] ?? null;
+    if (preferredAttachment) {
+      const preferred = attachments.find((attachment) => attachmentMatchesOwnership(attachment, {
+        status: "single", owner: preferredAttachment
+      }));
+      if (preferred) return preferred;
+    }
+    throw new Error(UI_TEXT.multipleWordAttachments);
+  }
+
+  async findManageableAttachments(item) {
     if (!item) {
-      return null;
+      return [];
     }
 
+    const attachments = [];
     const candidates = this.getAttachmentCandidates(item);
     for (const attachment of candidates) {
       const filePath = await this.getAttachmentPath(attachment);
@@ -55,7 +69,7 @@ export class AttachmentFinder {
       }
 
       const owningItem = this.getOwningItem(item, attachment);
-      return {
+      attachments.push({
         attachment,
         attachmentID: attachment.id,
         attachmentKey: attachment.key,
@@ -66,10 +80,10 @@ export class AttachmentFinder {
         itemID: owningItem.id,
         itemKey: owningItem.key,
         libraryID: owningItem.libraryID ?? attachment.libraryID
-      };
+      });
     }
 
-    return null;
+    return attachments;
   }
 
   getAttachmentCandidates(item) {

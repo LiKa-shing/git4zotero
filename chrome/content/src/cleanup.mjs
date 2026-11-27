@@ -1,5 +1,8 @@
 import { buildRepoRelativePath } from "./attachments.mjs";
 import { UI_TEXT } from "./constants.mjs";
+import { withRepositoryLock } from "./repository-lock.mjs";
+import { ProtectedJSONFile, validateProtectedJSONShape } from "./protected-json.mjs";
+import { attachmentMatchesOwnership, inspectAttachmentOwnership } from "./attachment-binding.mjs";
 
 const INDEX_SCHEMA_VERSION = 1;
 const INDEX_FILE_NAME = "index.json";
@@ -15,6 +18,10 @@ export function createEmptyRepositoryIndex() {
 export class RepositoryIndexStore {
   constructor(platform) {
     this.platform = platform;
+    this.storage = new ProtectedJSONFile(platform, {
+      validate: (value) => validateProtectedJSONShape(value, "repositories", INDEX_SCHEMA_VERSION),
+      createEmpty: createEmptyRepositoryIndex
+    });
   }
 
   getIndexPath() {
@@ -22,44 +29,45 @@ export class RepositoryIndexStore {
   }
 
   async read() {
-    const indexPath = this.getIndexPath();
-    if (!(await this.platform.exists(indexPath))) {
-      return createEmptyRepositoryIndex();
-    }
+    return withRepositoryLock(this.getIndexPath(), () => this.readUnlocked(), this.platform.Zotero);
+  }
 
-    try {
-      const parsed = JSON.parse(await this.platform.readText(indexPath));
-      return {
-        ...createEmptyRepositoryIndex(),
-        ...parsed,
-        schemaVersion: parsed.schemaVersion ?? 1,
-        repositories: Array.isArray(parsed.repositories)
-          ? parsed.repositories.map((entry) => normalizeIndexEntry(entry)).filter(Boolean)
-          : []
-      };
-    }
-    catch (error) {
-      this.platform.Zotero?.debug?.(`git4zotero: repository index read failed: ${error?.stack || error}`);
-      return createEmptyRepositoryIndex();
-    }
+  async readUnlocked() {
+    const parsed = await this.storage.read(this.getIndexPath());
+    return {
+      ...createEmptyRepositoryIndex(),
+      ...parsed,
+      schemaVersion: parsed.schemaVersion ?? 1,
+      repositories: parsed.repositories.map((entry) => normalizeIndexEntry(entry)).filter(Boolean)
+    };
   }
 
   async write(index) {
+    return withRepositoryLock(this.getIndexPath(), () => this.writeUnlocked(index), this.platform.Zotero);
+  }
+
+  async writeUnlocked(index) {
+    validateProtectedJSONShape(index, "repositories", INDEX_SCHEMA_VERSION);
     const normalized = {
       ...createEmptyRepositoryIndex(),
       ...index,
       schemaVersion: INDEX_SCHEMA_VERSION,
       repositories: dedupeRepositories(index.repositories ?? [])
     };
-    await this.platform.writeText(this.getIndexPath(), `${JSON.stringify(normalized, null, 2)}\n`);
+    await this.storage.write(this.getIndexPath(), normalized);
     return normalized;
+  }
+
+  async update(updater) {
+    return withRepositoryLock(this.getIndexPath(), async () => {
+      const index = await this.readUnlocked();
+      return this.writeUnlocked(await updater(index));
+    }, this.platform.Zotero);
   }
 
   async upsertAttachment(attachment, { enabled, repoRelativePath = null } = {}) {
     const relativePath = repoRelativePath || buildRepoRelativePath(attachment.libraryID, attachment.itemKey);
-    const index = await this.read();
-    const withoutCurrent = index.repositories.filter((entry) => entry.repoRelativePath !== relativePath);
-    await this.write({
+    return this.update((index) => ({
       ...index,
       repositories: [
         normalizeIndexEntry({
@@ -72,18 +80,17 @@ export class RepositoryIndexStore {
           enabled: enabled === true,
           lastSeenAt: new Date().toISOString()
         }),
-        ...withoutCurrent
+        ...index.repositories.filter((entry) => entry.repoRelativePath !== relativePath)
       ].filter(Boolean)
-    });
+    }));
   }
 
   async removeRepositoryEntries(repoRelativePaths) {
     const paths = new Set(repoRelativePaths);
-    const index = await this.read();
-    await this.write({
+    return this.update((index) => ({
       ...index,
       repositories: index.repositories.filter((entry) => !paths.has(entry.repoRelativePath))
-    });
+    }));
   }
 }
 
@@ -128,10 +135,17 @@ export class RepositoryCleanupService {
         continue;
       }
 
-      if (this.itemExists(entry.itemID) || this.itemExists(entry.attachmentID)) {
-        continue;
-      }
-      orphans.push(entry);
+      const repoPath = this.platform.join(this.platform.getPluginDataDirectory(), entry.repoRelativePath);
+      await withRepositoryLock(repoPath, async () => {
+        const metadata = await this.safeReadMetadata(repoPath);
+        const eligibility = await this.inspectCleanupEligibility(entry, metadata);
+        if (eligibility.allowed) {
+          orphans.push(entry);
+        }
+        else if (eligibility.state !== "present") {
+          skipped.push({ entry, reason: eligibility.reason });
+        }
+      }, this.platform.Zotero);
     }
 
     return {
@@ -148,7 +162,7 @@ export class RepositoryCleanupService {
       addID(idSet, entry.itemID);
       addID(idSet, entry.attachmentID);
     }
-    const result = await this.cleanupCandidates(scan.repositories, idSet, { removeMissing: true });
+    const result = await this.cleanupCandidates(scan.repositories, idSet, { removeMissing: true, orphan: true });
     return {
       ...result,
       scanned: scan.repositories.length,
@@ -162,13 +176,8 @@ export class RepositoryCleanupService {
 
   async rebuildIndexFromRepositories() {
     const pluginDataDir = this.platform.getPluginDataDirectory();
-    if (!(await this.platform.exists(pluginDataDir))) {
-      const empty = createEmptyRepositoryIndex();
-      await this.indexStore.write(empty);
-      return empty;
-    }
-
-    const repositories = [];
+    const currentIndex = await this.indexStore.read();
+    const candidates = new Set(currentIndex.repositories.map((entry) => entry.repoRelativePath));
     for (const libraryPath of await this.safeListDirectory(pluginDataDir)) {
       const libraryName = getPathName(libraryPath);
       if (!libraryName.startsWith("library-")) {
@@ -180,24 +189,39 @@ export class RepositoryCleanupService {
         if (!isSafeRepoRelativePath(repoRelativePath)) {
           continue;
         }
-        const metadata = await this.safeReadMetadata(itemPath);
-        const entry = indexEntryFromMetadata(metadata, repoRelativePath);
-        if (entry) {
-          repositories.push(entry);
-        }
+        candidates.add(repoRelativePath);
       }
     }
 
-    return this.indexStore.write({
-      schemaVersion: INDEX_SCHEMA_VERSION,
-      repositories
-    });
+    // Refresh one repository at a time, always taking the repository lock before
+    // the index lock. A whole-index replacement could lose a concurrent upsert.
+    for (const repoRelativePath of candidates) {
+      const repoPath = this.platform.join(pluginDataDir, ...repoRelativePath.split("/"));
+      await withRepositoryLock(repoPath, async () => {
+        const repositoryExists = await this.platform.exists(repoPath);
+        // A failed read is not evidence that an existing repository has no
+        // history. Propagate the error before changing its index entry.
+        const metadata = repositoryExists ? await this.metadataStore.read(repoPath) : null;
+        const entry = indexEntryFromMetadata(metadata, repoRelativePath);
+        if (repositoryExists && !entry) {
+          this.debug(`index rebuild retained repository with unavailable metadata: ${repoRelativePath}`);
+          return;
+        }
+        await this.indexStore.update((index) => ({
+          ...index,
+          repositories: [
+            ...(entry ? [entry] : []),
+            ...index.repositories.filter((candidate) => candidate.repoRelativePath !== repoRelativePath)
+          ]
+        }));
+      }, this.platform.Zotero);
+    }
+    return this.indexStore.update((index) => index);
   }
 
-  async cleanupCandidates(candidates, expectedIDs, { removeMissing = false } = {}) {
+  async cleanupCandidates(candidates, expectedIDs, { removeMissing = false, orphan = false } = {}) {
     const cleaned = [];
     const skipped = [];
-    const removeFromIndex = [];
     const seen = new Set();
 
     for (const entry of candidates) {
@@ -211,44 +235,46 @@ export class RepositoryCleanupService {
       }
       seen.add(normalizedEntry.repoRelativePath);
 
-      const result = await this.cleanupRepository(normalizedEntry, expectedIDs, { removeMissing });
+      const result = await this.cleanupRepository(normalizedEntry, expectedIDs, { removeMissing, orphan });
       if (result.cleaned) {
         cleaned.push(result);
-        removeFromIndex.push(normalizedEntry.repoRelativePath);
       }
-      else if (result.missing) {
-        removeFromIndex.push(normalizedEntry.repoRelativePath);
-      }
-      else {
+      else if (!result.missing) {
         skipped.push(result);
       }
-    }
-
-    if (removeFromIndex.length) {
-      await this.indexStore.removeRepositoryEntries(removeFromIndex);
     }
 
     return { cleaned, skipped };
   }
 
-  async cleanupRepository(entry, expectedIDs, { removeMissing = false } = {}) {
+  async cleanupRepository(entry, expectedIDs, { removeMissing = false, orphan = false } = {}) {
     if (!isSafeRepoRelativePath(entry.repoRelativePath)) {
       return { entry, cleaned: false, reason: UI_TEXT.unsafeRepoPath };
     }
 
     const repoPath = this.platform.join(this.platform.getPluginDataDirectory(), entry.repoRelativePath);
-    if (!(await this.platform.exists(repoPath))) {
-      return { entry, path: repoPath, cleaned: false, missing: removeMissing, reason: UI_TEXT.repoAlreadyMissing };
-    }
+    return withRepositoryLock(repoPath, async () => {
+      if (!(await this.platform.exists(repoPath))) {
+        if (removeMissing) {
+          await this.indexStore.removeRepositoryEntries([entry.repoRelativePath]);
+        }
+        return { entry, path: repoPath, cleaned: false, missing: removeMissing, reason: UI_TEXT.repoAlreadyMissing };
+      }
 
-    const metadata = await this.safeReadMetadata(repoPath);
-    if (!metadataMatchesDeletedIDs(metadata, expectedIDs)) {
-      return { entry, path: repoPath, cleaned: false, reason: UI_TEXT.metadataMismatchCleanup };
-    }
+      const metadata = await this.safeReadMetadata(repoPath);
+      // Recheck both ownership and actual attachment absence while holding the
+      // same repository lock used by writers. A deletion event or stale index
+      // alone cannot authorize deleting the complete history directory.
+      const eligibility = await this.inspectCleanupEligibility(entry, metadata, orphan ? null : expectedIDs);
+      if (!eligibility.allowed) {
+        return { entry, path: repoPath, cleaned: false, reason: eligibility.reason };
+      }
 
-    await this.platform.removeDirectory(repoPath);
-    this.debug(`cleaned repository for deleted item: ${entry.repoRelativePath}`);
-    return { entry, path: repoPath, cleaned: true };
+      await this.platform.removeDirectory(repoPath);
+      await this.indexStore.removeRepositoryEntries([entry.repoRelativePath]);
+      this.debug(`cleaned repository for deleted item: ${entry.repoRelativePath}`);
+      return { entry, path: repoPath, cleaned: true };
+    }, this.platform.Zotero);
   }
 
   async safeListDirectory(path) {
@@ -271,15 +297,69 @@ export class RepositoryCleanupService {
     }
   }
 
-  itemExists(itemID) {
-    if (!Number.isFinite(Number(itemID))) {
-      return false;
+  async inspectCleanupEligibility(entry, metadata, expectedIDs = null) {
+    const ownership = inspectAttachmentOwnership(metadata);
+    if (ownership.status !== "single" || !ownership.complete) {
+      return { allowed: false, reason: UI_TEXT.cleanupOwnershipUncertain };
     }
+    const parent = metadata?.item ?? metadata?.versions?.[0]?.zotero ?? {};
+    const parentID = normalizeNumber(parent.itemID);
+    if (!attachmentMatchesOwnership(entry, ownership)
+        || (parentID !== null && entry.itemID !== null && parentID !== normalizeNumber(entry.itemID))
+        || (parent.itemKey && entry.itemKey && parent.itemKey !== entry.itemKey)) {
+      return { allowed: false, reason: UI_TEXT.metadataMismatchCleanup };
+    }
+    if (expectedIDs !== null
+        && !expectedIDs?.has(normalizeNumber(ownership.owner.attachmentID))
+        && !expectedIDs?.has(parentID)) {
+      return { allowed: false, reason: UI_TEXT.metadataMismatchCleanup };
+    }
+    const state = await this.lookupAttachmentState(ownership.owner);
+    if (state === "present") {
+      return { allowed: false, state, reason: UI_TEXT.cleanupAttachmentStillExists };
+    }
+    if (state !== "absent") {
+      return { allowed: false, state, reason: UI_TEXT.cleanupAttachmentLookupFailed };
+    }
+    return { allowed: true, state };
+  }
+
+  async lookupAttachmentState(owner) {
+    const items = this.platform.Zotero?.Items;
+    const libraryID = normalizeNumber(owner?.libraryID);
+    const attachmentID = normalizeNumber(owner?.attachmentID);
+    const attachmentKey = String(owner?.attachmentKey ?? "");
     try {
-      return !!this.platform.Zotero?.Items?.get?.(Number(itemID));
+      let item;
+      if (attachmentKey && libraryID !== null && typeof items?.getByLibraryAndKeyAsync === "function") {
+        item = await items.getByLibraryAndKeyAsync(libraryID, attachmentKey);
+      }
+      else if (attachmentKey && libraryID !== null && typeof items?.getByLibraryAndKey === "function") {
+        item = await items.getByLibraryAndKey(libraryID, attachmentKey);
+      }
+      else if (attachmentID !== null && typeof items?.getAsync === "function") {
+        item = await items.getAsync(attachmentID);
+      }
+      else if (attachmentID !== null && typeof items?.get === "function") {
+        item = await items.get(attachmentID);
+      }
+      else {
+        return "unknown";
+      }
+      // Undefined can mean an unavailable or incomplete lookup; only explicit
+      // absence counts as evidence that this attachment has been deleted.
+      if (item === null || item === false) {
+        return "absent";
+      }
+      if (!item || typeof item !== "object"
+          || (attachmentKey && item.key && item.key !== attachmentKey)
+          || (libraryID !== null && item.libraryID != null && Number(item.libraryID) !== libraryID)) {
+        return "unknown";
+      }
+      return "present";
     }
     catch (_error) {
-      return false;
+      return "unknown";
     }
   }
 
@@ -337,20 +417,6 @@ function indexEntryFromMetadata(metadata, repoRelativePath) {
   return normalizeIndexEntry(entry);
 }
 
-function metadataMatchesDeletedIDs(metadata, expectedIDs) {
-  if (!metadata || !expectedIDs?.size) {
-    return false;
-  }
-  const metadataIDs = new Set();
-  addID(metadataIDs, metadata.item?.itemID);
-  addID(metadataIDs, metadata.attachment?.attachmentID);
-  for (const version of metadata.versions ?? []) {
-    addID(metadataIDs, version.zotero?.itemID);
-    addID(metadataIDs, version.zotero?.attachmentID);
-  }
-  return [...metadataIDs].some((id) => expectedIDs.has(id));
-}
-
 function entryMatchesDeletedIDs(entry, deletedIDs) {
   return deletedIDs.has(normalizeNumber(entry.itemID)) || deletedIDs.has(normalizeNumber(entry.attachmentID));
 }
@@ -371,8 +437,12 @@ function addID(set, value) {
 }
 
 function normalizeNumber(value) {
+  if ((typeof value !== "number" && typeof value !== "string")
+      || (typeof value === "string" && !/^\d+$/.test(value.trim()))) {
+    return null;
+  }
   const number = Number(value);
-  return Number.isFinite(number) ? number : null;
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
 function getPathName(value) {
